@@ -91,3 +91,14 @@ test('markdown renderer escapes html and handles basics', () => {
   assert.match(h, /<ul><li>.*done.*<ul><li>nested<\/li><\/ul><\/li><li>.*todo/s);
   assert.ok(h.includes('<pre><code>&lt;b&gt;</code></pre>'));
 });
+
+test('serves the frontend modules', async () => {
+  const { app, base } = await setup();
+  try {
+    for (const p of ['/app.js', '/md.js', '/vim.js']) {
+      const r = await fetch(base + p);
+      assert.equal(r.status, 200, p);
+      assert.match(r.headers.get('content-type'), /javascript/);
+    }
+  } finally { await app.close(); }
+});

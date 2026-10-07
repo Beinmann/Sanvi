@@ -57,6 +57,16 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   focuses search, `Enter` opens, `s` sets status, `Shift+H/L` moves the card one status left/right, `n`
   creates; in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
   goes back. Single-key hotkeys are off while typing in a field.
+- Description editor: optional **Vim mode** (checkbox under the editor,
+  remembered per browser; off by default). Home-grown subset, no
+  dependencies: normal/insert/visual/visual-line, `h j k l w b e 0 ^ $ gg G`
+  with counts, `d c y` (+ `dd cc yy`, visual), `x X D C s S Y p P`,
+  `i a I A o O`, `u` / `Ctrl-R`, `/` `n` `N`, and `:w` `:q` `:q!` `:wq`.
+  The mode is shown below the editor. In vim mode `Esc` only changes vim
+  mode: `:w` saves, `:q` leaves the editor (refused with unsaved changes),
+  `:q!` leaves and discards edits, `:wq` does both; `Ctrl+S` works in both
+  modes. Without vim mode `Esc` leaves the editor as before.
+  Both modes work with the 409 / changed-on-disk banners.
 - Edits made outside the UI show up live. If you have unsaved edits, a
   banner offers "Load disk version" or "Keep my draft" instead of replacing
   your text.
@@ -108,7 +118,7 @@ Use `--json` for machine-readable output. Nothing requires going through it.
 - `src/server.js` — JSON API, file watcher, SSE
 - `public/` — frontend (`md.js` is a small safe Markdown renderer,
   `filter.js` the pure board filter, reusable by other views, `keys.js` the
-  hotkeys and command menu)
+  hotkeys and command menu, `vim.js` the optional editor vim mode)
 - `npm test`
 
 ## Concurrency note
