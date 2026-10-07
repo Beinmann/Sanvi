@@ -202,3 +202,6 @@ body.has-selection .selhint { display: none; }
 .hiddenstrip .stripentry.selected button { background: var(--accent-soft); }
 #trash-btn svg { vertical-align: -2px; margin-right: 4px; }
 .palette li.heading { cursor: default; padding: 8px 10px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.addcol { flex: 0 0 auto; align-self: flex-start; margin-top: 4px; }
+.addcol button { all: unset; box-sizing: border-box; cursor: pointer; padding: 6px 14px; border: 2px dashed var(--border); border-radius: var(--r); color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.addcol button:hover, .addcol button:focus-visible { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
