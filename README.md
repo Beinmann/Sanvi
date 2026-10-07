@@ -47,6 +47,11 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 - Kanban board; drag a card to change its status.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
+- Keyboard (press **?** for the overlay): **Ctrl+K** command menu (jump to a
+  ticket, set status, new ticket); on the board `j/k` `h/l` move focus, `Enter`
+  opens, `s` sets status, `Shift+H/L` moves the card one status left/right, `n`
+  creates; in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
+  goes back. Single-key hotkeys are off while typing in a field.
 - Edits made outside the UI show up live. If you have unsaved edits, a
   banner offers "Load disk version" or "Keep my draft" instead of replacing
   your text.
@@ -96,7 +101,7 @@ Use `--json` for machine-readable output. Nothing requires going through it.
 - `src/changelog.js` — bounded web UI change log
 - `src/instances.js` — instance registry for start/stop/ps
 - `src/server.js` — JSON API, file watcher, SSE
-- `public/` — frontend (`md.js` is a small safe Markdown renderer)
+- `public/` — frontend (`md.js` is a small safe Markdown renderer, `keys.js` the hotkeys and command menu)
 - `npm test`
 
 ## Concurrency note

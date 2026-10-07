@@ -1,4 +1,5 @@
 import { renderMarkdown } from './md.js';
+import { initKeys } from './keys.js';
 
 const $ = (sel) => document.querySelector(sel);
 const view = $('#view');
@@ -51,7 +52,7 @@ function columns() {
 
 function card(t) {
   return el('a', {
-    class: 'card', href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
+    class: 'card', 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); },
     ondragend: (e) => e.currentTarget.classList.remove('dragging'),
   },
@@ -73,18 +74,23 @@ async function moveTicket(file, status) {
   await refreshAll();
 }
 
+let pendingFocus = null; // file whose card gets focus on the next board render
+
 function renderBoard() {
+  const target = pendingFocus || document.activeElement?.closest?.('.card')?.dataset.file;
+  pendingFocus = null;
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
   view.replaceChildren(el('div', { class: 'board' }, columns().map((status) => {
     const items = S.tickets.filter((t) => t.status === status)
       .sort((a, b) => (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
     return el('section', {
-      class: 'col',
+      class: 'col', 'data-status': status,
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add('over'); },
       ondragleave: (e) => e.currentTarget.classList.remove('over'),
       ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove('over'); moveTicket(e.dataTransfer.getData('text/plain'), status); },
     }, el('h2', {}, el('span', {}, status || '(no status)'), el('span', {}, String(items.length))), items.map(card));
   })));
+  if (target) [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target)?.focus();
 }
 
 // --------------------------------------------------------------- detail
@@ -110,7 +116,7 @@ function updateBanner() {
   if (D.gone) {
     b.append(el('div', { class: 'banner err' }, 'This ticket no longer exists on disk. Your draft is still here.'));
   } else if (D.stale) {
-    b.append(el('div', { class: 'banner' },
+    b.append(el('div', { class: 'banner', role: 'alert' },
       el('span', {}, D.conflict ? 'Not saved: this ticket changed on disk after you opened it.' : 'This ticket changed on disk while you were editing.'),
       el('button', { type: 'button', onclick: () => { D.loaded = D.stale; D.draft = copyDraft(D.stale); D.stale = null; D.conflict = false; renderDetail(); } }, 'Load disk version (discard my edits)'),
       el('button', { type: 'button', onclick: () => { D.loaded = D.stale; D.stale = null; D.conflict = false; updateBanner(); updateState(); toast('Kept your draft; the next save overwrites the disk version.'); } }, 'Keep my draft')));
@@ -132,20 +138,20 @@ async function save() {
     updateBanner(); updateState();
     toast('Saved');
   } catch (e) {
-    if (e.status === 409) { D.stale = e.data.current; D.conflict = true; updateBanner(); }
+    if (e.status === 409) { D.stale = e.data.current; D.conflict = true; updateBanner(); $('#banner button')?.focus(); }
     else toast(`Save failed: ${e.message}`);
   }
 }
 
 function field(label, node) { return el('label', {}, label, node); }
 
-function select(values, current, onchange) {
+function select(values, current, onchange, id) {
   const opts = [...new Set([...values, current])];
-  return el('select', { onchange: (e) => onchange(e.target.value) },
+  return el('select', { id, onchange: (e) => onchange(e.target.value) },
     opts.map((v) => el('option', { value: v, selected: v === current }, v || '(none)')));
 }
 
-function renderTab() {
+function renderTab(focusEditor = false) {
   const box = $('#content');
   if (D.tab === 'edit') {
     box.replaceChildren(el('textarea', {
@@ -153,6 +159,7 @@ function renderTab() {
       oninput: (e) => { D.draft.body = e.target.value; updateState(); },
     }));
     box.firstChild.value = D.draft.body;
+    if (focusEditor) box.firstChild.focus();
   } else {
     const doc = el('div', { class: 'doc' });
     doc.innerHTML = renderMarkdown(D.draft.body);
@@ -161,13 +168,17 @@ function renderTab() {
   for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('active', b.dataset.tab === D.tab);
 }
 
-function renderDetail() {
+function setTab(tab) { D.tab = tab; renderTab(tab === 'edit'); }
+
+function renderDetail({ fresh = false, edit = false } = {}) {
+  const ed = document.activeElement?.classList?.contains('editor') ? document.activeElement : null;
+  const sel = ed && [ed.selectionStart, ed.selectionEnd];
   const d = D.draft;
   view.replaceChildren(el('div', { class: 'detail' },
     el('a', { href: '#/' }, '← Board'),
-    el('h1', { id: 'title' }),
+    el('h1', { id: 'title', tabindex: '-1' }),
     el('div', { class: 'bar' },
-      field('Status', select(S.cfg.statuses, d.status, (v) => { d.status = v; updateState(); })),
+      field('Status', select(S.cfg.statuses, d.status, (v) => { d.status = v; updateState(); }, 'f-status')),
       field('Area', el('input', { value: d.area, oninput: (e) => { d.area = e.target.value; updateState(); } })),
       field('Priority', select(['', 'high', 'medium', 'low'], d.priority, (v) => { d.priority = v; updateState(); })),
       el('span', { class: 'spacer' }),
@@ -175,17 +186,20 @@ function renderDetail() {
       el('button', { id: 'save', class: 'primary', type: 'button', onclick: save }, 'Save')),
     el('div', { id: 'banner' }),
     el('div', { class: 'tabs' },
-      el('button', { type: 'button', 'data-tab': 'view', onclick: () => { D.tab = 'view'; renderTab(); } }, 'Preview'),
-      el('button', { type: 'button', 'data-tab': 'edit', onclick: () => { D.tab = 'edit'; renderTab(); } }, 'Edit')),
+      el('button', { type: 'button', 'data-tab': 'view', onclick: () => setTab('view') }, 'Preview'),
+      el('button', { type: 'button', 'data-tab': 'edit', onclick: () => setTab('edit') }, 'Edit')),
     el('div', { id: 'content' })));
-  renderTab(); updateBanner(); updateState();
+  renderTab(edit); updateBanner(); updateState();
+  if (ed && D.tab === 'edit') { const t = $('.editor'); t.focus(); t.setSelectionRange(...sel); }
+  else if (fresh && !edit) $('#title').focus();
 }
 
 async function openTicket(file, tab = 'view') {
   try {
     const t = await api('GET', `tickets/${encodeURIComponent(file)}`);
     D = { file, loaded: t, draft: copyDraft(t), stale: null, conflict: false, gone: false, tab };
-    renderDetail();
+    S.lastFile = file;
+    renderDetail({ fresh: true, edit: tab === 'edit' });
   } catch (e) {
     D = null;
     view.replaceChildren(el('p', {}, `Could not open ${file}: ${e.message} `, el('a', { href: '#/' }, 'Back to board')));
@@ -245,6 +259,7 @@ async function route() {
     await openTicket(decodeURIComponent(h.slice(4)), tab);
   } else {
     D = null;
+    pendingFocus = S.lastFile ?? null;
     if (h === '#/new') renderNew();
     else { await refreshAll(); }
   }
@@ -261,6 +276,11 @@ window.addEventListener('hashchange', () => {
 window.addEventListener('beforeunload', (e) => { if (isDirty()) e.preventDefault(); });
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+});
+initKeys({
+  S, el, columns, toast, moveTicket, setTab,
+  detail: () => D,
+  setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },
 });
 $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
 
