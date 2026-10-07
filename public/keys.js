@@ -44,7 +44,7 @@ export const HELP = [
     ['j / k', 'Next / previous card in the column'],
     ['h / l', 'Previous / next column'],
     ['Enter', 'Open the focused ticket'],
-    ['Space', 'Pick up the focused card; h / l choose the column, Space or Enter drops, Esc cancels'],
+    ['Space / Ctrl+Space', 'Pick up the focused (or hovered) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
     ['c', 'Add a timestamped comment to the focused (or hovered) ticket; ☰ on a card opens its menu'],
     ['1-9', 'Move the focused (or dragged) ticket to that column; numbers show on the column headers'],
     ['s', 'Set status of the focused ticket (menu)'],
@@ -308,17 +308,33 @@ export function initKeys(ctx) {
       else if (e.key === '?' && overlay.node.querySelector('.help')) { e.preventDefault(); closeOverlay(); }
       return;
     }
+    if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === ' ' || e.code === 'Space') && hashRoute() === 'board' && !isTyping(e.target)) {
+      // Ctrl+Space: pick up / drop without depending on where the focus is (plain Space can scroll the page)
+      const pk = ctx.pick?.();
+      const f = focusedCard()?.dataset.file ?? hoverFile;
+      e.preventDefault();
+      if (pk) { const t = S.tickets.find((x) => x.file === pk.file); ctx.setPick(null); if (t && t.status !== pk.status) ctx.moveTicket(pk.file, pk.status); }
+      else { const t = f && S.tickets.find((x) => x.file === f); if (t) ctx.setPick({ file: t.file, status: t.status }); }
+      return;
+    }
     if (mod || e.altKey || isTyping(e.target)) return;
 
     const board = hashRoute() === 'board';
     // Keyboard pick-up (034): while a card is picked up only these keys act, so the board is never half-held.
     const pk = board && ctx.pick?.();
     if (pk && e.key !== '?' && e.key !== '/') {
-      const list = ctx.columns();
-      const at = list.indexOf(pk.status);
-      if (e.key === 'h' || e.key === 'l') ctx.setPick({ ...pk, status: list[Math.max(0, Math.min(list.length - 1, at + (e.key === 'l' ? 1 : -1)))] });
+      // h/l walk the shown columns or the hidden ones, never a mix; j/k switch between the two groups
+      const all = ctx.columns();
+      const hiddenNow = ctx.isHidden(pk.status);
+      const group = all.filter((c) => ctx.isHidden(c) === hiddenNow);
+      if (e.key === 'h' || e.key === 'l') ctx.setPick({ ...pk, status: group[Math.max(0, Math.min(group.length - 1, group.indexOf(pk.status) + (e.key === 'l' ? 1 : -1)))] });
+      else if (e.key === 'j' || e.key === 'k') {
+        const other = all.filter((c) => ctx.isHidden(c) !== hiddenNow);
+        if (other.length) ctx.setPick({ ...pk, status: other[0] });
+        else ctx.toast('No hidden columns');
+      }
       else if (e.key === ' ' || e.key === 'Enter') { const t = S.tickets.find((x) => x.file === pk.file); ctx.setPick(null); if (t && t.status !== pk.status) ctx.moveTicket(pk.file, pk.status); }
-      else if (/^[1-9]$/.test(e.key)) { const target = list.filter(Boolean)[Number(e.key) - 1]; if (target == null) return; ctx.moveTicket(pk.file, target); }
+      else if (/^[1-9]$/.test(e.key)) { const target = all.filter(Boolean)[Number(e.key) - 1]; if (target == null) return; ctx.moveTicket(pk.file, target); }
       e.preventDefault(); // j/k/n/i/s...: swallowed until the card is dropped or Esc
       return;
     }

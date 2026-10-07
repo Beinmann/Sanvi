@@ -186,7 +186,7 @@ function pickBar() {
   const t = pick && S.tickets.find((x) => x.file === pick.file);
   if (!t) return null;
   return el('div', { class: 'pickbar', role: 'status' }, el('strong', {}, `Moving #${t.id}`), ` → ${pick.status || '(no status)'}  ·  `,
-    el('kbd', {}, 'h'), ' ', el('kbd', {}, 'l'), ' choose column · ', el('kbd', {}, '1'), '-', el('kbd', {}, '9'), ' drop there · ',
+    el('kbd', {}, 'h'), ' ', el('kbd', {}, 'l'), ' choose column · ', el('kbd', {}, 'j'), ' ', el('kbd', {}, 'k'), ' shown/hidden · ', el('kbd', {}, '1'), '-', el('kbd', {}, '9'), ' drop there · ',
     el('kbd', {}, 'Space'), '/', el('kbd', {}, 'Enter'), ' drop · ', el('kbd', {}, 'Esc'), ' cancel');
 }
 
