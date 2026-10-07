@@ -46,7 +46,7 @@ export const HELP = [
     ['Enter', 'Open the focused ticket'],
     ['Space / Ctrl+Space', 'Pick up the focused (or hovered) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
     ['c', 'Add a timestamped comment to the focused (or hovered) ticket; ☰ on a card opens its menu'],
-    ['1-9', 'Move the focused (or dragged) ticket to that column; numbers show on the column headers'],
+    ['1-9', 'Only in move mode (after Space / Ctrl+Space): drop the ticket in that column; the numbers show on the headers then'],
     ['s', 'Set status of the focused ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
   ]],
@@ -301,6 +301,7 @@ export function initKeys(ctx) {
         e.preventDefault();
         if (hashRoute() === 'new') location.hash = '#/'; else e.target.blur();
       } else if (hashRoute() !== 'board') { e.preventDefault(); location.hash = '#/'; }
+      else if (document.activeElement?.closest?.('.card')) { e.preventDefault(); document.activeElement.blur(); } // clear the card focus
       return;
     }
     if (overlay) { // keep focus inside; the overlays handle their own keys
@@ -349,13 +350,6 @@ export function initKeys(ctx) {
       case 'k': if (board) moveFocus('prev'); else return; break;
       case 'h': if (board) moveFocus('left'); else return; break;
       case 'l': if (board) moveFocus('right'); else return; break;
-      case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
-        const file = ctx.heldFile?.() ?? (board && focusedCard()?.dataset.file);
-        const target = ctx.columns().filter(Boolean)[Number(e.key) - 1];
-        if (!file || target == null) return;
-        ctx.moveTicket(file, target);
-        break;
-      }
       case ' ': { // pick the focused card up (only the card itself, so buttons inside it keep working)
         const c = board && e.target.classList?.contains('card') ? e.target : null;
         const t = c && S.tickets.find((x) => x.file === c.dataset.file);

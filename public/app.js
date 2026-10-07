@@ -1,5 +1,5 @@
 import { renderMarkdown, splitSummary } from './md.js';
-import { parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName } from './filter.js';
+import { parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
 
@@ -56,22 +56,20 @@ function columns() {
 const changedOnDisk = new Set();
 const ownVersions = new Set(); // versions this browser wrote; a refresh seeing one is not an outside change
 
-// The card being dragged; while held, the column headers show their number keys.
-let held = null;
 // Keyboard pick-up (034): { file, status } = the card and the column it would land in. Nothing is
 // written until the drop; the state lives here so re-renders and live refreshes keep it.
 let pick = null;
-function endHold() { held = null; pick = null; document.body.classList.remove('holding'); }
+function endHold() { pick = null; document.body.classList.remove('moving'); }
 function setPick(p) {
   pick = p;
-  document.body.classList.toggle('holding', !!p || !!held);
+  document.body.classList.toggle('moving', !!p); // number badges show only in move mode
   renderBoard();
 }
 
 function card(t, inText = false) {
   return el('a', {
     class: `card${changedOnDisk.has(t.file) ? ' changed' : ''}${pick?.file === t.file ? ' picked' : ''}`, 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
-    ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); held = t.file; document.body.classList.add('holding'); },
+    ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); },
     ondragend: (e) => { e.currentTarget.classList.remove('dragging'); endHold(); },
   },
   el('div', {}, el('span', { class: 'id' }, `#${t.id}`), t.title),
@@ -171,6 +169,12 @@ function filterBar() {
   const input = el('input', {
     id: 'search', type: 'search', value: Q.text, placeholder: 'Search… e.g. migrate -area:research status:open,blocked',
     oninput: (e) => setFilter(e.target.value),
+    onkeydown: (e) => { // Enter on an id query (#33, 033, 33) opens that ticket, hidden column or not
+      if (e.key !== 'Enter' || e.isComposing) return;
+      const n = idQuery(Q.parsed);
+      const hits = n === null ? [] : S.tickets.filter((t) => Number(t.id) === n);
+      if (hits.length === 1) { e.preventDefault(); location.hash = `#/t/${encodeURIComponent(hits[0].file)}`; }
+    },
   });
   const tab = (v, label) => el('button', { type: 'button', class: Q.view === v ? 'active' : '', 'aria-pressed': String(Q.view === v), onclick: () => setView(v) }, label);
   return el('div', { class: 'filterbar' }, input,
@@ -191,7 +195,7 @@ function pickBar() {
 }
 
 function renderBoard() {
-  if (pick && !S.tickets.some((t) => t.file === pick.file)) { pick = null; document.body.classList.toggle('holding', !!held); } // the ticket is gone
+  if (pick && !S.tickets.some((t) => t.file === pick.file)) { pick = null; document.body.classList.remove('moving'); } // the ticket is gone
   const hadFocus = document.activeElement?.id === 'search';
   const caret = hadFocus ? document.activeElement.selectionStart : 0;
   const target = pendingFocus || document.activeElement?.closest?.('.card')?.dataset.file;
@@ -216,7 +220,7 @@ function renderBoard() {
     return;
   }
   let num = 0;
-  view.replaceChildren(filterBar(), hiddenStrip(), pickBar(), el('div', { class: 'board' }, columns().map((status) => {
+  view.replaceChildren(filterBar(), hiddenStrip(), hiddenIdNotice(), pickBar(), el('div', { class: 'board' }, columns().map((status) => {
     const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
     if (hidden.has(status)) return null;
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
@@ -329,6 +333,18 @@ function toggleColumn(status) {
 const isHidden = (status) => hidden.has(status);
 
 // Never hide silently: a strip lists hidden columns with counts and restores one on click.
+// An id search (#33) that only finds its ticket in a hidden column would look like "not found": say where it is.
+function hiddenIdNotice() {
+  const n = idQuery(Q.parsed);
+  if (n === null || !Q.text.includes('#')) return null;
+  const hits = S.tickets.filter((t) => Number(t.id) === n && hidden.has(t.status) && matchTicket(t, Q.parsed));
+  if (!hits.length) return null;
+  return el('div', { class: 'hiddennotice', role: 'status' }, hits.map((t) => el('span', {},
+    `#${t.id} ${t.title} is in hidden status ${t.status || '(no status)'} `,
+    el('button', { type: 'button', onclick: () => { location.hash = `#/t/${encodeURIComponent(t.file)}`; } }, 'Open'), ' ',
+    el('button', { type: 'button', onclick: () => toggleColumn(t.status) }, 'Show column'))));
+}
+
 function hiddenStrip() {
   const list = columns().filter((c) => hidden.has(c));
   if (!list.length) return null;
@@ -545,7 +561,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, heldFile: () => pick?.file ?? held, pick: () => pick, setPick, boardHash: hashForState, addStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, addStatus, toggleColumn, isHidden,
   saveIdea: async (text) => { const t = await api('POST', 'ideas', { text }); toast(`Idea captured as #${t.id}`); return t; },
   detail: () => D,
   addNote: async (file, text) => {

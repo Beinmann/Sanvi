@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseQuery, formatQuery, matchTicket } from '../public/filter.js';
+import { parseQuery, formatQuery, matchTicket, idQuery } from '../public/filter.js';
 
 const T = (o) => ({ title: 'Fix login', body: 'Details about OAuth', status: 'open', area: 'ui', priority: 'high', ...o });
 const m = (t, q) => matchTicket(t, parseQuery(q));
@@ -115,4 +115,15 @@ test('search: title ranks above body, title: filter, id lookup, in-text marker',
   assert.ok(matchTicket(T({ title: 'x', body: 'port 4321' }), parseQuery('4321'))); // bare number still text
   assert.equal(scoreTicket(inTitle, ''), 0);
   assert.deepEqual(parseQuery('title:').words, ['title:']); // malformed stays text
+});
+
+test('id queries: #33, #033 and 33 find ticket 33; #33 only by id', () => {
+  const t33 = T({ id: '033', title: 'Other' });
+  assert.ok(m(t33, '#33') && m(t33, '#033') && m(t33, '33') && m(t33, '033'));
+  assert.ok(!m(T({ id: '034', body: 'see #33 and 33' }), '#33')); // #n never matches text
+  assert.ok(m(T({ id: '034', body: 'section 33' }), '33'));       // a bare number may match text
+  assert.equal(idQuery(parseQuery('#033')), 33);
+  assert.equal(idQuery(parseQuery('33')), 33);
+  assert.equal(idQuery(parseQuery('#33 status:open')), null);
+  assert.equal(idQuery(parseQuery('login')), null);
 });

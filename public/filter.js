@@ -108,3 +108,10 @@ export function checkStatusName(input, existing = []) {
   if (existing.includes(name)) return { name, error: `"${name}" already exists` };
   return { name, error: null };
 }
+
+/** The ticket id a query asks for when it is exactly one `#33` / `033` / `33` word without filters, else null. */
+export function idQuery(parsed) {
+  const q = typeof parsed === 'string' ? parseQuery(parsed) : parsed;
+  const m = q.words.length === 1 && !q.filters.length && !(q.titleWords ?? []).length && /^#?(\d+)$/.exec(q.words[0]);
+  return m ? Number(m[1]) : null;
+}
