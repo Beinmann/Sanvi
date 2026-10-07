@@ -121,20 +121,35 @@ export function initKeys(ctx) {
     const backdrop = el('div', { class: 'overlay', onmousedown: (e) => { if (e.target === backdrop) closeOverlay(); } }, node);
     document.body.append(backdrop);
     const target = focus ?? node;
-    // The page may not own the window focus yet (e.g. right after an OS screenshot tool): a single focus()
-    // is then silently lost. Retry on the next frame, when the window gets focus, and redirect typing.
-    const refocus = () => { if (overlay?.node === backdrop && !backdrop.contains(document.activeElement)) target.focus(); };
-    const redirect = (e) => {
-      if (overlay?.node !== backdrop || backdrop.contains(document.activeElement)) return;
-      if (['INPUT', 'TEXTAREA'].includes(target.tagName) && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) target.focus(); // the key then types into it
-      else refocus();
+    const typable = ['INPUT', 'TEXTAREA'].includes(target.tagName);
+    // The browser window can be active without the page owning the keyboard focus (seen in Firefox right after an
+    // OS screenshot tool): focus() then sets activeElement but no caret, and no focus event tells us when it
+    // changes. So: keep checking while the overlay is open; when the page really has focus, re-apply it (blur then
+    // focus, which forces the caret); while it has not, say so instead of failing silently.
+    const hint = el('div', { class: 'focushint', role: 'status', hidden: true }, 'The page does not have keyboard focus yet: click in the dialog, then type.');
+    backdrop.append(hint);
+    let hadFocus = false;
+    const check = () => {
+      if (overlay?.node !== backdrop) return;
+      const has = document.hasFocus();
+      hint.hidden = has;
+      if (has && (!hadFocus || !backdrop.contains(document.activeElement))) { if (typable) target.blur(); target.focus(); }
+      hadFocus = has;
     };
+    const timer = setInterval(check, 150);
+    const refocus = () => { hadFocus = false; check(); };
+    const redirect = (e) => { // focus is elsewhere but a key arrived: move it into the box (the key then types there)
+      if (overlay?.node !== backdrop || backdrop.contains(document.activeElement)) return;
+      if (typable && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) target.focus(); else refocus();
+    };
+    node.addEventListener('mousedown', (e) => { if (!e.target.closest('button, input, textarea, select, a')) { e.preventDefault(); target.focus(); } });
     window.addEventListener('focus', refocus);
     document.addEventListener('visibilitychange', refocus);
     document.addEventListener('keydown', redirect, true);
     overlay = {
       node: backdrop,
       close() {
+        clearInterval(timer);
         window.removeEventListener('focus', refocus);
         document.removeEventListener('visibilitychange', refocus);
         document.removeEventListener('keydown', redirect, true);
@@ -142,9 +157,9 @@ export function initKeys(ctx) {
       },
     };
     target.focus();
-    requestAnimationFrame(refocus);
-    setTimeout(refocus, 120);
+    check();
   }
+
   function closeOverlay() { overlay?.close(); }
 
   function openHelp() {
