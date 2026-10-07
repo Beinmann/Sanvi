@@ -11,13 +11,16 @@ import {
 import { createChangeLog, summarizeBody } from './changelog.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
-const STATIC = {
-  '/': ['index.html', 'text/html; charset=utf-8'],
-  '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/md.js': ['md.js', 'text/javascript; charset=utf-8'],
-  '/vim.js': ['vim.js', 'text/javascript; charset=utf-8'],
-  '/style.css': ['style.css', 'text/css; charset=utf-8'],
-};
+// Any top-level file in public/ is served by name, so new frontend modules need no route.
+const STATIC_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+
+function staticFile(pathname) {
+  const name = pathname === '/' ? 'index.html' : pathname.slice(1);
+  if (!/^[\w.-]+$/.test(name) || name.startsWith('.')) return null;
+  const type = STATIC_TYPES[path.extname(name)];
+  const file = path.join(PUBLIC, name);
+  return type && fs.existsSync(file) ? [file, type] : null;
+}
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 function send(res, status, obj) {
@@ -125,10 +128,10 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       if (!hostAllowed(host)) { res.writeHead(403, { 'content-type': 'text/plain' }); return res.end(`forbidden host "${host}" (start with --allow-host ${host} to permit)`); }
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
-      const entry = STATIC[url.pathname];
-      if (req.method === 'GET' && entry) {
+      const entry = req.method === 'GET' && staticFile(url.pathname);
+      if (entry) {
         res.writeHead(200, { 'content-type': entry[1], 'cache-control': 'no-store' });
-        return res.end(fs.readFileSync(path.join(PUBLIC, entry[0])));
+        return res.end(fs.readFileSync(entry[0]));
       }
       res.writeHead(404); res.end('not found');
     } catch (e) {

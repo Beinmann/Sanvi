@@ -95,10 +95,20 @@ test('markdown renderer escapes html and handles basics', () => {
 test('serves the frontend modules', async () => {
   const { app, base } = await setup();
   try {
-    for (const p of ['/app.js', '/md.js', '/vim.js']) {
-      const r = await fetch(base + p);
-      assert.equal(r.status, 200, p);
+    // every module the frontend imports (transitively) must be served
+    const todo = ['app.js'];
+    const seen = new Set();
+    while (todo.length) {
+      const name = todo.pop();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const r = await fetch(`${base}/${name}`);
+      assert.equal(r.status, 200, name);
       assert.match(r.headers.get('content-type'), /javascript/);
+      for (const m of (await r.text()).matchAll(/from '\.\/([\w.-]+\.js)'/g)) todo.push(m[1]);
     }
+    assert.ok(seen.size > 1, 'follows imports');
+    for (const p of ['/', '/style.css']) assert.equal((await fetch(base + p)).status, 200, p);
+    for (const p of ['/..%2fsrc%2fserver.js', '/.hidden.js', '/nope.js', '/package.json']) assert.equal((await fetch(base + p)).status, 404, p);
   } finally { await app.close(); }
 });
