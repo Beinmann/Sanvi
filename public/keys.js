@@ -34,8 +34,8 @@ export const HELP = [
     ['?', 'Show / hide this help'],
     ['n', 'New ticket'],
     ['b', 'Go to the board'],
-    ['Ctrl+I', 'Quick idea overlay, also while typing (your edit is kept)'],
-    ['i', 'Quick idea page (just text, no title)'],
+    ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
+    ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['/', 'Board: focus the search box'],
     ['Esc', 'Close overlay, leave a field, go back to the board'],
   ]],
@@ -43,6 +43,7 @@ export const HELP = [
     ['j / k', 'Next / previous card in the column'],
     ['h / l', 'Previous / next column'],
     ['Enter', 'Open the focused ticket'],
+    ['c', 'Add a timestamped comment to the focused ticket'],
     ['1-9', 'Move the focused (or dragged) ticket to that column; numbers show on the column headers'],
     ['s', 'Set status of the focused ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
@@ -115,7 +116,7 @@ export function initKeys(ctx) {
   // Idea capture as an overlay, so it works mid-edit: no route change, so no
   // draft is discarded; closing restores focus to the field the user was in.
   function openIdea() {
-    const ta = el('textarea', { rows: 6, placeholder: 'Describe the idea. Ctrl+Enter saves, Esc cancels.', 'aria-label': 'Quick idea' });
+    const ta = el('textarea', { rows: 6, placeholder: 'Describe the idea in a sentence or a few. No title needed.', 'aria-label': 'Quick idea' });
     const save = async () => {
       const text = ta.value.trim();
       if (!text) return;
@@ -125,10 +126,34 @@ export function initKeys(ctx) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
     });
     const box = el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quick idea' },
-      el('h2', {}, 'Quick idea'), ta,
-      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea')));
+      el('h2', {}, 'Quick idea'),
+      el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Ctrl+Enter saves, Esc cancels.'),
+      ta,
+      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
     openOverlay(box, { focus: ta });
   }
+
+  // Quick comment: appended as a timestamped line to the ticket's Notes (server side).
+  function openNote(file) {
+    const t = S.tickets.find((x) => x.file === file);
+    if (!t) return;
+    const ta = el('textarea', { rows: 4, placeholder: 'Comment. Ctrl+Enter saves, Esc cancels.', 'aria-label': 'Comment' });
+    const err = el('p', { class: 'hint', role: 'alert' });
+    const save = async () => {
+      if (!ta.value.trim()) return;
+      try { await ctx.addNote(file, ta.value); closeOverlay(); } catch (e) { err.textContent = e.message; }
+    };
+    ta.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+    });
+    const box = el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Comment on #${t.id}` },
+      el('h2', {}, `Comment on #${t.id}`),
+      el('p', { class: 'hint' }, 'Added with a timestamp at the end of the ticket\'s Notes.'),
+      ta, err,
+      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: save }, 'Add comment'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
+    openOverlay(box, { focus: ta });
+  }
+  document.addEventListener('add-note', (e) => { if (!overlay) openNote(e.detail); });
 
   function openAddStatus() {
     const input = el('input', { type: 'text', placeholder: 'New status name, e.g. reopened', autocomplete: 'off', spellcheck: false, 'aria-label': 'New status name' });
@@ -143,6 +168,7 @@ export function initKeys(ctx) {
     openOverlay(box, { focus: input });
   }
   document.addEventListener('add-status', openAddStatus);
+  document.addEventListener('open-idea', () => { if (!overlay) openIdea(); });
 
   function commandItems(mode) {
     const file = contextFile();
@@ -160,7 +186,7 @@ export function initKeys(ctx) {
     items.push(
       { label: 'Add status…', hint: 'column', run: openAddStatus },
       { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
-      { label: 'Quick idea', hint: 'i / Ctrl+I', run: () => { location.hash = '#/idea'; } },
+      { label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
       { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
       { label: 'Show keyboard shortcuts', hint: '?', run: openHelp },
     );
@@ -244,7 +270,7 @@ export function initKeys(ctx) {
       case '/': if (board) $('#search')?.focus(); else return; break;
       case 'n': location.hash = '#/new'; break;
       case 'b': location.hash = '#/'; break;
-      case 'i': location.hash = '#/idea'; break;
+      case 'i': openIdea(); break;
       case 's': openPalette('status'); break;
       case 'j': if (board) moveFocus('next'); else return; break;
       case 'k': if (board) moveFocus('prev'); else return; break;
@@ -257,6 +283,7 @@ export function initKeys(ctx) {
         ctx.moveTicket(file, target);
         break;
       }
+      case 'c': { const f = board && focusedCard()?.dataset.file; if (!f) return; openNote(f); break; }
       case 'e': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('edit'); else return; break;
       case 'p': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('view'); else return; break;
       default: return;

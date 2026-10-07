@@ -67,6 +67,11 @@ function card(t) {
     ondragend: (e) => { e.currentTarget.classList.remove('dragging'); endHold(); },
   },
   el('div', {}, el('span', { class: 'id' }, `#${t.id}`), t.title),
+  el('button', {
+    type: 'button', class: 'note-btn', title: 'Add a comment (c)', 'aria-label': `Add a comment to #${t.id}`,
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); document.dispatchEvent(new CustomEvent('add-note', { detail: t.file })); },
+    draggable: 'false',
+  }, '+ note'),
   el('div', { class: 'meta' },
     t.area && el('span', { class: 'chip' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
@@ -99,6 +104,7 @@ async function moveTicket(file, status) {
   try {
     const saved = await api('PUT', `tickets/${encodeURIComponent(file)}`, { version: t.version, fields: { status } });
     ownVersions.add(saved.version);
+    if (hidden.has(status)) toast(`#${t.id} moved to ${status || '(no status)'} (hidden)`);
   } catch (e) {
     toast(e.status === 409 ? `#${t.id} changed on disk; not moved. Board refreshed.` : `Move failed: ${e.message}`);
   }
@@ -293,11 +299,23 @@ function hiddenStrip() {
   const list = columns().filter((c) => hidden.has(c));
   if (!list.length) return null;
   const filtering = !!Q.text.trim();
+  const numbered = columns().filter(Boolean);
   return el('div', { class: 'hiddenstrip' }, 'Hidden: ', list.map((status) => {
     const all = S.tickets.filter((t) => t.status === status);
     const hits = filtering ? all.filter((t) => matchTicket(t, Q.parsed)).length : 0;
-    return el('button', { type: 'button', class: hits ? 'hit' : '', title: `Show ${status || '(no status)'}`, onclick: () => toggleColumn(status) },
-      `${status || '(no status)'} (${all.length}${filtering ? `, ${hits} match filter` : ''})`);
+    const n = numbered.indexOf(status) + 1; // same numbering as the column badges
+    return el('button', {
+      type: 'button', class: hits ? 'hit' : '', 'data-status': status, title: `Show ${status || '(no status)'} (drop a ticket here to move it without showing)`,
+      onclick: () => toggleColumn(status),
+      ondragover: (e) => { if (e.dataTransfer.types.includes(COLUMN_DRAG)) return; e.preventDefault(); e.currentTarget.classList.add('over'); },
+      ondragleave: (e) => e.currentTarget.classList.remove('over'),
+      ondrop: (e) => {
+        e.preventDefault(); e.currentTarget.classList.remove('over');
+        const file = e.dataTransfer.getData('text/plain');
+        if (file) moveTicket(file, status);
+      },
+    }, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
+    `${status || '(no status)'} (${all.length}${filtering ? `, ${hits} match filter` : ''})`);
   }));
 }
 
@@ -434,30 +452,6 @@ function renderNew() {
   view.querySelector('input').focus();
 }
 
-// ------------------------------------------------------------ quick idea
-
-function renderIdea() {
-  const ta = el('textarea', { rows: 6, required: true, placeholder: 'Describe the idea in a sentence or a few. No title needed.' });
-  const submit = async () => {
-    const text = ta.value.trim();
-    if (!text) return;
-    try {
-      const t = await api('POST', 'ideas', { text });
-      toast(`Idea captured as #${t.id}`);
-      location.hash = '#/';
-    } catch (err) { toast(err.message); }
-  };
-  ta.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); submit(); }
-  });
-  view.replaceChildren(el('form', { class: 'newform wide', onsubmit: (e) => { e.preventDefault(); submit(); } },
-    el('h2', {}, 'Quick idea'),
-    el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Ctrl+Enter saves and returns to the board.'),
-    ta,
-    el('div', {}, el('button', { class: 'primary', type: 'submit' }, 'Save idea'), ' ', el('a', { href: '#/' }, 'Done'))));
-  ta.focus();
-}
-
 // --------------------------------------------------------------- routing
 
 let pendingTab = null;
@@ -474,7 +468,7 @@ async function route() {
     D = null;
     pendingFocus = S.lastFile ?? null;
     if (h === '#/new') renderNew();
-    else if (h === '#/idea') renderIdea();
+    else if (h === '#/idea') location.replace('#/'); // old bookmark: the idea box is an overlay now (i / Ctrl+I)
     else { loadHash(); await refreshAll(); }
   }
 }
@@ -495,10 +489,23 @@ initKeys({
   S, el, columns, toast, moveTicket, setTab, heldFile: () => held, addStatus, toggleColumn, isHidden,
   saveIdea: async (text) => { const t = await api('POST', 'ideas', { text }); toast(`Idea captured as #${t.id}`); return t; },
   detail: () => D,
+  addNote: async (file, text) => {
+    const t = S.tickets.find((x) => x.file === file);
+    if (!t) throw new Error('ticket not found');
+    try {
+      const saved = await api('POST', `tickets/${encodeURIComponent(file)}/notes`, { version: t.version, text });
+      ownVersions.add(saved.version);
+    } catch (e) {
+      if (e.status === 409) { await refreshAll(); throw new Error(`#${t.id} changed on disk; comment not saved (your text is kept). Try again.`); }
+      throw e;
+    }
+    await refreshAll();
+    toast(`Comment added to #${t.id}`);
+  },
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },
 });
 $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
-$('#idea-btn').addEventListener('click', () => { location.hash = '#/idea'; });
+$('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 
 async function refreshAll() {
   const before = new Map(S.tickets.map((t) => [t.file, t.version]));

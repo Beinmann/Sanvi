@@ -9,7 +9,7 @@ import {
   register, unregister, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
 import {
-  listTickets, findTicket, saveTicket, createTicket, createIdea, validate, readConfig,
+  listTickets, findTicket, saveTicket, createTicket, createIdea, addNote, validate, readConfig,
   ConflictError, NotFoundError, ValidationError,
 } from '../src/core.js';
 
@@ -20,6 +20,7 @@ usage: tk [--dir <tickets dir>] <command>
   list [--status S] [--area A] [--json]   list tickets
   show <id|slug> [--json]                 print a ticket
   idea "<text>"                           quick capture: status design, title derived from the text
+  note <id|slug> "<text>"                 append a timestamped line to the ticket's ## Notes
   new "<title>" [--area A] [--status S] [--priority P]
                                           create the next ticket from the standard template
   status <id|slug> <status>               change status in the frontmatter only
@@ -87,6 +88,13 @@ async function main() {
       if (!rest[0]) throw new ValidationError('usage: tk idea "<text>"');
       const t = createIdea(dir, { text: rest.join(' ') });
       out(t, path.join(dir, t.file));
+      break;
+    }
+    case 'note': {
+      if (!rest[0] || !rest[1]) throw new ValidationError('usage: tk note <id|slug> "<text>"');
+      const f = findTicket(dir, rest[0]);
+      const t = addNote(dir, f.file, rest.slice(1).join(' '), f.version);
+      out(t, brief(t));
       break;
     }
     case 'new': {

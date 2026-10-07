@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig, writeStatuses,
-  ConflictError, ValidationError, slugify, createIdea, ideaTitle,
+  ConflictError, ValidationError, slugify, createIdea, ideaTitle, addNote,
 } from '../src/core.js';
 
 const SAMPLE = `---
@@ -157,4 +157,29 @@ test('writeStatuses: replaces flow/block list in place, keeps other lines, valid
   assert.throws(() => writeStatuses(dir, ['a', 'a']), /distinct/);
   assert.throws(() => writeStatuses(dir, []), /statuses/);
   assert.throws(() => writeStatuses(dir, ['a,b']), /statuses/);
+});
+
+test('addNote appends to Notes, creates the section, keeps the rest and handles CRLF', () => {
+  const dir = tmp();
+  const now = new Date(2026, 9, 7, 9, 5);
+  try {
+    fs.writeFileSync(path.join(dir, '001-a.md'), SAMPLE + '\n## Notes\n\n- 2026-10-01: first\n\n## After\n\nx\n');
+    let t = addNote(dir, '001-a.md', 'tried it\nstill broken', readTicket(dir, '001-a.md').version, now);
+    const raw = fs.readFileSync(path.join(dir, '001-a.md'), 'utf8');
+    assert.match(raw, /- 2026-10-01: first\n- 2026-10-07 09:05: tried it\n  still broken\n\n## After\n\nx\n$/);
+    assert.ok(raw.startsWith(SAMPLE.slice(0, 40)));
+
+    fs.writeFileSync(path.join(dir, '002-b.md'), SAMPLE);
+    addNote(dir, '002-b.md', 'hi', readTicket(dir, '002-b.md').version, now);
+    assert.match(fs.readFileSync(path.join(dir, '002-b.md'), 'utf8'), /- \[x\] two\n\n## Notes\n\n- 2026-10-07 09:05: hi\n$/);
+
+    fs.writeFileSync(path.join(dir, '003-c.md'), SAMPLE.replace(/\n/g, '\r\n') + '\r\n## Notes   \r\n');
+    addNote(dir, '003-c.md', 'crlf', readTicket(dir, '003-c.md').version, now);
+    const crlf = fs.readFileSync(path.join(dir, '003-c.md'), 'utf8');
+    assert.match(crlf, /## Notes\s*\r\n\r\n- 2026-10-07 09:05: crlf\r\n$/);
+    assert.equal(/[^\r]\n/.test(crlf.slice(crlf.indexOf('# Sample'))), false); // body stays CRLF
+
+    assert.throws(() => addNote(dir, '001-a.md', 'x', 'stale', now), ConflictError);
+    assert.throws(() => addNote(dir, '001-a.md', '  ', t.version, now), ValidationError);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

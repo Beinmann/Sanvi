@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig,
+  listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig, addNote,
   ConflictError, NotFoundError, ValidationError,
   writeStatuses,
 } from './core.js';
@@ -115,6 +115,22 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       return send(res, 201, t);
     }
     if (parts.length === 2 && method === 'GET') return send(res, 200, readTicket(dir, decodeURIComponent(parts[1])));
+    if (parts.length === 3 && parts[2] === 'notes' && method === 'POST') {
+      const { version, text } = await readJson(req);
+      if (!version) throw new ValidationError('version is required');
+      const file = decodeURIComponent(parts[1]);
+      let before = null;
+      try { before = readTicket(dir, file); } catch { /* addNote reports it */ }
+      let t;
+      try { t = addNote(dir, file, text, version); } catch (e) {
+        if (e instanceof ConflictError) {
+          changelog.log({ ticket: before?.id ?? file.slice(0, 3), action: 'conflict', before: version, after: e.current?.version });
+        }
+        throw e;
+      }
+      if (before && t.version !== before.version) logEdit(before, t);
+      return send(res, 200, t);
+    }
     if (parts.length === 2 && method === 'PUT') {
       const { version, fields, body } = await readJson(req);
       if (!version) throw new ValidationError('version is required');

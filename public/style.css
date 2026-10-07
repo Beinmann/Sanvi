@@ -128,3 +128,12 @@ body.holding .col h2 .num, .board:has(.card:focus-visible) .col h2 .num { displa
 .col h2 .hide:hover, .col h2 .hide:focus-visible { color: var(--text); background: var(--accent-soft); }
 .hiddenstrip { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; font-size: 13px; color: var(--muted); }
 .hiddenstrip button.hit { border-color: var(--warn); color: var(--warn); }
+.hiddenstrip button { padding: 6px 10px; }
+.hiddenstrip button.over { outline: 2px dashed var(--accent); background: var(--accent-soft); }
+.hiddenstrip .num { display: none; font-size: 11px; padding: 0 6px; margin-right: 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--text); }
+body.holding .hiddenstrip .num, .board:has(.card:focus-visible) ~ .hiddenstrip .num, body:has(.card:focus-visible) .hiddenstrip .num { display: inline-block; }
+.dialog > .hint { margin: 0; padding: 0 16px; font-size: 12px; color: var(--muted); }
+.card .note-btn { all: unset; position: absolute; top: 6px; right: 8px; font-size: 11px; color: var(--muted); cursor: pointer; padding: 0 6px; border-radius: 4px; opacity: 0; }
+.card:hover .note-btn, .card:focus-within .note-btn, .card:focus-visible .note-btn { opacity: 1; }
+.card .note-btn:hover, .card .note-btn:focus-visible { color: var(--text); background: var(--accent-soft); opacity: 1; }
+.dialog > textarea { display: block; width: calc(100% - 32px); margin: 8px 16px; }

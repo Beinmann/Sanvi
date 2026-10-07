@@ -60,14 +60,15 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   browsers see it too.
 - **Add status**: the "+ Status" button on the board (or "Add status…" in Ctrl+K) appends a
   status to `statuses:` in `_config.yml`; it becomes a column, a form option and the next number key.
+- **Comments**: `c` on a focused card (or the "+ note" on a card) opens a one-field box; Ctrl+Enter appends
+  `- YYYY-MM-DD HH:MM: text` to the ticket's `## Notes` (created if missing).
 - **Hide columns**: the × in a column header hides it; a "Hidden: …" strip above the board lists hidden
-  columns with ticket counts (and how many match the current filter) and restores one on click.
+  columns with ticket counts (and how many match the current filter) and restores one on click. A ticket dropped on a hidden entry moves there without showing the column.
   Also "Show/Hide column: …" in Ctrl+K. Stored per browser, not in `_config.yml`; the table view is unaffected.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
-- **+ Idea** (or `i`): quick capture. Type one or a few sentences, no title;
-  **Ctrl+Enter** saves and returns to the board. **Ctrl+I** opens the same
-  box as an overlay from anywhere, even mid-edit (your edit is kept). Each idea becomes
+- **+ Idea** (or `i`, or **Ctrl+I** from anywhere, even mid-edit; your edit is kept): quick capture
+  in one overlay. Type one or a few sentences, no title; **Ctrl+Enter** saves, **Esc** cancels. Each idea becomes
   a normal ticket with `status: design`, a placeholder title taken from the
   first sentence, your text verbatim under *Problem / motivation* and a note
   saying it is unrefined. A later session (human or AI) can list
@@ -119,6 +120,7 @@ tk show <id|slug> [--json]
 tk idea "<text>"                         # quick capture, status design
 tk new "<title>" [--area A] [--status S] [--priority P]
 tk status <id|slug> <status>
+tk note <id|slug> "<text>"              # append a timestamped line to the ticket's ## Notes
 tk validate          # exit 1 on errors
 tk serve [--port N]   # foreground
 tk start [--port N]   # background; free port if taken; prints URL; no duplicate per dir

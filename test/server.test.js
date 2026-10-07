@@ -48,6 +48,12 @@ test('list, save, conflict, create', async () => {
     assert.equal(idea.title, 'Quick thought about X');
     assert.equal((await j('POST', '/api/ideas', { text: ' ' })).status, 400);
 
+    const cur = await (await j('GET', '/api/tickets/001-a.md')).json();
+    r = await j('POST', '/api/tickets/001-a.md/notes', { version: cur.version, text: 'a comment' });
+    assert.equal(r.status, 200);
+    assert.match(fs.readFileSync(path.join(dir, '001-a.md'), 'utf8'), /## Notes\n\n- \d{4}-\d\d-\d\d \d\d:\d\d: a comment\n$/);
+    assert.equal((await j('POST', '/api/tickets/001-a.md/notes', { version: cur.version, text: 'again' })).status, 409);
+
     assert.equal((await j('GET', '/api/tickets/..%2Fx.md')).status, 404);
   } finally { await app.close(); }
 });
