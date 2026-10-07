@@ -1,4 +1,5 @@
 import { renderMarkdown } from './md.js';
+import { attachVim } from './vim.js';
 
 const $ = (sel) => document.querySelector(sel);
 const view = $('#view');
@@ -118,7 +119,7 @@ function updateBanner() {
 }
 
 async function save() {
-  if (!D || !isDirty()) return;
+  if (!D || !isDirty()) return true;
   const sent = { ...D.draft };
   const fields = {};
   for (const k of ['status', 'area', 'priority']) if (sent[k] !== D.loaded[k]) fields[k] = sent[k];
@@ -131,10 +132,26 @@ async function save() {
     for (const k of Object.keys(sent)) if (D.draft[k] === sent[k]) D.draft[k] = t[k];
     updateBanner(); updateState();
     toast('Saved');
+    return true;
   } catch (e) {
     if (e.status === 409) { D.stale = e.data.current; D.conflict = true; updateBanner(); }
     else toast(`Save failed: ${e.message}`);
+    return false;
   }
+}
+
+// Vim mode is an opt-in per-browser preference; storage can throw (private windows etc.).
+const vimPref = {
+  get() { try { return localStorage.getItem('tk.vim') === '1'; } catch { return false; } },
+  set(on) { try { localStorage.setItem('tk.vim', on ? '1' : '0'); } catch { /* ignore */ } },
+};
+
+// Leave the editor for the preview. Unsaved edits stay in the draft unless `discard`.
+function leaveEditor(discard = false) {
+  if (!D) return;
+  if (discard) { D.draft.body = D.loaded.body; updateState(); }
+  D.tab = 'view'; renderTab();
+  document.querySelector('.tabs button.active')?.focus();
 }
 
 function field(label, node) { return el('label', {}, label, node); }
@@ -145,14 +162,39 @@ function select(values, current, onchange) {
     opts.map((v) => el('option', { value: v, selected: v === current }, v || '(none)')));
 }
 
-function renderTab() {
+function renderTab(focus = false) {
   const box = $('#content');
   if (D.tab === 'edit') {
-    box.replaceChildren(el('textarea', {
+    const ta = el('textarea', {
       class: 'editor', spellcheck: false,
       oninput: (e) => { D.draft.body = e.target.value; updateState(); },
-    }));
-    box.firstChild.value = D.draft.body;
+    });
+    ta.value = D.draft.body;
+    const vimOn = vimPref.get();
+    const mode = el('span', { id: 'vimmode', class: 'vimmode', 'aria-live': 'polite' });
+    const toggle = el('input', { type: 'checkbox', checked: vimOn, onchange: (e) => { vimPref.set(e.target.checked); renderTab(); } });
+    box.replaceChildren(ta, el('div', { class: 'editorbar' },
+      el('label', {}, toggle, ' Vim mode'), mode,
+      el('span', { class: 'hint' }, vimOn ? ':w save · :q leave · :q! discard · :wq' : 'Ctrl+S save · Esc leave · Shift+Esc discard edits')));
+    if (vimOn) {
+      attachVim(ta, {
+        onChange: (t) => { D.draft.body = t; updateState(); },
+        onSave: () => save(),
+        onQuit: (force) => {
+          if (!force && isDirty()) { mode.textContent = 'E37: No write since last change (add ! to override)'; return; }
+          leaveEditor(force);
+        },
+        onStatus: (text, m) => { mode.textContent = text; mode.dataset.mode = m; },
+      });
+    } else {
+      ta.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || e.isComposing) return;
+        e.preventDefault();
+        if (e.shiftKey) { if (D.draft.body === D.loaded.body || confirm('Discard edits to the description?')) leaveEditor(true); }
+        else leaveEditor();
+      });
+    }
+    if (focus) ta.focus();
   } else {
     const doc = el('div', { class: 'doc' });
     doc.innerHTML = renderMarkdown(D.draft.body);
@@ -176,7 +218,7 @@ function renderDetail() {
     el('div', { id: 'banner' }),
     el('div', { class: 'tabs' },
       el('button', { type: 'button', 'data-tab': 'view', onclick: () => { D.tab = 'view'; renderTab(); } }, 'Preview'),
-      el('button', { type: 'button', 'data-tab': 'edit', onclick: () => { D.tab = 'edit'; renderTab(); } }, 'Edit')),
+      el('button', { type: 'button', 'data-tab': 'edit', onclick: () => { D.tab = 'edit'; renderTab(true); } }, 'Edit')),
     el('div', { id: 'content' })));
   renderTab(); updateBanner(); updateState();
 }

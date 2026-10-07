@@ -47,6 +47,14 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 - Kanban board; drag a card to change its status.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
+- Description editor: optional **Vim mode** (checkbox under the editor,
+  remembered per browser; off by default). Home-grown subset, no
+  dependencies: normal/insert/visual/visual-line, `h j k l w b e 0 ^ $ gg G`
+  with counts, `d c y` (+ `dd cc yy`, visual), `x X D C s S Y p P`,
+  `i a I A o O`, `u` / `Ctrl-R`, `/` `n` `N`, and `:w` `:q` `:q!` `:wq`.
+  The mode is shown below the editor. Without vim mode: `Ctrl+S` saves,
+  `Esc` leaves the editor (draft kept), `Shift+Esc` discards description edits.
+  Both modes work with the 409 / changed-on-disk banners.
 - Edits made outside the UI show up live. If you have unsaved edits, a
   banner offers "Load disk version" or "Keep my draft" instead of replacing
   your text.
@@ -96,7 +104,7 @@ Use `--json` for machine-readable output. Nothing requires going through it.
 - `src/changelog.js` — bounded web UI change log
 - `src/instances.js` — instance registry for start/stop/ps
 - `src/server.js` — JSON API, file watcher, SSE
-- `public/` — frontend (`md.js` is a small safe Markdown renderer)
+- `public/` — frontend (`md.js` is a small safe Markdown renderer, `vim.js` the optional editor vim mode)
 - `npm test`
 
 ## Concurrency note

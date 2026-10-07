@@ -15,6 +15,7 @@ const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/md.js': ['md.js', 'text/javascript; charset=utf-8'],
+  '/vim.js': ['vim.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
 };
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
