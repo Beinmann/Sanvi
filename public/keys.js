@@ -47,6 +47,7 @@ export const HELP = [
     ['Space / Ctrl+Space', 'Pick up the focused (or hovered) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
     ['c', 'Add a timestamped comment to the focused (or hovered) ticket; ☰ on a card opens its menu'],
     ['1-9', 'Only in move mode (after Space / Ctrl+Space): drop the ticket in that column; the numbers show on the headers then'],
+    ['d', 'Delete the focused (or hovered) ticket after a confirmation; it goes to the trash for 30 days'],
     ['s', 'Set status of the focused ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
   ]],
@@ -182,6 +183,23 @@ export function initKeys(ctx) {
   }
   document.addEventListener('add-note', (e) => { if (!overlay) openNote(e.detail); });
 
+  // Delete asks first; Enter or y confirms, Esc or n cancels. The ticket goes to the trash (restorable).
+  function openConfirmDelete(file) {
+    const t = S.tickets.find((x) => x.file === file);
+    if (!t) return;
+    const yes = () => { closeOverlay(); ctx.deleteTicket(file); };
+    const box = el('div', { class: 'dialog form', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': `Delete #${t.id}`, tabindex: '-1' },
+      el('h2', {}, `Delete #${t.id} ${t.title}?`),
+      el('p', { class: 'hint' }, 'It moves to the trash and can be restored for 30 days.'),
+      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: yes }, 'Delete (Enter / y)'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel (Esc / n)')));
+    box.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'Enter' || e.key.toLowerCase() === 'y') { e.preventDefault(); e.stopPropagation(); yes(); }
+      else if (e.key.toLowerCase() === 'n') { e.preventDefault(); e.stopPropagation(); closeOverlay(); }
+    });
+    openOverlay(box, { focus: box });
+  }
+
   // Per-card menu (the hamburger at the bottom right of a card); entries are the per-ticket actions.
   let menu = null;
   function closeMenu() { menu?.remove(); menu = null; }
@@ -191,7 +209,7 @@ export function initKeys(ctx) {
     closeMenu();
     if (was === file || overlay) return;
     const entry = (label, hint, run) => el('button', { type: 'button', role: 'menuitem', onclick: () => { closeMenu(); run(); } }, label, el('kbd', {}, hint));
-    menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file }, entry('Add comment', 'c', () => openNote(file)));
+    menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file }, entry('Add comment', 'c', () => openNote(file)), entry('Delete…', 'd', () => openConfirmDelete(file)));
     document.body.append(menu);
     const r = anchor.getBoundingClientRect();
     menu.style.left = `${Math.max(4, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 4))}px`;
@@ -234,6 +252,8 @@ export function initKeys(ctx) {
       }
     }
     if (mode === 'status') return items;
+    if (t) items.push({ label: `Delete #${t.id}…`, hint: 'd', run: () => openConfirmDelete(t.file) });
+    items.push({ label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } });
     items.push(
       { label: 'Add status…', hint: 'column', run: openAddStatus },
       { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
@@ -380,6 +400,12 @@ export function initKeys(ctx) {
         const t = c && S.tickets.find((x) => x.file === c.dataset.file);
         if (!t) return;
         ctx.setPick({ file: t.file, status: t.status });
+        break;
+      }
+      case 'd': { // delete (after confirmation): the focused or hovered card, or the open ticket
+        const f = hashRoute() === 'detail' ? ctx.detail()?.file : board && (focusedCard()?.dataset.file ?? hoverFile);
+        if (!f) return;
+        openConfirmDelete(f);
         break;
       }
       case 'c': { const f = board && (focusedCard()?.dataset.file ?? hoverFile); if (!f) return; openNote(f); break; }

@@ -261,6 +261,11 @@ export function slugify(title) {
 
 const pad = (n) => String(n).padStart(3, '0');
 
+// Highest id in use, trashed tickets included, so a deleted ticket's id is not handed out again.
+function maxId(dir) {
+  return Math.max(0, ...listTickets(dir).map((t) => Number(t.id)), ...listTrash(dir).map((t) => Number(t.id)));
+}
+
 export function createTicket(dir, { title, area = '', status, priority = '', body: customBody } = {}) {
   title = (title || '').trim();
   if (!title) throw new ValidationError('title is required');
@@ -273,8 +278,7 @@ export function createTicket(dir, { title, area = '', status, priority = '', bod
   front = setFrontField(front, 'priority', priority || null);
   const body = customBody ?? `\n# ${title}\n\n## Problem / motivation\n\n\n\n## Acceptance criteria\n\n- [ ] \n`;
   for (let attempt = 0; attempt < 5; attempt++) {
-    const max = listTickets(dir).reduce((m, t) => Math.max(m, Number(t.id)), 0);
-    const file = `${pad(max + 1 + attempt)}-${slug}.md`;
+    const file = `${pad(maxId(dir) + 1 + attempt)}-${slug}.md`;
     try {
       fs.writeFileSync(path.join(dir, file), buildRaw(front, body), { flag: 'wx' });
       return readTicket(dir, file);
@@ -305,6 +309,88 @@ export function createIdea(dir, { text, status = IDEA_STATUS } = {}) {
   const date = new Date().toISOString().slice(0, 10);
   const body = `\n# ${title}\n\n## Problem / motivation\n\n${text}\n\n## Acceptance criteria\n\n- [ ] \n\n## Notes\n\n- ${date}: Captured as a quick idea; the title is auto-derived and the text above is unrefined. Needs refinement.\n`;
   return createTicket(dir, { title, status, body });
+}
+
+// --- trash --------------------------------------------------------------
+// Deleting moves the ticket (and its images) to `<dir>/.trash/<deletion ms>/`; nothing is destroyed until
+// the retention period passes or the user deletes it for good. `listTickets` only reads `<dir>` itself.
+
+export const TRASH_DIR = '.trash';
+export const TRASH_DAYS = 30; // retention; change here
+const DAY_MS = 86_400_000;
+const trashRoot = (dir) => path.join(dir, TRASH_DIR);
+const assetsOf = (dir, id) => {
+  const adir = path.join(dir, ASSET_DIR);
+  if (!fs.existsSync(adir)) return [];
+  return fs.readdirSync(adir).filter((n) => n.startsWith(`${id}-`) && /^\d+\.\w+$/.test(n.slice(id.length + 1)));
+};
+
+export function deleteTicket(dir, file, version, now = Date.now()) {
+  const p = resolveFile(dir, file);
+  const raw = fs.readFileSync(p, 'utf8');
+  if (version !== hash(raw)) throw new ConflictError(toTicket(file, raw, fs.statSync(p).mtimeMs));
+  const t = toTicket(file, raw);
+  let key = String(now);
+  while (fs.existsSync(path.join(trashRoot(dir), key))) key = String(Number(key) + 1);
+  const dest = path.join(trashRoot(dir), key);
+  fs.mkdirSync(path.join(dest, ASSET_DIR), { recursive: true });
+  for (const name of assetsOf(dir, t.id)) fs.renameSync(path.join(dir, ASSET_DIR, name), path.join(dest, ASSET_DIR, name));
+  fs.renameSync(p, path.join(dest, file));
+  return { key, file, id: t.id, title: t.title };
+}
+
+export function listTrash(dir, now = Date.now()) {
+  const root = trashRoot(dir);
+  if (!fs.existsSync(root)) return [];
+  const out = [];
+  for (const key of fs.readdirSync(root)) {
+    if (!/^\d+$/.test(key)) continue;
+    const file = fs.readdirSync(path.join(root, key)).find(isTicketFile);
+    if (!file) continue;
+    const t = toTicket(file, fs.readFileSync(path.join(root, key, file), 'utf8'));
+    const deletedAt = Number(key);
+    out.push({ key, file, id: t.id, title: t.title, status: t.status, deletedAt, daysLeft: Math.max(0, Math.ceil((deletedAt + TRASH_DAYS * DAY_MS - now) / DAY_MS)) });
+  }
+  return out.sort((a, b) => b.deletedAt - a.deletedAt);
+}
+
+// Restore under the same file name; if that id is taken again, use the next free id (and say so in Notes).
+export function restoreTicket(dir, key) {
+  const item = listTrash(dir).find((x) => x.key === String(key));
+  if (!item) throw new NotFoundError(`not in the trash: ${key}`);
+  const src = path.join(trashRoot(dir), item.key);
+  let file = item.file;
+  let id = item.id;
+  const taken = listTickets(dir).some((t) => Number(t.id) === Number(item.id)) || fs.existsSync(path.join(dir, file));
+  let raw = fs.readFileSync(path.join(src, item.file), 'utf8');
+  if (taken) {
+    id = pad(maxId(dir) + 1);
+    file = item.file.replace(/^\d+/, id);
+    raw = raw.split(`${ASSET_DIR}/${item.id}-`).join(`${ASSET_DIR}/${id}-`);
+  }
+  fs.mkdirSync(path.join(dir, ASSET_DIR), { recursive: true });
+  const adir = path.join(src, ASSET_DIR);
+  for (const name of fs.existsSync(adir) ? fs.readdirSync(adir) : []) {
+    const target = path.join(dir, ASSET_DIR, taken ? name.replace(/^\d+/, id) : name);
+    if (!fs.existsSync(target)) fs.renameSync(path.join(adir, name), target); // never overwrite an existing image
+  }
+  fs.writeFileSync(path.join(dir, file), raw, { flag: 'wx' });
+  fs.rmSync(src, { recursive: true, force: true });
+  let t = readTicket(dir, file);
+  if (taken) t = addNote(dir, file, `Restored from the trash; the old id #${item.id} was in use again, so this is now #${id}.`, t.version);
+  return t;
+}
+
+export function purgeTrashItem(dir, key) {
+  if (!/^\d+$/.test(String(key)) || !fs.existsSync(path.join(trashRoot(dir), String(key)))) throw new NotFoundError(`not in the trash: ${key}`);
+  fs.rmSync(path.join(trashRoot(dir), String(key)), { recursive: true, force: true });
+}
+
+// Remove everything deleted more than `days` ago; returns how many items went.
+export function purgeTrash(dir, days = TRASH_DAYS, now = Date.now()) {
+  const old = listTrash(dir, now).filter((x) => now - x.deletedAt > days * DAY_MS);
+  for (const x of old) purgeTrashItem(dir, x.key);
+  return old.length;
 }
 
 // --- images attached to tickets ----------------------------------------

@@ -9,7 +9,7 @@ import {
   register, unregister, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
 import {
-  listTickets, findTicket, saveTicket, createTicket, createIdea, addNote, validate, readConfig,
+  listTickets, findTicket, saveTicket, createTicket, createIdea, addNote, deleteTicket, listTrash, restoreTicket, purgeTrash, validate, readConfig,
   ConflictError, NotFoundError, ValidationError,
 } from '../src/core.js';
 
@@ -24,6 +24,9 @@ usage: tk [--dir <tickets dir>] <command>
   new "<title>" [--area A] [--status S] [--priority P]
                                           create the next ticket from the standard template
   status <id|slug> <status>               change status in the frontmatter only
+  rm <id|slug>                            move a ticket (and its images) to the trash (kept 30 days)
+  trash                                   list deleted tickets with days left
+  restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate                                check format; exit 1 on errors
   serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b]
                                           run the web UI in the foreground (hosts *.localhost are always allowed)
@@ -94,6 +97,29 @@ async function main() {
       if (!rest[0] || !rest[1]) throw new ValidationError('usage: tk note <id|slug> "<text>"');
       const f = findTicket(dir, rest[0]);
       const t = addNote(dir, f.file, rest.slice(1).join(' '), f.version);
+      out(t, brief(t));
+      break;
+    }
+    case 'rm': {
+      if (!rest[0]) throw new ValidationError('usage: tk rm <id|slug>');
+      const f = findTicket(dir, rest[0]);
+      const item = deleteTicket(dir, f.file, f.version);
+      out(item, `moved #${item.id} ${item.title} to the trash`);
+      break;
+    }
+    case 'trash': {
+      purgeTrash(dir);
+      const items = listTrash(dir);
+      out(items, items.length ? items.map((x) => `${x.id}  ${String(x.daysLeft).padStart(2)}d left  ${x.title}  (${x.key})`).join('\n') : 'trash is empty');
+      break;
+    }
+    case 'restore': {
+      if (!rest[0]) throw new ValidationError('usage: tk restore <id|key>');
+      const items = listTrash(dir);
+      const r = String(rest[0]);
+      const hit = items.find((x) => x.key === r) || items.find((x) => /^\d{1,6}$/.test(r) && Number(x.id) === Number(r));
+      if (!hit) throw new NotFoundError(`not in the trash: ${rest[0]}`);
+      const t = restoreTicket(dir, hit.key);
       out(t, brief(t));
       break;
     }

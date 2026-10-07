@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig, addNote, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
+  listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
   ConflictError, NotFoundError, ValidationError,
   writeStatuses,
 } from './core.js';
@@ -66,6 +66,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
   if (!fs.statSync(dir).isDirectory()) throw new Error(`not a directory: ${dir}`);
   const clients = new Set();
   const changelog = createChangeLog(dir, logOpts);
+  try { purgeTrash(dir); } catch (e) { console.error(`trash purge failed: ${e.message}`); }
 
   const summary = ({ body, ...rest }) => rest;
 
@@ -117,7 +118,35 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       changelog.log({ ticket: t.id, action: 'create', after: t.version, changes: [{ field: 'status', from: null, to: t.status }] });
       return send(res, 201, t);
     }
+    if (parts[0] === 'trash') {
+      if (parts.length === 1 && method === 'GET') { purgeTrash(dir); return send(res, 200, listTrash(dir)); }
+      if (parts.length === 3 && parts[2] === 'restore' && method === 'POST') {
+        const t = restoreTicket(dir, decodeURIComponent(parts[1]));
+        changelog.log({ ticket: t.id, action: 'restore', after: t.version });
+        return send(res, 200, t);
+      }
+      if (parts.length === 2 && method === 'DELETE') {
+        const key = decodeURIComponent(parts[1]);
+        const item = listTrash(dir).find((x) => x.key === key);
+        purgeTrashItem(dir, key);
+        changelog.log({ ticket: item?.id ?? key, action: 'purge' });
+        return send(res, 200, { ok: true });
+      }
+      return send(res, 404, { error: 'not found' });
+    }
     if (parts[0] !== 'tickets') return send(res, 404, { error: 'not found' });
+    if (parts.length === 2 && method === 'DELETE') {
+      const { version } = await readJson(req);
+      if (!version) throw new ValidationError('version is required');
+      const file = decodeURIComponent(parts[1]);
+      let item;
+      try { item = deleteTicket(dir, file, version); } catch (e) {
+        if (e instanceof ConflictError) changelog.log({ ticket: file.slice(0, 3), action: 'conflict', before: version, after: e.current?.version });
+        throw e;
+      }
+      changelog.log({ ticket: item.id, action: 'delete', before: version });
+      return send(res, 200, item);
+    }
     if (parts.length === 1 && method === 'GET') return send(res, 200, url.searchParams.get('bodies') === '1' ? listTickets(dir) : listTickets(dir).map(summary));
     if (parts.length === 1 && method === 'POST') {
       const { title, area, status, priority } = await readJson(req);

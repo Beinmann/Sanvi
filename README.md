@@ -68,6 +68,11 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 - **Pick up and drop**: `Space` on a focused card picks it up; `h`/`l` choose the column (hidden ones
   too), `Space`/`Enter` drops, `1`-`9` drops at once, `Esc` cancels. Nothing is saved until the drop.
 - **Search from anywhere**: `/` (or `Ctrl+/` also while typing) goes to the board and focuses the search box.
+- **Delete and trash**: `d` on a focused (or hovered) card, the ☰ menu or Ctrl+K asks first (Enter / `y` deletes, Esc cancels).
+  The ticket and its images move to `tickets/.trash/` and stay restorable for 30 days (`TRASH_DAYS` in `src/core.js`;
+  purged on server start and when the Trash view opens). The **Trash** view restores or deletes for good; a restored
+  ticket whose id was reused gets the next free id. CLI: `tk rm <id>`, `tk trash`, `tk restore <id>`. Add
+  `.trash/` to the outer `.gitignore` if trashed tickets should not be committed.
 - **Comments**: `c` on a focused card (or the "+ note" on a card) opens a one-field box; Ctrl+Enter appends
   `- YYYY-MM-DD HH:MM: text` to the ticket's `## Notes` (created if missing).
 - **Hide columns**: the × in a column header hides it; a "Hidden: …" strip above the board lists hidden

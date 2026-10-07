@@ -175,3 +175,26 @@ test('markdown renders relative images only', () => {
   assert.doesNotMatch(renderMarkdown('![x](https://evil.example/a.png)'), /<img/);
   assert.doesNotMatch(renderMarkdown('![x](javascript:alert(1))'), /<img/);
 });
+
+test('trash API: delete with version check, list, restore, purge', async () => {
+  const { app, dir, j } = await setup();
+  try {
+    const t = await (await j('GET', '/api/tickets/001-a.md')).json();
+    assert.equal((await j('DELETE', '/api/tickets/001-a.md', { version: 'stale' })).status, 409);
+    assert.equal((await j('DELETE', '/api/tickets/001-a.md', {})).status, 400);
+    assert.equal((await j('DELETE', '/api/tickets/001-a.md', { version: t.version })).status, 200);
+    assert.equal((await (await j('GET', '/api/tickets')).json()).length, 0);
+    const trash = await (await j('GET', '/api/trash')).json();
+    assert.equal(trash.length, 1);
+    assert.equal(trash[0].daysLeft, 30);
+    const r = await j('POST', `/api/trash/${trash[0].key}/restore`, {});
+    assert.equal(r.status, 200);
+    assert.equal((await (await j('GET', '/api/tickets')).json()).length, 1);
+    const t2 = await (await j('GET', '/api/tickets/001-a.md')).json();
+    await j('DELETE', '/api/tickets/001-a.md', { version: t2.version });
+    const k = (await (await j('GET', '/api/trash')).json())[0].key;
+    assert.equal((await j('DELETE', `/api/trash/${k}`, {})).status, 200);
+    assert.equal((await (await j('GET', '/api/trash')).json()).length, 0);
+    assert.equal((await j('POST', '/api/trash/999/restore', {})).status, 404);
+  } finally { await app.close(); }
+});

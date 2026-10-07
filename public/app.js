@@ -546,6 +546,40 @@ function renderNew() {
   view.querySelector('input').focus();
 }
 
+// ------------------------------------------------------------------ trash
+
+// Move a ticket to the trash (files are kept for 30 days, see the Trash view). Focus goes to a neighbouring card.
+async function deleteTicket(file) {
+  const t = S.tickets.find((x) => x.file === file);
+  if (!t) return;
+  const cardEl = [...document.querySelectorAll('.card')].find((c) => c.dataset.file === file);
+  const near = (cardEl?.nextElementSibling ?? cardEl?.previousElementSibling);
+  const neighbour = near?.classList.contains('card') ? near.dataset.file : null;
+  try {
+    await api('DELETE', `tickets/${encodeURIComponent(file)}`, { version: t.version });
+    toast(`#${t.id} moved to the trash (restore it from Trash within 30 days)`);
+    if (location.hash.startsWith('#/t/')) { D = null; location.hash = '#/'; }
+    pendingFocus = neighbour;
+  } catch (e) {
+    toast(e.status === 409 ? `#${t.id} changed on disk; not deleted. Board refreshed.` : `Delete failed: ${e.message}`);
+  }
+  await refreshAll();
+}
+
+async function renderTrash() {
+  let items;
+  try { items = await api('GET', 'trash'); } catch (e) { toast(`Trash failed: ${e.message}`); return; }
+  const act = async (fn, msg) => { try { await fn(); toast(msg); } catch (e) { toast(e.message); } await renderTrash(); };
+  view.replaceChildren(el('div', { class: 'detail' }, el('a', { href: '#/' }, '← Board'), el('h1', {}, 'Trash'),
+    el('p', { class: 'hint' }, 'Deleted tickets are kept for 30 days, then removed for good. Restoring never overwrites a ticket; if the id was reused the ticket gets the next free id.'),
+    items.length ? el('table', { class: 'trash' }, el('thead', {}, el('tr', {}, ['ID', 'Title', 'Days left', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, items.map((x) => el('tr', {}, el('td', {}, `#${x.id}`), el('td', {}, x.title), el('td', {}, `${x.daysLeft}`),
+        el('td', {},
+          el('button', { type: 'button', class: 'primary', onclick: () => act(() => api('POST', `trash/${x.key}/restore`, {}), `#${x.id} restored`) }, 'Restore'), ' ',
+          el('button', { type: 'button', onclick: () => { if (confirm(`Delete #${x.id} "${x.title}" for good? This cannot be undone.`)) act(() => api('DELETE', `trash/${x.key}`, {}), `#${x.id} deleted for good`); } }, 'Delete for good')))))
+    ) : el('p', {}, 'The trash is empty.')));
+}
+
 // --------------------------------------------------------------- routing
 
 let pendingTab = null;
@@ -563,6 +597,7 @@ async function route() {
     if (pick && h !== '#/' && !h.startsWith('#/?')) setPick(null);
     pendingFocus = S.lastFile ?? null;
     if (h === '#/new') renderNew();
+    else if (h === '#/trash') renderTrash();
     else if (h === '#/idea') location.replace('#/'); // old bookmark: the idea box is an overlay now (i / Ctrl+I)
     else { loadHash(); await refreshAll(); }
   }
@@ -581,7 +616,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, addStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, addStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
     done.ticket ??= await api('POST', 'ideas', { text });
@@ -619,6 +654,7 @@ initKeys({
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },
 });
 $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
+$('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 
 async function refreshAll() {
@@ -634,6 +670,7 @@ async function refreshAll() {
   }
   const h = location.hash || '#/';
   if (h.startsWith('#/t/')) await refreshDetail();
+  else if (h === '#/trash') renderTrash();
   else if (h === '#/' || h === '' || h.startsWith('#/?')) renderBoard();
 }
 

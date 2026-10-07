@@ -169,3 +169,5 @@ body.moving .hiddenstrip .num { display: inline-block; }
 .thumb button { all: unset; position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; text-align: center; line-height: 18px; border-radius: 50%; background: var(--panel); border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
 .thumb button:hover, .thumb button:focus-visible { background: var(--accent); color: var(--accent-fg); }
 .missing-image { display: inline-block; padding: 2px 8px; border: 1px dashed var(--warn); border-radius: 4px; color: var(--warn); font-size: 13px; }
+table.trash { border-collapse: collapse; width: 100%; }
+table.trash th, table.trash td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }

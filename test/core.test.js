@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig, writeStatuses,
   ConflictError, ValidationError, slugify, createIdea, ideaTitle, addNote,
+  deleteTicket, listTrash, restoreTicket, purgeTrash, purgeTrashItem, saveAsset,
 } from '../src/core.js';
 
 const SAMPLE = `---
@@ -192,5 +193,51 @@ test('validate warns about dangling image links', () => {
     fs.writeFileSync(path.join(dir, '001-a.md'), SAMPLE + '\n![a](assets/ok.png)\n![b](assets/gone.png)\n![c](https://x.example/c.png)\n![d](../../etc/passwd)\n');
     const msgs = validate(dir).map((p) => p.message);
     assert.deepEqual(msgs.filter((m) => m.startsWith('image')), ['image not found: assets/gone.png', 'image not found: ../../etc/passwd']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('trash: delete, list, restore, id reuse, retention, images', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-trash-'));
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8)]);
+  try {
+    fs.writeFileSync(path.join(dir, '001-a.md'), SAMPLE);
+    fs.writeFileSync(path.join(dir, '002-b.md'), SAMPLE);
+    const img = saveAsset(dir, '001-a.md', png, 'image/png');
+    fs.writeFileSync(path.join(dir, '001-a.md'), SAMPLE + `\n![x](${img})\n`);
+    const t = readTicket(dir, '001-a.md');
+    assert.throws(() => deleteTicket(dir, '001-a.md', 'stale'), ConflictError);
+    const day = 86_400_000;
+    const gone = deleteTicket(dir, '001-a.md', t.version, Date.now() - 29 * day);
+    assert.deepEqual(listTickets(dir).map((x) => x.file), ['002-b.md']);
+    assert.equal(fs.existsSync(path.join(dir, img)), false);
+    assert.equal(listTrash(dir).length, 1);
+    assert.equal(listTrash(dir)[0].daysLeft, 1);
+    assert.equal(validate(dir).filter((p) => p.file.includes('001')).length, 0);
+    assert.equal(createTicket(dir, { title: 'new' }).id, '003'); // id 001 stays reserved, 002 is taken
+
+    // restore: same name when free
+    let r = restoreTicket(dir, gone.key);
+    assert.equal(r.file, '001-a.md');
+    assert.equal(fs.existsSync(path.join(dir, img)), true);
+    assert.equal(listTrash(dir).length, 0);
+
+    // restore when the id was reused: next free id, links and image names follow, a note says why
+    const t2 = readTicket(dir, '001-a.md');
+    const g2 = deleteTicket(dir, '001-a.md', t2.version);
+    fs.writeFileSync(path.join(dir, '001-other.md'), SAMPLE);
+    r = restoreTicket(dir, g2.key);
+    assert.equal(r.id, '004');
+    assert.match(r.body, /assets\/004-1\.png/);
+    assert.match(r.body, /Restored from the trash; the old id #001/);
+    assert.equal(fs.existsSync(path.join(dir, 'assets', '004-1.png')), true);
+
+    // retention
+    const old = deleteTicket(dir, '002-b.md', readTicket(dir, '002-b.md').version, Date.now() - 31 * day);
+    const fresh = deleteTicket(dir, '001-other.md', readTicket(dir, '001-other.md').version);
+    assert.equal(purgeTrash(dir), 1);
+    assert.deepEqual(listTrash(dir).map((x) => x.key), [fresh.key]);
+    assert.throws(() => restoreTicket(dir, old.key), /not in the trash/);
+    purgeTrashItem(dir, fresh.key);
+    assert.equal(listTrash(dir).length, 0);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
