@@ -25,6 +25,8 @@ test('list, save, conflict, create', async () => {
     const list = await (await j('GET', '/api/tickets')).json();
     assert.equal(list.length, 1);
     assert.equal(list[0].body, undefined);
+    const full = await (await j('GET', '/api/tickets?bodies=1')).json();
+    assert.match(full[0].body, /# A/);
 
     const t = await (await j('GET', '/api/tickets/001-a.md')).json();
     let r = await j('PUT', '/api/tickets/001-a.md', { version: t.version, fields: { status: 'done' } });

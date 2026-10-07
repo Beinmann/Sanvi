@@ -90,7 +90,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       return;
     }
     if (parts[0] !== 'tickets') return send(res, 404, { error: 'not found' });
-    if (parts.length === 1 && method === 'GET') return send(res, 200, listTickets(dir).map(summary));
+    if (parts.length === 1 && method === 'GET') return send(res, 200, url.searchParams.get('bodies') === '1' ? listTickets(dir) : listTickets(dir).map(summary));
     if (parts.length === 1 && method === 'POST') {
       const { title, area, status, priority } = await readJson(req);
       const t = createTicket(dir, { title, area, status, priority });
