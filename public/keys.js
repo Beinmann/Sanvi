@@ -37,7 +37,7 @@ export const HELP = [
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['/', 'Go to the search box (from any view; goes to the board first)'],
-    ['Ctrl+/', 'Same, also while typing; an unsaved edit asks before it is left'],
+    ['Ctrl+/ or Ctrl+E', 'Same, also while typing; an unsaved edit asks before it is left'],
     ['Esc', 'Close overlay, leave a field, go back to the board'],
   ]],
   ['Board', [
@@ -213,7 +213,7 @@ export function initKeys(ctx) {
       { label: 'Add status…', hint: 'column', run: openAddStatus },
       { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
       { label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
-      { label: 'Search tickets', hint: '/ or Ctrl+/', run: focusSearch },
+      { label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
       { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
       { label: 'Show keyboard shortcuts', hint: '?', run: openHelp },
     );
@@ -282,7 +282,7 @@ export function initKeys(ctx) {
       if (overlay?.node.querySelector('.palette')) closeOverlay(); else openPalette();
       return;
     }
-    if (mod && !e.altKey && e.key === '/') { // works while typing, too
+    if (mod && !e.altKey && (e.key === '/' || (e.key.toLowerCase() === 'e' && !e.shiftKey))) { // search; works while typing, too
       e.preventDefault();
       if (overlay) closeOverlay();
       focusSearch();
