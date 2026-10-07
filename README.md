@@ -51,11 +51,7 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   exclude (`migrate -area:research status:open,blocked`). Everything ANDs;
   `area:` alone means "not set". Unknown `key:` tokens are plain text. The
   query is stored in the URL (`#/?q=...`) so views can be bookmarked.
-- **Table view**: the Board/Table switch next to the search box shows the same
-  (filtered) tickets as a sortable table (id, title, status, area, priority,
-  checklist progress); click a header to sort, again to reverse, click a row to
-  open it. Read-only; view, sort and filter are kept in the URL
-  (`#/?q=...&view=table&sort=priority&dir=desc`).
+- **Table view**: disabled for now (ticket 010); the code is kept behind `TABLE_VIEW` in `public/app.js`, and old `view=table` links open the board.
 - **Column order**: drag a status column header onto another column to reorder;
   the order is written to `statuses:` in `_config.yml`, so the CLI and other
   browsers see it too.
@@ -79,7 +75,7 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   `- YYYY-MM-DD HH:MM: text` to the ticket's `## Notes` (created if missing).
 - **Hide columns**: the × in a column header hides it; a "Hidden: …" strip above the board lists hidden
   columns with ticket counts (and how many match the current filter) and restores one on click. A ticket dropped on a hidden entry moves there without showing the column.
-  Also "Show/Hide column: …" in Ctrl+K. Stored per browser, not in `_config.yml`; the table view is unaffected.
+  Also "Show/Hide column: …" in Ctrl+K. Stored per browser, not in `_config.yml`.
 - A body section `## Summary` (2-5 lines: what was done, "To test: …") is shown in a highlighted box at the top of the ticket page. Optional; nothing else changes without it.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.

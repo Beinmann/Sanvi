@@ -132,9 +132,10 @@ body.moving .col h2 .num { display: inline-block; }
 .col h2 .hide { all: unset; cursor: pointer; color: var(--muted); padding: 0 4px; border-radius: 4px; }
 .col h2 .hide:hover, .col h2 .hide:focus-visible { color: var(--text); background: var(--accent-soft); }
 .hiddenstrip { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; font-size: 13px; color: var(--muted); }
-.hiddenstrip button.hit { border-color: var(--warn); color: var(--warn); }
+.hiddenstrip .hit button { border-color: var(--warn); color: var(--warn); }
 .hiddenstrip button { padding: 6px 10px; }
-.hiddenstrip button.over { outline: 2px dashed var(--accent); background: var(--accent-soft); }
+.hiddenstrip .stripentry.over { outline: 2px dashed var(--accent); border-radius: var(--r); }
+.hiddenstrip .stripentry.over button { background: var(--accent-soft); }
 .hiddenstrip .num { display: none; font-size: 11px; padding: 0 6px; margin-right: 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--text); }
 body.moving .hiddenstrip .num { display: inline-block; }
 .card .menu-btn { all: unset; position: absolute; bottom: 5px; right: 6px; font-size: 13px; line-height: 1; color: var(--muted); cursor: pointer; padding: 3px 5px; border-radius: 4px; opacity: .55; }
@@ -158,7 +159,8 @@ body.moving .hiddenstrip .num { display: inline-block; }
 .card.picked { outline: 2px dashed var(--accent); opacity: .6; }
 .col.target { outline: 2px solid var(--accent); background: var(--accent-soft); }
 .placeholder { border: 2px dashed var(--accent); border-radius: var(--r); padding: 10px 12px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
-.hiddenstrip button.target { outline: 2px solid var(--accent); background: var(--accent-soft); }
+.hiddenstrip .stripentry.target { outline: 2px solid var(--accent); border-radius: var(--r); }
+.hiddenstrip .stripentry.target button { background: var(--accent-soft); }
 .pickbar { margin-bottom: 10px; padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--r); background: var(--accent-soft); font-size: 13px; }
 .hiddennotice { margin-bottom: 10px; padding: 6px 10px; border: 1px solid var(--warn); border-radius: var(--r); background: var(--warn-bg); font-size: 13px; display: grid; gap: 4px; }
 .thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -196,4 +198,7 @@ table.trash th, table.trash td { text-align: left; padding: 6px 10px; border-bot
 body.has-selection .selhint { display: none; }
 .focushint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 8px 14px; border: 1px solid var(--warn); border-radius: var(--r); background: var(--warn-bg); color: var(--warn); font-size: 13px; max-width: calc(100vw - 32px); }
 .focushint[hidden] { display: none; }
-.hiddenstrip button.selected { outline: 2px solid var(--accent); outline-offset: 1px; background: var(--accent-soft); }
+.hiddenstrip .stripentry.selected { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--r); }
+.hiddenstrip .stripentry.selected button { background: var(--accent-soft); }
+#trash-btn svg { vertical-align: -2px; margin-right: 4px; }
+.palette li.heading { cursor: default; padding: 8px 10px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }

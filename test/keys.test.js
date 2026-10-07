@@ -38,3 +38,22 @@ test('navigate: selection, last selection and vanished selection', () => {
   assert.equal(navigate(cols, null, null, 'right'), 'a');
   assert.equal(navigate([[], []], null, null, 'next'), null);
 });
+
+import { parseTicketRef, ticketsByRef } from '../public/keys.js';
+
+test('parseTicketRef: #20, #020 and 20 are ticket ids, text is not', () => {
+  assert.equal(parseTicketRef('#20'), 20);
+  assert.equal(parseTicketRef('#020'), 20);
+  assert.equal(parseTicketRef(' 20 '), 20);
+  assert.equal(parseTicketRef('20a'), null);
+  assert.equal(parseTicketRef('table'), null);
+  assert.equal(parseTicketRef(''), null);
+});
+
+test('ticketsByRef: exact id first, else id prefix', () => {
+  const ts = ['002', '020', '021', '200'].map((id) => ({ id }));
+  assert.deepEqual(ticketsByRef(ts, 20).map((t) => t.id), ['020']);
+  assert.deepEqual(ticketsByRef(ts, 2).map((t) => t.id), ['002']);
+  assert.deepEqual(ticketsByRef(ts, 21).map((t) => t.id), ['021']);
+  assert.deepEqual(ticketsByRef([{ id: '020' }, { id: '021' }, { id: '200' }], 2).map((t) => t.id), ['020', '021', '200']);
+});

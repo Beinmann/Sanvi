@@ -90,7 +90,7 @@ let lastSelected = null;
 let stripSel = null;
 function paintStripSel() {
   if (document.activeElement?.closest?.('.stripentry')) document.activeElement.blur(); // the selection, not a stale focus ring, marks the entry
-  for (const b of document.querySelectorAll('.stripentry button[data-status]')) b.classList.toggle('selected', stripSel !== null && b.dataset.status === stripSel);
+  for (const b of document.querySelectorAll('.stripentry[data-status]')) b.classList.toggle('selected', stripSel !== null && b.dataset.status === stripSel);
   document.body.classList.toggle('has-selection', !!selected || stripSel !== null);
 }
 function setStripSel(status) {
@@ -197,7 +197,7 @@ async function doMove(file, status) {
 
 // Board/table state lives in the hash: "#/?q=text -area:x&view=table&sort=priority&dir=desc".
 // The table view is switched off for now (056): the code stays, but no tab leads to it and #/?view=table shows the board.
-const TABLE_VIEW_ENABLED = false;
+const TABLE_VIEW = false;
 const Q = { text: '', parsed: parseQuery(''), view: 'board', sort: 'id', dir: 'asc' };
 function setQuery(text) { Q.text = text; Q.parsed = parseQuery(text); }
 function loadHash() {
@@ -205,7 +205,11 @@ function loadHash() {
   if (!h.startsWith('#/?') && h !== '#/') return false;
   const p = new URLSearchParams(h.slice(3));
   setQuery(p.get('q') || '');
-  Q.view = TABLE_VIEW_ENABLED && p.get('view') === 'table' ? 'table' : 'board';
+  Q.view = TABLE_VIEW && p.get('view') === 'table' ? 'table' : 'board';
+  if (!TABLE_VIEW && p.get('view') === 'table') { // old bookmark: show the board and drop the parameter from the URL
+    const h2 = hashForState();
+    history.replaceState(null, '', h2); currentHash = h2;
+  }
   Q.sort = SORT_KEYS.includes(p.get('sort')) ? p.get('sort') : 'id';
   Q.dir = p.get('dir') === 'desc' ? 'desc' : 'asc';
   return true;
@@ -246,7 +250,7 @@ function filterBar() {
   const tab = (v, label) => el('button', { type: 'button', class: Q.view === v ? 'active' : '', 'aria-pressed': String(Q.view === v), onclick: () => setView(v) }, label);
   return el('div', { class: 'filterbar' }, input,
     el('button', { type: 'button', title: 'Add a status column', onclick: () => document.dispatchEvent(new Event('add-status')) }, '+ Status'),
-    TABLE_VIEW_ENABLED && el('span', { class: 'viewswitch' }, tab('board', 'Board'), tab('table', 'Table')),
+    TABLE_VIEW && el('span', { class: 'viewswitch' }, tab('board', 'Board'), tab('table', 'Table')),
     Q.view === 'board' && el('span', { class: 'selhint' }, 'No card selected · press j'),
     Q.text.trim() && el('span', { class: 'active-filter' }, 'Filter: ', el('code', {}, formatQuery(Q.parsed))),
     Q.text.trim() && el('button', { type: 'button', onclick: () => { setFilter(''); $('#search')?.focus(); } }, 'Clear'));
@@ -435,20 +439,25 @@ function hiddenStrip() {
     const hits = filtering ? all.filter((t) => matchTicket(t, Q.parsed)).length : 0;
     const n = numbered.indexOf(status) + 1; // same numbering as the column badges
     const main = el('button', {
-      type: 'button', class: `${hits ? 'hit' : ''}${pick?.status === status ? ' target' : ''}${stripSel === status ? ' selected' : ''}`, 'data-status': status, title: `Show ${status || '(no status)'} (drop a ticket here to move it without showing)`,
+      type: 'button', 'data-status': status, title: `Show ${status || '(no status)'} (drop a ticket here to move it without showing)`,
       onclick: () => toggleColumn(status),
-      ondragover: (e) => { if (e.dataTransfer.types.includes(COLUMN_DRAG)) return; e.preventDefault(); e.currentTarget.classList.add('over'); },
-      ondragleave: (e) => e.currentTarget.classList.remove('over'),
+    }, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
+    `${status || '(no status)'} (${all.length}${filtering ? `, ${hits} match filter` : ''})`);
+    const open = peek === status;
+    // The state classes (hit, target, selected, over) live on the wrapper so name and arrow are one shape; both halves take drops.
+    const drop = (e) => !e.target.closest?.('.peekpop') && !e.dataTransfer.types.includes(COLUMN_DRAG);
+    return el('span', {
+      class: `stripentry${hits ? ' hit' : ''}${pick?.status === status ? ' target' : ''}${stripSel === status ? ' selected' : ''}`, 'data-status': status,
+      ondragover: (e) => { if (drop(e)) { e.preventDefault(); e.currentTarget.classList.add('over'); } },
+      ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('over'); },
       ondrop: (e) => {
+        if (!drop(e)) return;
         e.preventDefault(); e.currentTarget.classList.remove('over');
         const file = e.dataTransfer.getData('text/plain');
         if (file) moveTicket(file, status);
       },
-    }, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
-    `${status || '(no status)'} (${all.length}${filtering ? `, ${hits} match filter` : ''})`);
-    const open = peek === status;
-    return el('span', { class: 'stripentry' }, main,
-      el('button', { type: 'button', class: `peekbtn${stripSel === status ? ' selected' : ''}`, 'data-status': status, title: `Peek at the tickets in ${status || '(no status)'} without showing the column`, 'aria-label': `Peek at ${status || 'no-status'} tickets`, 'aria-expanded': String(open), 'aria-haspopup': 'menu', onclick: () => togglePeek(status) }, '▾'),
+    }, main,
+      el('button', { type: 'button', class: 'peekbtn', 'data-status': status, title: `Peek at the tickets in ${status || '(no status)'} without showing the column`, 'aria-label': `Peek at ${status || 'no-status'} tickets`, 'aria-expanded': String(open), 'aria-haspopup': 'menu', onclick: () => togglePeek(status) }, '▾'),
       open && peekPopover(status));
   }));
 }
@@ -508,6 +517,14 @@ function peekPopover(status) {
   el('span', { class: 'meta' }, t.priority && el('span', { class: 'chip prio' }, t.priority), t.area && el('span', { class: 'chip' }, t.area))))
     : el('p', { class: 'hint' }, total ? `No tickets in ${status || '(no status)'} match the filter.` : `No tickets in ${status || '(no status)'}.`));
 }
+// Clicking empty space clears the selection, like Esc (058). A drag or text selection is not a click.
+document.addEventListener('click', (e) => {
+  if (!(selected || stripSel !== null) || !document.querySelector('.board')) return;
+  if (e.target.closest?.('.card, button, a, input, textarea, select, .peekpop, .overlay, .cardmenu, .stripentry')) return;
+  if (!document.body.contains(e.target) || String(getSelection()).length) return;
+  setSelected(null);
+  setStripSel(null);
+});
 document.addEventListener('mousedown', (e) => { if (peek && !e.target.closest?.('.stripentry')) { peek = null; if (document.querySelector('.board')) renderBoard(); } });
 
 // Vim mode is an opt-in per-browser preference; storage can throw (private windows etc.).
@@ -813,6 +830,17 @@ initKeys({
     if (open && D === open) applyNoteToDetail(saved);
     await refreshAll();
     toast(`Comment added to #${t.id}`);
+  },
+  setField: async (file, field, value) => {
+    if (D && D.file === file) { D.draft[field] = value; renderDetail(); toast(`${field[0].toUpperCase()}${field.slice(1)} set to ${value || '(none)'} (unsaved)`); return; }
+    const t = S.tickets.find((x) => x.file === file);
+    if (!t || (t[field] ?? '') === value) return;
+    try {
+      const saved = await api('PUT', `tickets/${encodeURIComponent(file)}`, { version: t.version, fields: { [field]: value } });
+      ownVersions.add(saved.version);
+      toast(`#${t.id} ${field}: ${value || '(none)'}`);
+    } catch (e) { toast(e.status === 409 ? `#${t.id} changed on disk; not changed. Board refreshed.` : `Change failed: ${e.message}`); }
+    await refreshAll();
   },
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },
 });
