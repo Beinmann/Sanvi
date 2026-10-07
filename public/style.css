@@ -136,7 +136,6 @@ body.moving .col h2 .num { display: inline-block; }
 .hiddenstrip button.over { outline: 2px dashed var(--accent); background: var(--accent-soft); }
 .hiddenstrip .num { display: none; font-size: 11px; padding: 0 6px; margin-right: 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--text); }
 body.moving .hiddenstrip .num { display: inline-block; }
-.dialog > .hint { margin: 0; padding: 0 16px; font-size: 12px; color: var(--muted); }
 .card .menu-btn { all: unset; position: absolute; bottom: 5px; right: 6px; font-size: 13px; line-height: 1; color: var(--muted); cursor: pointer; padding: 3px 5px; border-radius: 4px; opacity: 0; }
 .card .meta { padding-right: 24px; min-height: 16px; }
 .card:hover .menu-btn, .card:focus-within .menu-btn, .card:focus-visible .menu-btn { opacity: 1; }
@@ -144,7 +143,6 @@ body.moving .hiddenstrip .num { display: inline-block; }
 .cardmenu { position: fixed; z-index: 50; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: 0 6px 24px rgba(0,0,0,.3); padding: 4px; display: grid; min-width: 160px; }
 .cardmenu button { all: unset; display: flex; justify-content: space-between; gap: 16px; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
 .cardmenu button:hover, .cardmenu button:focus-visible { background: var(--accent); color: var(--accent-fg); }
-.dialog > textarea { display: block; width: calc(100% - 32px); margin: 8px 16px; }
 
 .col h2[draggable="true"] { cursor: grab; user-select: none; -webkit-user-select: none; }
 .col h2[draggable="true"] > * { pointer-events: none; }
@@ -162,7 +160,7 @@ body.moving .hiddenstrip .num { display: inline-block; }
 .hiddenstrip button.target { outline: 2px solid var(--accent); background: var(--accent-soft); }
 .pickbar { margin-bottom: 10px; padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--r); background: var(--accent-soft); font-size: 13px; }
 .hiddennotice { margin-bottom: 10px; padding: 6px 10px; border: 1px solid var(--warn); border-radius: var(--r); background: var(--warn-bg); font-size: 13px; display: grid; gap: 4px; }
-.thumbs { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px; }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
 .thumbs:empty { display: none; }
 .thumb { position: relative; }
 .thumb img { height: 64px; max-width: 140px; object-fit: cover; border: 1px solid var(--border); border-radius: 4px; display: block; }
@@ -181,3 +179,10 @@ table.trash th, table.trash td { text-align: left; padding: 6px 10px; border-bot
 .peekpop .ttl { flex: 1; min-width: 0; }
 .peekpop .meta { display: flex; gap: 4px; font-size: 11px; }
 .peekpop .hint { margin: 6px 8px; font-size: 12px; color: var(--muted); }
+
+.dialog.form .hint { font-size: 12px; color: var(--muted); }
+.dialog.form textarea { width: 100%; box-sizing: border-box; }
+.dialog.form .buttons { display: flex; gap: 8px; }
+/* the strip entry and its peek arrow read as one split button */
+.stripentry > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.stripentry .peekbtn { border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 6px 7px; margin-left: -1px; }

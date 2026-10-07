@@ -406,6 +406,20 @@ function togglePeek(status) {
   renderBoard();
   if (peek) view.querySelector('.peekpop a')?.focus({ preventScroll: true });
 }
+// Keyboard entry (key `v`): open the first hidden status's list, or close it; h/l inside the list switch status.
+function peekToggle() {
+  const list = columns().filter((c) => hidden.has(c));
+  if (!list.length) { toast('No hidden columns to peek into'); return; }
+  if (peek !== null) closePeek(); else togglePeek(list[0]);
+}
+function peekStep(dir) {
+  const list = columns().filter((c) => hidden.has(c));
+  const to = list[Math.max(0, Math.min(list.length - 1, list.indexOf(peek) + dir))];
+  if (to === undefined || to === peek) return;
+  peek = to;
+  renderBoard();
+  view.querySelector('.peekpop a')?.focus({ preventScroll: true });
+}
 function closePeek({ refocus = false } = {}) {
   const was = peek;
   peek = null;
@@ -422,6 +436,7 @@ function peekPopover(status) {
       const links = [...e.currentTarget.querySelectorAll('a')];
       const at = links.indexOf(document.activeElement);
       if (e.key === 'Escape') closePeek({ refocus: true });
+      else if (e.key === 'h' || e.key === 'l' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') peekStep(e.key === 'l' || e.key === 'ArrowRight' ? 1 : -1);
       else if (e.key === 'j' || e.key === 'ArrowDown') links[Math.min(links.length - 1, at + 1)]?.focus();
       else if (e.key === 'k' || e.key === 'ArrowUp') links[Math.max(0, at - 1)]?.focus();
       else if (e.key !== 'Enter' && e.key !== 'Tab') return; // Enter follows the link natively
@@ -685,7 +700,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, addStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekToggle, addStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
     done.ticket ??= await api('POST', 'ideas', { text });

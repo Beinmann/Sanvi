@@ -47,6 +47,7 @@ export const HELP = [
     ['Space / Ctrl+Space', 'Pick up the focused (or hovered) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
     ['c', 'Add a timestamped comment to the focused (or hovered) ticket; ☰ on a card opens its menu'],
     ['1-9', 'Only in move mode (after Space / Ctrl+Space): drop the ticket in that column; the numbers show on the headers then'],
+    ['v', 'Peek into hidden columns: list their tickets; h / l switch status, j / k move, Enter opens, Esc closes'],
     ['d', 'Delete the focused (or hovered) ticket after a confirmation; it goes to the trash for 30 days'],
     ['s', 'Set status of the focused ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
@@ -151,11 +152,11 @@ export function initKeys(ctx) {
     ta.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
     });
-    const box = el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quick idea' },
+    const box = el('div', { class: 'dialog form', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quick idea' },
       el('h2', {}, 'Quick idea'),
       el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Paste or drop images to attach them. Ctrl+Enter saves, Esc cancels.'),
       ta, pics.node, err,
-      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
+      el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
     openOverlay(box, { focus: ta });
   }
 
@@ -174,11 +175,11 @@ export function initKeys(ctx) {
     ta.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
     });
-    const box = el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Comment on #${t.id}` },
+    const box = el('div', { class: 'dialog form', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Comment on #${t.id}` },
       el('h2', {}, `Comment on #${t.id}`),
       el('p', { class: 'hint' }, 'Added with a timestamp at the end of the ticket\'s Notes. Paste or drop images to attach them.'),
       ta, pics.node, err,
-      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: save }, 'Add comment'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
+      el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: save }, 'Add comment'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
     openOverlay(box, { focus: ta });
   }
   document.addEventListener('add-note', (e) => { if (!overlay) openNote(e.detail); });
@@ -188,16 +189,24 @@ export function initKeys(ctx) {
     const t = S.tickets.find((x) => x.file === file);
     if (!t) return;
     const yes = () => { closeOverlay(); ctx.deleteTicket(file); };
-    const box = el('div', { class: 'dialog form', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': `Delete #${t.id}`, tabindex: '-1' },
+    // Cancel has the focus, so d then Enter does nothing; y deletes at once, or move to Delete first.
+    const cancel = el('button', { type: 'button', onclick: closeOverlay }, 'Cancel (Esc / n)');
+    const del = el('button', { class: 'primary', type: 'button', onclick: yes }, 'Delete (y)');
+    const box = el('div', { class: 'dialog form', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': `Delete #${t.id}` },
       el('h2', {}, `Delete #${t.id} ${t.title}?`),
-      el('p', { class: 'hint' }, 'It moves to the trash and can be restored for 30 days.'),
-      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: yes }, 'Delete (Enter / y)'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel (Esc / n)')));
+      el('p', { class: 'hint' }, 'It moves to the trash and can be restored for 30 days. Enter confirms the focused button; y deletes, ← → switch buttons.'),
+      el('div', { class: 'buttons' }, cancel, del));
     box.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === 'Enter' || e.key.toLowerCase() === 'y') { e.preventDefault(); e.stopPropagation(); yes(); }
-      else if (e.key.toLowerCase() === 'n') { e.preventDefault(); e.stopPropagation(); closeOverlay(); }
+      const k = e.key.toLowerCase();
+      if (k === 'y') { e.preventDefault(); e.stopPropagation(); yes(); }
+      else if (k === 'n') { e.preventDefault(); e.stopPropagation(); closeOverlay(); }
+      else if (['arrowleft', 'arrowright', 'h', 'l', 'tab'].includes(k)) {
+        e.preventDefault(); e.stopPropagation();
+        (document.activeElement === cancel ? del : cancel).focus();
+      } else if (k === 'enter') e.stopPropagation(); // the focused button handles it
     });
-    openOverlay(box, { focus: box });
+    openOverlay(box, { focus: cancel });
   }
 
   // Per-card menu (the hamburger at the bottom right of a card); entries are the per-ticket actions.
@@ -253,6 +262,7 @@ export function initKeys(ctx) {
     }
     if (mode === 'status') return items;
     if (t) items.push({ label: `Delete #${t.id}…`, hint: 'd', run: () => openConfirmDelete(t.file) });
+    items.push({ label: 'Peek into hidden columns', hint: 'v', run: () => ctx.peekToggle() });
     items.push({ label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } });
     items.push(
       { label: 'Add status…', hint: 'column', run: openAddStatus },
@@ -402,6 +412,7 @@ export function initKeys(ctx) {
         ctx.setPick({ file: t.file, status: t.status });
         break;
       }
+      case 'v': ctx.peekToggle(); break; // peek into the hidden columns
       case 'd': { // delete (after confirmation): the focused or hovered card, or the open ticket
         const f = hashRoute() === 'detail' ? ctx.detail()?.file : board && (focusedCard()?.dataset.file ?? hoverFile);
         if (!f) return;
