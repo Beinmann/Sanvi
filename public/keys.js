@@ -33,7 +33,9 @@ export const HELP = [
     ['Ctrl+K', 'Command menu: jump to a ticket, change status, new ticket'],
     ['?', 'Show / hide this help'],
     ['n', 'New ticket'],
-    ['i', 'Quick idea (just text, no title)'],
+    ['b', 'Go to the board'],
+    ['Ctrl+I', 'Quick idea overlay, also while typing (your edit is kept)'],
+    ['i', 'Quick idea page (just text, no title)'],
     ['/', 'Board: focus the search box'],
     ['Esc', 'Close overlay, leave a field, go back to the board'],
   ]],
@@ -109,6 +111,24 @@ export function initKeys(ctx) {
     openOverlay(box);
   }
 
+  // Idea capture as an overlay, so it works mid-edit: no route change, so no
+  // draft is discarded; closing restores focus to the field the user was in.
+  function openIdea() {
+    const ta = el('textarea', { rows: 6, placeholder: 'Describe the idea. Ctrl+Enter saves, Esc cancels.', 'aria-label': 'Quick idea' });
+    const save = async () => {
+      const text = ta.value.trim();
+      if (!text) return;
+      try { await ctx.saveIdea(text); closeOverlay(); } catch (err) { ctx.toast(err.message); }
+    };
+    ta.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+    });
+    const box = el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quick idea' },
+      el('h2', {}, 'Quick idea'), ta,
+      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea')));
+    openOverlay(box, { focus: ta });
+  }
+
   function commandItems(mode) {
     const file = contextFile();
     const t = file && S.tickets.find((x) => x.file === file);
@@ -124,8 +144,8 @@ export function initKeys(ctx) {
     if (mode === 'status') return items;
     items.push(
       { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
-      { label: 'Quick idea', hint: 'i', run: () => { location.hash = '#/idea'; } },
-      { label: 'Go to board', hint: 'Esc', run: () => { location.hash = '#/'; } },
+      { label: 'Quick idea', hint: 'i / Ctrl+I', run: () => { location.hash = '#/idea'; } },
+      { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
       { label: 'Show keyboard shortcuts', hint: '?', run: openHelp },
     );
     for (const x of S.tickets) {
@@ -178,6 +198,12 @@ export function initKeys(ctx) {
       if (overlay?.node.querySelector('.palette')) closeOverlay(); else openPalette();
       return;
     }
+    if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'i') { // works while typing, too
+      e.preventDefault();
+      if (overlay?.node.querySelector('textarea[aria-label="Quick idea"]')) return;
+      openIdea();
+      return;
+    }
     if (e.key === 'Escape') {
       if (overlay) { e.preventDefault(); closeOverlay(); return; }
       if (isTyping(e.target)) {
@@ -198,6 +224,7 @@ export function initKeys(ctx) {
       case '?': openHelp(); break;
       case '/': if (board) $('#search')?.focus(); else return; break;
       case 'n': location.hash = '#/new'; break;
+      case 'b': location.hash = '#/'; break;
       case 'i': location.hash = '#/idea'; break;
       case 's': openPalette('status'); break;
       case 'j': if (board) moveFocus('next'); else return; break;

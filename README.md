@@ -53,7 +53,8 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
 - **+ Idea** (or `i`): quick capture. Type one or a few sentences, no title;
-  **Ctrl+Enter** saves and clears the box for the next one. Each idea becomes
+  **Ctrl+Enter** saves and returns to the board. **Ctrl+I** opens the same
+  box as an overlay from anywhere, even mid-edit (your edit is kept). Each idea becomes
   a normal ticket with `status: design`, a placeholder title taken from the
   first sentence, your text verbatim under *Problem / motivation* and a note
   saying it is unrefined. A later session (human or AI) can list
@@ -63,7 +64,7 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 - Keyboard (press **?** for the overlay): **Ctrl+K** command menu (jump to a
   ticket, set status, new ticket); on the board `j/k` `h/l` move focus, `/`
   focuses search, `Enter` opens, `s` sets status, `Shift+H/L` moves the card one status left/right, `n`
-  creates; in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
+  creates, `b` goes to the board; in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
   goes back. Single-key hotkeys are off while typing in a field.
 - Description editor: optional **Vim mode** (checkbox under the editor,
   remembered per browser; off by default). Home-grown subset, no

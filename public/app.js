@@ -326,9 +326,8 @@ function renderIdea() {
     if (!text) return;
     try {
       const t = await api('POST', 'ideas', { text });
-      ta.value = '';
       toast(`Idea captured as #${t.id}`);
-      ta.focus();
+      location.hash = '#/';
     } catch (err) { toast(err.message); }
   };
   ta.addEventListener('keydown', (e) => {
@@ -336,7 +335,7 @@ function renderIdea() {
   });
   view.replaceChildren(el('form', { class: 'newform wide', onsubmit: (e) => { e.preventDefault(); submit(); } },
     el('h2', {}, 'Quick idea'),
-    el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Ctrl+Enter saves and lets you add the next one.'),
+    el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Ctrl+Enter saves and returns to the board.'),
     ta,
     el('div', {}, el('button', { class: 'primary', type: 'submit' }, 'Save idea'), ' ', el('a', { href: '#/' }, 'Done'))));
   ta.focus();
@@ -377,6 +376,7 @@ document.addEventListener('keydown', (e) => {
 });
 initKeys({
   S, el, columns, toast, moveTicket, setTab,
+  saveIdea: async (text) => { const t = await api('POST', 'ideas', { text }); toast(`Idea captured as #${t.id}`); return t; },
   detail: () => D,
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },
 });
