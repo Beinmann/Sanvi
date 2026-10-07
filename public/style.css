@@ -60,6 +60,22 @@ main { padding: 16px; }
 textarea.editor { width: 100%; min-height: 60vh; font: 14px/1.5 ui-monospace, monospace; resize: vertical; }
 .newform { display: grid; gap: 8px; max-width: 420px; margin: 24px auto; background: var(--panel); padding: 16px; border-radius: 10px; border: 1px solid var(--border); }
 .newform label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1:focus { outline: none; }
+.card:focus-visible { border-color: var(--accent); background: var(--panel2); }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; z-index: 30; }
+.dialog { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; width: min(560px, 92vw); max-height: 70vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.palette input { width: 100%; border: 0; border-bottom: 1px solid var(--border); border-radius: 10px 10px 0 0; padding: 12px 14px; font-size: 16px; }
+.palette ul { list-style: none; margin: 0; padding: 4px; }
+.palette li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.palette li.sel { background: var(--accent); color: #fff; }
+.palette li small { color: var(--muted); } .palette li.sel small { color: #fff; opacity: .8; }
+.palette li.none { color: var(--muted); cursor: default; }
+.help { padding: 8px 20px 16px; }
+.help h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 4px; }
+.help dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+.help dd { margin: 0; }
+kbd { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; font: 12px ui-monospace, monospace; }
 @media (max-width: 600px) { .col { flex-basis: 85vw; } main { padding: 8px; } }
 
 .filterbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
