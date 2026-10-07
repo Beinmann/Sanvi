@@ -65,7 +65,7 @@ export const HELP = [
     ['Space / Ctrl+Space', 'Pick up the selected (or hovered, if none) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
     ['c', 'Add a timestamped comment to the selected (or hovered, if none) ticket; ☰ on a card opens its menu'],
     ['1-9', 'Only in move mode (after Space / Ctrl+Space): drop the ticket in that column; the numbers show on the headers then'],
-    ['k at the top card', 'Move up onto the "Hidden: ..." strip; h / l pick a hidden status, Enter lists its tickets (j / k move, Space picks one up to move it, Enter opens it, h / l switch status, Esc closes), j goes back to the cards'],
+    ['k at the top card', 'Move up onto the "Hidden: ..." strip; h / l pick a hidden status, Enter lists its tickets (j / k move, Space picks one up to move it, Enter opens it, h / l switch status, Esc or k at the top closes), j goes back to the cards'],
     ['d', 'Delete the selected (or hovered, if none) ticket after a confirmation; it goes to the trash for 30 days'],
     ['s', 'Set status of the selected ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
@@ -414,6 +414,7 @@ export function initKeys(ctx) {
     if (e.key === 'Escape') {
       if (!overlay && ctx.pick?.() && !isTyping(e.target)) { e.preventDefault(); ctx.setPick(null); return; }
       if (overlay) { e.preventDefault(); closeOverlay(); return; }
+      if (!isTyping(e.target) && ctx.peekClose?.()) { e.preventDefault(); return; } // an open hidden-status list closes first
       if (isTyping(e.target)) {
         e.preventDefault();
         if (hashRoute() === 'new') location.hash = '#/'; else e.target.blur();

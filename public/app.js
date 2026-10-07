@@ -444,7 +444,7 @@ function hiddenStrip() {
     `${status || '(no status)'} (${all.length}${filtering ? `, ${hits} match filter` : ''})`);
     const open = peek === status;
     return el('span', { class: 'stripentry' }, main,
-      el('button', { type: 'button', class: 'peekbtn', title: `Peek at the tickets in ${status || '(no status)'} without showing the column`, 'aria-label': `Peek at ${status || 'no-status'} tickets`, 'aria-expanded': String(open), 'aria-haspopup': 'menu', onclick: () => togglePeek(status) }, '▾'),
+      el('button', { type: 'button', class: `peekbtn${stripSel === status ? ' selected' : ''}`, 'data-status': status, title: `Peek at the tickets in ${status || '(no status)'} without showing the column`, 'aria-label': `Peek at ${status || 'no-status'} tickets`, 'aria-expanded': String(open), 'aria-haspopup': 'menu', onclick: () => togglePeek(status) }, '▾'),
       open && peekPopover(status));
   }));
 }
@@ -501,7 +501,8 @@ function peekPopover(status) {
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; },
   }, el('span', { class: 'id' }, `#${t.id}`), el('span', { class: 'ttl' }, t.title),
   el('span', { class: 'meta' }, t.priority && el('span', { class: 'chip prio' }, t.priority), t.area && el('span', { class: 'chip' }, t.area))))
-    : el('p', { class: 'hint' }, total ? `No tickets in ${status || '(no status)'} match the filter.` : `No tickets in ${status || '(no status)'}.`));
+    : el('p', { class: 'hint' }, total ? `No tickets in ${status || '(no status)'} match the filter.` : `No tickets in ${status || '(no status)'}.`),
+  el('p', { class: 'hint keys' }, 'j/k move · Enter opens · Space moves it · h/l other status · Esc or k at the top closes'));
 }
 document.addEventListener('mousedown', (e) => { if (peek && !e.target.closest?.('.stripentry')) { peek = null; if (document.querySelector('.board')) renderBoard(); } });
 
@@ -753,7 +754,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
     done.ticket ??= await api('POST', 'ideas', { text });
