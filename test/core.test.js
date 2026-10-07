@@ -183,3 +183,14 @@ test('addNote appends to Notes, creates the section, keeps the rest and handles 
     assert.throws(() => addNote(dir, '001-a.md', '  ', t.version, now), ValidationError);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('validate warns about dangling image links', () => {
+  const dir = tmp();
+  try {
+    fs.mkdirSync(path.join(dir, 'assets'));
+    fs.writeFileSync(path.join(dir, 'assets', 'ok.png'), 'x');
+    fs.writeFileSync(path.join(dir, '001-a.md'), SAMPLE + '\n![a](assets/ok.png)\n![b](assets/gone.png)\n![c](https://x.example/c.png)\n![d](../../etc/passwd)\n');
+    const msgs = validate(dir).map((p) => p.message);
+    assert.deepEqual(msgs.filter((m) => m.startsWith('image')), ['image not found: assets/gone.png', 'image not found: ../../etc/passwd']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

@@ -7,6 +7,9 @@ function inline(s) {
   const codes = [];
   s = s.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
   s = esc(s);
+  // images: relative paths only (ticket attachments); no remote or data: images
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) =>
+    /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(u) ? m : `<img src="${u}" alt="${alt}" loading="lazy">`);
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     safeUrl(u) ? `<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>` : m);
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');

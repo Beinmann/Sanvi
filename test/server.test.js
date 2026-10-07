@@ -145,3 +145,33 @@ test('splitSummary: leading Summary section is lifted out, optional, ends at nex
   assert.equal(splitSummary('# T\n## Summary\n\n## P').summary, null); // empty section: ignored
   assert.equal(splitSummary('# T\n## summary\nok').summary, 'ok');
 });
+
+test('image attachments: upload, serve, limits, validate', async () => {
+  const { app, dir, base } = await setup();
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
+  const up = (body, type = 'image/png', file = '001-a.md') => fetch(`${base}/api/tickets/${file}/assets`, { method: 'POST', headers: { 'content-type': type }, body });
+  try {
+    let r = await up(png);
+    assert.equal(r.status, 201);
+    assert.equal((await r.json()).path, 'assets/001-1.png');
+    assert.equal((await (await up(png)).json()).path, 'assets/001-2.png');
+    r = await fetch(`${base}/assets/001-1.png`);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await r.arrayBuffer()), png);
+    assert.equal((await fetch(`${base}/assets/..%2F001-a.md`)).status, 404);
+    assert.equal((await fetch(`${base}/assets/001-a.md`)).status, 404);
+    assert.equal((await up(png, 'image/svg+xml')).status, 400);
+    assert.equal((await up(Buffer.from('<script>'), 'image/png')).status, 400);
+    assert.equal((await up(Buffer.concat([png, Buffer.alloc(5 * 1024 * 1024)]))).status, 400);
+    assert.equal((await up(png, 'image/png', 'nope.md')).status, 404);
+    assert.equal((await fetch(`${base}/api/tickets/001-a.md/assets`, { method: 'POST', headers: { 'content-type': 'image/png', origin: 'http://evil.example' }, body: png })).status, 403);
+    assert.equal(fs.readdirSync(path.join(dir, 'assets')).length, 2);
+  } finally { await app.close(); }
+});
+
+test('markdown renders relative images only', () => {
+  assert.match(renderMarkdown('![shot](assets/001-1.png)'), /<img src="assets\/001-1.png" alt="shot"/);
+  assert.doesNotMatch(renderMarkdown('![x](https://evil.example/a.png)'), /<img/);
+  assert.doesNotMatch(renderMarkdown('![x](javascript:alert(1))'), /<img/);
+});

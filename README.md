@@ -61,6 +61,12 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   browsers see it too.
 - **Add status**: the "+ Status" button on the board (or "Add status…" in Ctrl+K) appends a
   status to `statuses:` in `_config.yml`; it becomes a column, a form option and the next number key.
+- **Images**: paste or drop an image into the description editor; it is saved as
+  `assets/<ticket id>-<n>.<ext>` next to the tickets (PNG/JPEG/GIF/WebP, max 5 MB) and a
+  `![screenshot](assets/...)` link is inserted. `tk validate` warns about image links to missing files.
+- **Pick up and drop**: `Space` on a focused card picks it up; `h`/`l` choose the column (hidden ones
+  too), `Space`/`Enter` drops, `1`-`9` drops at once, `Esc` cancels. Nothing is saved until the drop.
+- **Search from anywhere**: `/` (or `Ctrl+/` also while typing) goes to the board and focuses the search box.
 - **Comments**: `c` on a focused card (or the "+ note" on a card) opens a one-field box; Ctrl+Enter appends
   `- YYYY-MM-DD HH:MM: text` to the ticket's `## Notes` (created if missing).
 - **Hide columns**: the × in a column header hides it; a "Hidden: …" strip above the board lists hidden

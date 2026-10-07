@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig, addNote,
+  listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig, addNote, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
   ConflictError, NotFoundError, ValidationError,
   writeStatuses,
 } from './core.js';
@@ -47,6 +47,17 @@ function readJson(req) {
   });
 }
 
+// Raw request body, capped; an oversized upload is drained (not destroyed) so the error response still arrives.
+function readBuffer(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size <= limit) chunks.push(c); });
+    req.on('end', () => (size > limit ? reject(new ValidationError(`image too large (max ${limit / 1024 / 1024} MB)`)) : resolve(Buffer.concat(chunks))));
+    req.on('error', reject);
+  });
+}
+
 export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
   const extraHosts = new Set(allowedHosts.map((h) => h.toLowerCase()));
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
@@ -84,7 +95,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       let originHost = null;
       try { originHost = origin && new URL(origin).host; } catch { /* malformed */ }
       if (origin && originHost !== req.headers.host) return send(res, 403, { error: 'cross-origin request refused' });
-      if (!/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'content-type must be application/json' });
+      const isUpload = parts.length === 3 && parts[0] === 'tickets' && parts[2] === 'assets';
+      if (!isUpload && !/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'content-type must be application/json' });
     }
     if (parts[0] === 'config' && method === 'GET') return send(res, 200, configPayload());
     if (parts[0] === 'config' && method === 'PUT') {
@@ -115,6 +127,11 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       return send(res, 201, t);
     }
     if (parts.length === 2 && method === 'GET') return send(res, 200, readTicket(dir, decodeURIComponent(parts[1])));
+    if (parts.length === 3 && parts[2] === 'assets' && method === 'POST') {
+      const buf = await readBuffer(req, MAX_ASSET_BYTES);
+      const rel = saveAsset(dir, decodeURIComponent(parts[1]), buf, req.headers['content-type']);
+      return send(res, 201, { path: rel });
+    }
     if (parts.length === 3 && parts[2] === 'notes' && method === 'POST') {
       const { version, text } = await readJson(req);
       if (!version) throw new ValidationError('version is required');
@@ -156,6 +173,15 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       if (!hostAllowed(host)) { res.writeHead(403, { 'content-type': 'text/plain' }); return res.end(`forbidden host "${host}" (start with --allow-host ${host} to permit)`); }
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+      const am = req.method === 'GET' && /^\/assets\/([\w-]+\.(png|jpg|gif|webp))$/.exec(url.pathname);
+      if (am) { // only plain files in <tickets dir>/assets, by a whitelisted name
+        const file = path.join(dir, ASSET_DIR, am[1]);
+        if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+          res.writeHead(200, { 'content-type': ASSET_MIME[am[2]], 'x-content-type-options': 'nosniff', 'cache-control': 'no-cache' });
+          return res.end(fs.readFileSync(file));
+        }
+        res.writeHead(404); return res.end('not found');
+      }
       const entry = req.method === 'GET' && staticFile(url.pathname);
       if (entry) {
         res.writeHead(200, { 'content-type': entry[1], 'cache-control': 'no-store' });

@@ -155,3 +155,9 @@ body.holding .hiddenstrip .num, .board:has(.card:focus-visible) ~ .hiddenstrip .
 .summary { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--r); padding: 10px 14px; margin-bottom: 16px; }
 .summary h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 6px; color: var(--muted); }
 .summary .doc > :first-child { margin-top: 0; } .summary .doc > :last-child { margin-bottom: 0; }
+.doc img { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 4px; }
+.card.picked { outline: 2px dashed var(--accent); opacity: .6; }
+.col.target { outline: 2px solid var(--accent); background: var(--accent-soft); }
+.placeholder { border: 2px dashed var(--accent); border-radius: var(--r); padding: 10px 12px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.hiddenstrip button.target { outline: 2px solid var(--accent); background: var(--accent-soft); }
+.pickbar { margin-bottom: 10px; padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--r); background: var(--accent-soft); font-size: 13px; }

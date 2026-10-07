@@ -58,11 +58,19 @@ const ownVersions = new Set(); // versions this browser wrote; a refresh seeing 
 
 // The card being dragged; while held, the column headers show their number keys.
 let held = null;
-function endHold() { held = null; document.body.classList.remove('holding'); }
+// Keyboard pick-up (034): { file, status } = the card and the column it would land in. Nothing is
+// written until the drop; the state lives here so re-renders and live refreshes keep it.
+let pick = null;
+function endHold() { held = null; pick = null; document.body.classList.remove('holding'); }
+function setPick(p) {
+  pick = p;
+  document.body.classList.toggle('holding', !!p || !!held);
+  renderBoard();
+}
 
 function card(t, inText = false) {
   return el('a', {
-    class: `card${changedOnDisk.has(t.file) ? ' changed' : ''}`, 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
+    class: `card${changedOnDisk.has(t.file) ? ' changed' : ''}${pick?.file === t.file ? ' picked' : ''}`, 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); held = t.file; document.body.classList.add('holding'); },
     ondragend: (e) => { e.currentTarget.classList.remove('dragging'); endHold(); },
   },
@@ -174,7 +182,16 @@ function filterBar() {
 
 let pendingFocus = null; // file whose card gets focus on the next board render
 
+function pickBar() {
+  const t = pick && S.tickets.find((x) => x.file === pick.file);
+  if (!t) return null;
+  return el('div', { class: 'pickbar', role: 'status' }, el('strong', {}, `Moving #${t.id}`), ` → ${pick.status || '(no status)'}  ·  `,
+    el('kbd', {}, 'h'), ' ', el('kbd', {}, 'l'), ' choose column · ', el('kbd', {}, '1'), '-', el('kbd', {}, '9'), ' drop there · ',
+    el('kbd', {}, 'Space'), '/', el('kbd', {}, 'Enter'), ' drop · ', el('kbd', {}, 'Esc'), ' cancel');
+}
+
 function renderBoard() {
+  if (pick && !S.tickets.some((t) => t.file === pick.file)) { pick = null; document.body.classList.toggle('holding', !!held); } // the ticket is gone
   const hadFocus = document.activeElement?.id === 'search';
   const caret = hadFocus ? document.activeElement.selectionStart : 0;
   const target = pendingFocus || document.activeElement?.closest?.('.card')?.dataset.file;
@@ -199,13 +216,13 @@ function renderBoard() {
     return;
   }
   let num = 0;
-  view.replaceChildren(filterBar(), hiddenStrip(), el('div', { class: 'board' }, columns().map((status) => {
+  view.replaceChildren(filterBar(), hiddenStrip(), pickBar(), el('div', { class: 'board' }, columns().map((status) => {
     const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
     if (hidden.has(status)) return null;
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
       .sort((a, b) => scoreTicket(b, Q.parsed) - scoreTicket(a, Q.parsed) || (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
     return el('section', {
-      class: 'col', 'data-status': status,
+      class: `col${pick?.status === status ? ' target' : ''}`, 'data-status': status,
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add('over'); },
       ondragleave: (e) => e.currentTarget.classList.remove('over'),
       ondrop: (e) => {
@@ -322,7 +339,7 @@ function hiddenStrip() {
     const hits = filtering ? all.filter((t) => matchTicket(t, Q.parsed)).length : 0;
     const n = numbered.indexOf(status) + 1; // same numbering as the column badges
     return el('button', {
-      type: 'button', class: hits ? 'hit' : '', 'data-status': status, title: `Show ${status || '(no status)'} (drop a ticket here to move it without showing)`,
+      type: 'button', class: `${hits ? 'hit' : ''}${pick?.status === status ? ' target' : ''}`, 'data-status': status, title: `Show ${status || '(no status)'} (drop a ticket here to move it without showing)`,
       onclick: () => toggleColumn(status),
       ondragover: (e) => { if (e.dataTransfer.types.includes(COLUMN_DRAG)) return; e.preventDefault(); e.currentTarget.classList.add('over'); },
       ondragleave: (e) => e.currentTarget.classList.remove('over'),
@@ -358,12 +375,31 @@ function select(values, current, onchange, id) {
     opts.map((v) => el('option', { value: v, selected: v === current }, v || '(none)')));
 }
 
+// Upload an image for the open ticket and insert `![screenshot](assets/<id>-<n>.<ext>)` at the cursor.
+// On any error the text is left as it was.
+async function attachImage(ta, blob) {
+  try {
+    const res = await fetch(`/api/tickets/${encodeURIComponent(D.file)}/assets`, { method: 'POST', headers: { 'content-type': blob.type }, body: blob });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    const md = `![screenshot](${data.path})`;
+    const at = ta.selectionEnd;
+    ta.setRangeText(md, at, at, 'end');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    toast(`Image saved as ${data.path}`);
+  } catch (e) { toast(`Image not added: ${e.message}`); }
+}
+const imageOf = (dt) => [...(dt?.files ?? [])].find((f) => f.type.startsWith('image/'));
+
 function renderTab(focusEditor = false) {
   const box = $('#content');
   if (D.tab === 'edit') {
     const ta = el('textarea', {
       class: 'editor', spellcheck: false,
       oninput: (e) => { D.draft.body = e.target.value; updateState(); },
+      onpaste: (e) => { const f = imageOf(e.clipboardData); if (f) { e.preventDefault(); attachImage(e.currentTarget, f); } },
+      ondragover: (e) => { if ([...(e.dataTransfer?.types ?? [])].includes('Files')) e.preventDefault(); },
+      ondrop: (e) => { const f = imageOf(e.dataTransfer); if (f) { e.preventDefault(); attachImage(e.currentTarget, f); } },
     });
     ta.value = D.draft.body;
     const vimOn = vimPref.get();
@@ -488,6 +524,7 @@ async function route() {
     await openTicket(decodeURIComponent(h.slice(4)), tab);
   } else {
     D = null;
+    if (pick && h !== '#/' && !h.startsWith('#/?')) setPick(null);
     pendingFocus = S.lastFile ?? null;
     if (h === '#/new') renderNew();
     else if (h === '#/idea') location.replace('#/'); // old bookmark: the idea box is an overlay now (i / Ctrl+I)
@@ -508,7 +545,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, heldFile: () => held, addStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, heldFile: () => pick?.file ?? held, pick: () => pick, setPick, boardHash: hashForState, addStatus, toggleColumn, isHidden,
   saveIdea: async (text) => { const t = await api('POST', 'ideas', { text }); toast(`Idea captured as #${t.id}`); return t; },
   detail: () => D,
   addNote: async (file, text) => {

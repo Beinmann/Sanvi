@@ -36,13 +36,15 @@ export const HELP = [
     ['b', 'Go to the board'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
-    ['/', 'Board: focus the search box'],
+    ['/', 'Go to the search box (from any view; goes to the board first)'],
+    ['Ctrl+/', 'Same, also while typing; an unsaved edit asks before it is left'],
     ['Esc', 'Close overlay, leave a field, go back to the board'],
   ]],
   ['Board', [
     ['j / k', 'Next / previous card in the column'],
     ['h / l', 'Previous / next column'],
     ['Enter', 'Open the focused ticket'],
+    ['Space', 'Pick up the focused card; h / l choose the column, Space or Enter drops, Esc cancels'],
     ['c', 'Add a timestamped comment to the focused (or hovered) ticket; ☰ on a card opens its menu'],
     ['1-9', 'Move the focused (or dragged) ticket to that column; numbers show on the column headers'],
     ['s', 'Set status of the focused ticket (menu)'],
@@ -211,6 +213,7 @@ export function initKeys(ctx) {
       { label: 'Add status…', hint: 'column', run: openAddStatus },
       { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
       { label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
+      { label: 'Search tickets', hint: '/ or Ctrl+/', run: focusSearch },
       { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
       { label: 'Show keyboard shortcuts', hint: '?', run: openHelp },
     );
@@ -257,6 +260,18 @@ export function initKeys(ctx) {
     openOverlay(box, { focus: input });
   }
 
+  // Focus the board's search box from any view. Off the board this navigates first (keeping the current
+  // query), through the normal hash route, so the guard against discarding an unsaved edit applies; if
+  // the user declines, we never reach the board and nothing is focused.
+  async function focusSearch() {
+    if (hashRoute() !== 'board') location.hash = ctx.boardHash();
+    for (let i = 0; i < 30; i++) {
+      const input = hashRoute() === 'board' && $('#search');
+      if (input) { input.focus(); input.select(); return; }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+
   // ---- global keys
   document.addEventListener('keydown', (e) => {
     if (e.isComposing || e.defaultPrevented) return;
@@ -267,6 +282,12 @@ export function initKeys(ctx) {
       if (overlay?.node.querySelector('.palette')) closeOverlay(); else openPalette();
       return;
     }
+    if (mod && !e.altKey && e.key === '/') { // works while typing, too
+      e.preventDefault();
+      if (overlay) closeOverlay();
+      focusSearch();
+      return;
+    }
     if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'i') { // works while typing, too
       e.preventDefault();
       if (overlay?.node.querySelector('textarea[aria-label="Quick idea"]')) return;
@@ -274,6 +295,7 @@ export function initKeys(ctx) {
       return;
     }
     if (e.key === 'Escape') {
+      if (!overlay && ctx.pick?.() && !isTyping(e.target)) { e.preventDefault(); ctx.setPick(null); return; }
       if (overlay) { e.preventDefault(); closeOverlay(); return; }
       if (isTyping(e.target)) {
         e.preventDefault();
@@ -289,9 +311,20 @@ export function initKeys(ctx) {
     if (mod || e.altKey || isTyping(e.target)) return;
 
     const board = hashRoute() === 'board';
+    // Keyboard pick-up (034): while a card is picked up only these keys act, so the board is never half-held.
+    const pk = board && ctx.pick?.();
+    if (pk && e.key !== '?' && e.key !== '/') {
+      const list = ctx.columns();
+      const at = list.indexOf(pk.status);
+      if (e.key === 'h' || e.key === 'l') ctx.setPick({ ...pk, status: list[Math.max(0, Math.min(list.length - 1, at + (e.key === 'l' ? 1 : -1)))] });
+      else if (e.key === ' ' || e.key === 'Enter') { const t = S.tickets.find((x) => x.file === pk.file); ctx.setPick(null); if (t && t.status !== pk.status) ctx.moveTicket(pk.file, pk.status); }
+      else if (/^[1-9]$/.test(e.key)) { const target = list.filter(Boolean)[Number(e.key) - 1]; if (target == null) return; ctx.moveTicket(pk.file, target); }
+      e.preventDefault(); // j/k/n/i/s...: swallowed until the card is dropped or Esc
+      return;
+    }
     switch (e.key) {
       case '?': openHelp(); break;
-      case '/': if (board) $('#search')?.focus(); else return; break;
+      case '/': focusSearch(); break;
       case 'n': location.hash = '#/new'; break;
       case 'b': location.hash = '#/'; break;
       case 'i': openIdea(); break;
@@ -305,6 +338,13 @@ export function initKeys(ctx) {
         const target = ctx.columns().filter(Boolean)[Number(e.key) - 1];
         if (!file || target == null) return;
         ctx.moveTicket(file, target);
+        break;
+      }
+      case ' ': { // pick the focused card up (only the card itself, so buttons inside it keep working)
+        const c = board && e.target.classList?.contains('card') ? e.target : null;
+        const t = c && S.tickets.find((x) => x.file === c.dataset.file);
+        if (!t) return;
+        ctx.setPick({ file: t.file, status: t.status });
         break;
       }
       case 'c': { const f = board && (focusedCard()?.dataset.file ?? hoverFile); if (!f) return; openNote(f); break; }

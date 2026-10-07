@@ -307,6 +307,44 @@ export function createIdea(dir, { text, status = IDEA_STATUS } = {}) {
   return createTicket(dir, { title, status, body });
 }
 
+// --- images attached to tickets ----------------------------------------
+
+export const ASSET_DIR = 'assets';
+export const MAX_ASSET_BYTES = 5 * 1024 * 1024;
+export const ASSET_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+export const ASSET_MIME = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
+
+// The bytes must really be the image type claimed (no HTML or script smuggled in under image/png).
+function sniffImage(buf) {
+  if (buf.length > 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'png';
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
+  if (buf.length > 6 && /^GIF8[79]a$/.test(buf.subarray(0, 6).toString('latin1'))) return 'gif';
+  if (buf.length > 12 && buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') return 'webp';
+  return null;
+}
+
+// Store an image next to the tickets as assets/<ticket id>-<n>.<ext> and return its relative path.
+export function saveAsset(dir, file, buf, mime) {
+  const t = readTicket(dir, file);
+  const ext = ASSET_TYPES[String(mime).split(';')[0].trim().toLowerCase()];
+  if (!ext) throw new ValidationError('only PNG, JPEG, GIF and WebP images are accepted');
+  if (!buf.length) throw new ValidationError('empty image');
+  if (buf.length > MAX_ASSET_BYTES) throw new ValidationError(`image too large (max ${MAX_ASSET_BYTES / 1024 / 1024} MB)`);
+  if (sniffImage(buf) !== ext) throw new ValidationError(`content is not a valid ${ext.toUpperCase()} image`);
+  const adir = path.join(dir, ASSET_DIR);
+  fs.mkdirSync(adir, { recursive: true });
+  const prefix = `${t.id}-`;
+  let n = 0;
+  for (const name of fs.readdirSync(adir)) {
+    const m = name.startsWith(prefix) && /^(\d+)\.\w+$/.exec(name.slice(prefix.length));
+    if (m) n = Math.max(n, Number(m[1]));
+  }
+  for (;;) { // wx: never overwrite, retry if another writer took the number
+    const name = `${prefix}${++n}.${ext}`;
+    try { fs.writeFileSync(path.join(adir, name), buf, { flag: 'wx' }); return `${ASSET_DIR}/${name}`; } catch (e) { if (e.code !== 'EEXIST') throw e; }
+  }
+}
+
 // --- validation -------------------------------------------------------
 
 export function validate(dir) {
@@ -326,6 +364,12 @@ export function validate(dir) {
     if (!t.hasTitle) add(t.file, 'warn', 'no "# title" heading');
     if (!/^##\s+Problem/im.test(t.body)) add(t.file, 'warn', 'no "Problem / motivation" section');
     if (!/^##\s+Acceptance criteria/im.test(t.body)) add(t.file, 'warn', 'no "Acceptance criteria" section');
+    for (const m of t.body.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)) {
+      const u = m[1];
+      if (/^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(u)) continue;
+      const target = path.resolve(dir, decodeURIComponent(u.split(/[?#]/)[0]));
+      if (!target.startsWith(dir + path.sep) || !fs.existsSync(target)) add(t.file, 'warn', `image not found: ${u}`);
+    }
   }
   for (const name of fs.readdirSync(dir)) {
     if (name.endsWith('.md') && !isTicketFile(name) && !/^(_|README)/.test(name)) {
