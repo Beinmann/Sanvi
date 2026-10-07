@@ -201,6 +201,11 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
       if (!hostAllowed(host)) { res.writeHead(403, { 'content-type': 'text/plain' }); return res.end(`forbidden host "${host}" (start with --allow-host ${host} to permit)`); }
       const url = new URL(req.url, 'http://localhost');
+      res.on('finish', () => { // failed requests go to the change log so a repeat can be diagnosed (409 is logged with detail elsewhere)
+        if (res.statusCode >= 400 && res.statusCode !== 404 && res.statusCode !== 409) {
+          changelog.log({ ticket: '-', action: 'http-error', method: req.method, path: url.pathname, status: res.statusCode });
+        }
+      });
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
       const am = req.method === 'GET' && /^\/assets\/([\w-]+\.(png|jpg|gif|webp))$/.exec(url.pathname);
       if (am) { // only plain files in <tickets dir>/assets, by a whitelisted name
@@ -225,6 +230,11 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       if (!res.headersSent) send(res, 500, { error: 'internal error' });
     }
   });
+
+  // Node closes idle keep-alive connections after 5 s by default; a proxy that reuses such a connection
+  // answers 502 Bad Gateway. Stay open longer than typical proxy idle timeouts (60-ish seconds).
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
 
   let timer = null;
   const watcher = fs.watch(dir, () => {

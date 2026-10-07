@@ -1,4 +1,5 @@
 import { renderMarkdown, splitSummary } from './md.js';
+import { serialQueue, coalesce, isTransient, describeFailure } from './queue.js';
 import { parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
@@ -28,13 +29,16 @@ function toast(msg) {
 }
 
 async function api(method, path, body) {
-  const res = await fetch(`/api/${path}`, {
-    method,
-    headers: body ? { 'content-type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`/api/${path}`, {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) { throw Object.assign(new Error(describeFailure(0)), { cause: e }); } // no status: network error
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { status: res.status, data });
+  if (!res.ok) throw Object.assign(new Error(describeFailure(res.status, res.statusText, data)), { status: res.status, data });
   return data;
 }
 
@@ -116,16 +120,32 @@ function columnDragStart(e, status) {
 }
 const COLUMN_DRAG = 'application/x-status-column';
 
-async function moveTicket(file, status) {
+// Moves run one at a time (each followed by its refresh), so quick repeats cannot pile up requests.
+const moveQueue = serialQueue();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function moveTicket(file, status) {
   endHold();
+  return moveQueue(() => doMove(file, status));
+}
+async function doMove(file, status) {
   const t = S.tickets.find((x) => x.file === file);
   if (!t || t.status === status) return;
+  const put = () => api('PUT', `tickets/${encodeURIComponent(file)}`, { version: t.version, fields: { status } });
+  let transient = false;
   try {
-    const saved = await api('PUT', `tickets/${encodeURIComponent(file)}`, { version: t.version, fields: { status } });
+    let saved;
+    try { saved = await put(); } catch (e) {
+      if (!isTransient(e)) throw e;
+      await sleep(300); // gateway hiccup or dropped connection: once more; the version check keeps it from applying twice
+      try { saved = await put(); } catch (e2) {
+        if (e2.status === 409 && e2.data?.current?.status === status) saved = e2.data.current; // the first try did get through
+        else { transient = isTransient(e2); throw e2; }
+      }
+    }
     ownVersions.add(saved.version);
     if (hidden.has(status)) toast(`#${t.id} moved to ${status || '(no status)'} (hidden)`);
   } catch (e) {
-    toast(e.status === 409 ? `#${t.id} changed on disk; not moved. Board refreshed.` : `Move failed: ${e.message}`);
+    toast(e.status === 409 ? `#${t.id} changed on disk; not moved. Board refreshed.` : `Move failed: ${e.message}${transient ? ' - the move was not saved, board reloaded' : ''}`);
   }
   await refreshAll();
 }
@@ -657,7 +677,8 @@ $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 
-async function refreshAll() {
+const refreshAll = coalesce(doRefresh); // bursts of refreshes (moves, live events) share one request pair
+async function doRefresh() {
   const before = new Map(S.tickets.map((t) => [t.file, t.version]));
   try {
     [S.cfg, S.tickets] = await Promise.all([api('GET', 'config'), api('GET', 'tickets?bodies=1')]);
