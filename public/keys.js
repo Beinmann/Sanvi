@@ -44,7 +44,6 @@ export const HELP = [
     ['h / l', 'Previous / next column'],
     ['Enter', 'Open the focused ticket'],
     ['s', 'Set status of the focused ticket (menu)'],
-    ['Shift+H / Shift+L', 'Move the focused ticket to the previous / next status'],
   ]],
   ['Ticket', [
     ['e / p', 'Edit / preview'],
@@ -231,16 +230,6 @@ export function initKeys(ctx) {
       case 'k': if (board) moveFocus('prev'); else return; break;
       case 'h': if (board) moveFocus('left'); else return; break;
       case 'l': if (board) moveFocus('right'); else return; break;
-      case 'H': case 'L': {
-        const card = board && focusedCard();
-        if (!card) return;
-        const t = S.tickets.find((x) => x.file === card.dataset.file);
-        const cols = ctx.columns().filter(Boolean);
-        const target = cols[cols.indexOf(t?.status) + (e.key === 'L' ? 1 : -1)];
-        if (target == null) return;
-        ctx.moveTicket(t.file, target);
-        break;
-      }
       case 'e': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('edit'); else return; break;
       case 'p': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('view'); else return; break;
       default: return;
