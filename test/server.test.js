@@ -105,7 +105,7 @@ test('serves the frontend modules', async () => {
       const r = await fetch(`${base}/${name}`);
       assert.equal(r.status, 200, name);
       assert.match(r.headers.get('content-type'), /javascript/);
-      for (const m of (await r.text()).matchAll(/from '\.\/([\w.-]+\.js)'/g)) todo.push(m[1]);
+      for (const m of (await r.text()).matchAll(/(?:from\s*|import\s*\(\s*)['"]\.\/([\w.-]+\.js)['"]/g)) todo.push(m[1]);
     }
     assert.ok(seen.size > 1, 'follows imports');
     for (const p of ['/', '/style.css']) assert.equal((await fetch(base + p)).status, 200, p);
