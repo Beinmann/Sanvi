@@ -37,3 +37,9 @@ test('transient failures and messages', () => {
   assert.match(describeFailure(0), /not reachable/);
   assert.equal(describeFailure(418, '', {}), 'HTTP 418');
 });
+
+import { compact } from '../public/util.js';
+test('compact drops null, undefined and false but keeps nodes, text and nested lists', () => {
+  assert.deepEqual(compact(null, 'a', false, undefined, ['b', null, ['c', false]], 0), ['a', 'b', 'c', 0]);
+  assert.deepEqual(compact(null, null), []);
+});

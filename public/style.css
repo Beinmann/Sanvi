@@ -87,8 +87,8 @@ textarea.editor { width: 100%; min-height: 60vh; font: 14px/1.5 ui-monospace, mo
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 h1:focus { outline: none; }
 .card:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; z-index: 30; }
-.dialog { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); width: min(560px, 92vw); max-height: 70vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; box-sizing: border-box; z-index: 30; }
+.dialog { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-sizing: border-box; width: min(560px, 100%); max-height: 76vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
 .palette input { width: 100%; border: 0; border-bottom: 1px solid var(--border); border-radius: var(--r) var(--r) 0 0; padding: 12px 14px; font-size: 16px; }
 .palette ul { list-style: none; margin: 0; padding: 4px; }
 .palette li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
@@ -125,7 +125,7 @@ table.tickets td.none { color: var(--muted); text-align: center; }
 
 .col h2 .num { display: none; font-size: 11px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--text); }
 body.moving .col h2 .num { display: inline-block; }
-.dialog.form { padding: 16px; display: grid; gap: 10px; }
+.dialog.form { padding: 20px 22px; display: grid; gap: 12px; }
 .dialog.form h2, .dialog.form p { margin: 0; }
 
 .col h2 .hide { all: unset; cursor: pointer; color: var(--muted); padding: 0 4px; border-radius: 4px; }
@@ -182,7 +182,11 @@ table.trash th, table.trash td { text-align: left; padding: 6px 10px; border-bot
 
 .dialog.form .hint { font-size: 12px; color: var(--muted); }
 .dialog.form textarea { width: 100%; box-sizing: border-box; }
-.dialog.form .buttons { display: flex; gap: 8px; }
+.dialog.form .buttons { display: flex; gap: 8px; margin-top: 4px; }
+.dialog.form .hint { line-height: 1.45; }
+.dialog.form textarea { min-height: 7em; }
+.dialog.form h2 { font-size: 18px; }
+.dialog.form .thumb img { max-width: 120px; }
 /* the strip entry and its peek arrow read as one split button */
 .stripentry > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .stripentry .peekbtn { border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 6px 7px; margin-left: -1px; }

@@ -101,11 +101,30 @@ export function initKeys(ctx) {
     const prev = document.activeElement;
     const backdrop = el('div', { class: 'overlay', onmousedown: (e) => { if (e.target === backdrop) closeOverlay(); } }, node);
     document.body.append(backdrop);
+    const target = focus ?? node;
+    // The page may not own the window focus yet (e.g. right after an OS screenshot tool): a single focus()
+    // is then silently lost. Retry on the next frame, when the window gets focus, and redirect typing.
+    const refocus = () => { if (overlay?.node === backdrop && !backdrop.contains(document.activeElement)) target.focus(); };
+    const redirect = (e) => {
+      if (overlay?.node !== backdrop || backdrop.contains(document.activeElement)) return;
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) target.focus(); // the key then types into it
+      else refocus();
+    };
+    window.addEventListener('focus', refocus);
+    document.addEventListener('visibilitychange', refocus);
+    document.addEventListener('keydown', redirect, true);
     overlay = {
       node: backdrop,
-      close() { backdrop.remove(); overlay = null; onClose?.(); if (prev?.isConnected) prev.focus(); },
+      close() {
+        window.removeEventListener('focus', refocus);
+        document.removeEventListener('visibilitychange', refocus);
+        document.removeEventListener('keydown', redirect, true);
+        backdrop.remove(); overlay = null; onClose?.(); if (prev?.isConnected) prev.focus();
+      },
     };
-    (focus ?? node).focus();
+    target.focus();
+    requestAnimationFrame(refocus);
+    setTimeout(refocus, 120);
   }
   function closeOverlay() { overlay?.close(); }
 

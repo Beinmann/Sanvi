@@ -1,4 +1,5 @@
 import { renderMarkdown, splitSummary } from './md.js';
+import { compact } from './util.js';
 import { serialQueue, coalesce, isTransient, describeFailure } from './queue.js';
 import { parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
 import { initKeys } from './keys.js';
@@ -18,6 +19,9 @@ function el(tag, props = {}, ...kids) {
   for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid);
   return n;
 }
+
+// replaceChildren that ignores null/false children (optional pieces), instead of printing "null".
+const show = (target, ...nodes) => target.replaceChildren(...compact(nodes));
 
 let toastTimer;
 function toast(msg) {
@@ -238,13 +242,13 @@ function renderBoard() {
     window.scrollTo(0, scroll.y);
   };
   if (Q.view === 'table') {
-    view.replaceChildren(filterBar(), tableView());
+    show(view, filterBar(), tableView());
     restore();
     if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
     return;
   }
   let num = 0;
-  view.replaceChildren(filterBar(), hiddenStrip(), hiddenIdNotice(), pickBar(), el('div', { class: 'board' }, columns().map((status) => {
+  show(view, filterBar(), hiddenStrip(), hiddenIdNotice(), pickBar(), el('div', { class: 'board' }, columns().map((status) => {
     const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
     if (hidden.has(status)) return null;
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
@@ -558,7 +562,7 @@ function renderDetail({ fresh = false, edit = false } = {}) {
   const ed = document.activeElement?.classList?.contains('editor') ? document.activeElement : null;
   const sel = ed && [ed.selectionStart, ed.selectionEnd];
   const d = D.draft;
-  view.replaceChildren(el('div', { class: 'detail' },
+  show(view, el('div', { class: 'detail' },
     el('a', { href: '#/' }, '← Board'),
     el('h1', { id: 'title', tabindex: '-1' }),
     el('div', { class: 'bar' },
@@ -586,7 +590,7 @@ async function openTicket(file, tab = 'view') {
     renderDetail({ fresh: true, edit: tab === 'edit' });
   } catch (e) {
     D = null;
-    view.replaceChildren(el('p', {}, `Could not open ${file}: ${e.message} `, el('a', { href: '#/' }, 'Back to board')));
+    show(view, el('p', {}, `Could not open ${file}: ${e.message} `, el('a', { href: '#/' }, 'Back to board')));
   }
 }
 
@@ -609,7 +613,7 @@ async function refreshDetail() {
 
 function renderNew() {
   const f = { title: '', area: '', status: S.cfg.statuses[0] || 'open', priority: '' };
-  view.replaceChildren(el('form', {
+  show(view, el('form', {
     class: 'newform',
     onsubmit: async (e) => {
       e.preventDefault();
@@ -653,7 +657,7 @@ async function renderTrash() {
   let items;
   try { items = await api('GET', 'trash'); } catch (e) { toast(`Trash failed: ${e.message}`); return; }
   const act = async (fn, msg) => { try { await fn(); toast(msg); } catch (e) { toast(e.message); } await renderTrash(); };
-  view.replaceChildren(el('div', { class: 'detail' }, el('a', { href: '#/' }, '← Board'), el('h1', {}, 'Trash'),
+  show(view, el('div', { class: 'detail' }, el('a', { href: '#/' }, '← Board'), el('h1', {}, 'Trash'),
     el('p', { class: 'hint' }, 'Deleted tickets are kept for 30 days, then removed for good. Restoring never overwrites a ticket; if the id was reused the ticket gets the next free id.'),
     items.length ? el('table', { class: 'trash' }, el('thead', {}, el('tr', {}, ['ID', 'Title', 'Days left', ''].map((h) => el('th', {}, h)))),
       el('tbody', {}, items.map((x) => el('tr', {}, el('td', {}, `#${x.id}`), el('td', {}, x.title), el('td', {}, `${x.daysLeft}`),
