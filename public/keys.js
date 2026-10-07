@@ -9,6 +9,18 @@ export function matches(label, query) {
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((tok) => l.includes(tok.replace(/^#/, '')));
 }
 
+/** "#20", "#020" or "20" -> 20; anything else -> null. */
+export function parseTicketRef(text) {
+  const m = /^\s*#?(\d{1,4})\s*$/.exec(text || '');
+  return m ? Number(m[1]) : null;
+}
+
+/** Tickets for a typed id: the one with that id, else those whose id starts with the typed digits (#2 -> 2, 20..29). */
+export function ticketsByRef(tickets, n) {
+  const exact = tickets.filter((t) => Number(t.id) === n);
+  return exact.length ? exact : tickets.filter((t) => String(Number(t.id)).startsWith(String(n)));
+}
+
 /**
  * Move within board columns. `cols` is an array of arrays of items; `pos` is
  * {col, row} or null. Returns the new {col, row}, or null if nothing to focus.
@@ -48,7 +60,7 @@ export const isTyping = (t) => !!t && (t.isContentEditable || ['INPUT', 'TEXTARE
 
 export const HELP = [
   ['Everywhere', [
-    ['Ctrl+K', 'Command menu: jump to a ticket, change status, new ticket'],
+    ['Ctrl+K', 'Command menu: commands, jump to a ticket by title; type #20 for that ticket\'s actions (status, priority, area, comment, delete); Esc or Backspace on empty input goes one step back'],
     ['?', 'Show / hide this help'],
     ['n', 'New ticket'],
     ['b', 'Go to the board'],
@@ -313,66 +325,126 @@ export function initKeys(ctx) {
   document.addEventListener('add-status', openAddStatus);
   document.addEventListener('open-idea', () => { if (!overlay) openIdea(); });
 
-  function commandItems(mode) {
-    const file = contextFile();
-    const t = file && S.tickets.find((x) => x.file === file);
-    const items = [];
-    const statuses = ctx.columns().filter(Boolean);
-    if (t) {
-      for (const s of statuses) {
-        if (s !== (ctx.detail()?.draft.status ?? t.status)) {
-          items.push({ label: `Set #${t.id} status: ${s}`, hint: 'status', run: () => (ctx.detail() ? ctx.setDraftStatus(s) : ctx.moveTicket(t.file, s)) });
+  // ---- command palette: a stack of levels. Each level has a placeholder and rows(query) giving
+  // [{ heading } | { label, hint, run } | { label, hint, push: () => level }]; `always` rows skip the text filter.
+  const filterRows = (rows, q) => {
+    const out = [];
+    let head = null;
+    for (const r of rows) {
+      if (r.heading) { head = r; continue; }
+      if (r.always || matches(r.label, q)) { if (head) { out.push(head); head = null; } out.push(r); }
+    }
+    return out;
+  };
+  const fieldOf = (t, field) => (ctx.detail()?.file === t.file ? ctx.detail().draft[field] : t[field]) ?? '';
+
+  function valueLevel(t, field) {
+    const cur = fieldOf(t, field);
+    if (field === 'area') {
+      const areas = [...new Set(S.tickets.map((x) => x.area).filter(Boolean))].sort();
+      return {
+        placeholder: `Area for #${t.id}: type a name or pick one…`,
+        rows: (q) => [...areas.map((a) => ({ label: a, hint: a === cur ? 'current' : '', run: () => ctx.setField(t.file, 'area', a) })),
+          { label: '(none)', hint: cur === '' ? 'current' : '', run: () => ctx.setField(t.file, 'area', '') },
+          ...(q.trim() && !areas.includes(q.trim()) ? [{ label: `Set area to “${q.trim()}”`, always: true, run: () => ctx.setField(t.file, 'area', q.trim()) }] : [])],
+      };
+    }
+    const values = field === 'status' ? ctx.columns().filter(Boolean) : ['high', 'medium', 'low', ''];
+    return {
+      placeholder: `${field[0].toUpperCase()}${field.slice(1)} for #${t.id}…`,
+      rows: () => values.map((v) => ({ label: v || '(none)', hint: v === cur ? 'current' : '',
+        run: () => (field === 'status' ? (ctx.detail()?.file === t.file ? ctx.setDraftStatus(v) : ctx.moveTicket(t.file, v)) : ctx.setField(t.file, field, v)) })),
+    };
+  }
+
+  function ticketLevel(t) {
+    const hint = (f) => fieldOf(t, f) || '(none)';
+    return {
+      placeholder: `Actions for #${t.id} ${t.title}`,
+      rows: () => [
+        { label: 'Open', hint: 'Enter', run: () => { location.hash = `#/t/${encodeURIComponent(t.file)}`; } },
+        { label: 'Change status…', hint: hint('status'), push: () => valueLevel(t, 'status') },
+        { label: 'Change priority…', hint: hint('priority'), push: () => valueLevel(t, 'priority') },
+        { label: 'Change area…', hint: hint('area'), push: () => valueLevel(t, 'area') },
+        { label: 'Add comment', hint: 'c', run: () => openNote(t.file) },
+        { label: 'Delete…', hint: 'd', run: () => openConfirmDelete(t.file) },
+      ],
+    };
+  }
+
+  function columnsLevel() {
+    return { placeholder: 'Show or hide a column…', rows: () => ctx.columns().map((c) => ({ label: `${ctx.isHidden(c) ? 'Show' : 'Hide'} ${c || '(no status)'}`, hint: ctx.isHidden(c) ? 'hidden' : 'shown', run: () => ctx.toggleColumn(c) })) };
+  }
+
+  function rootLevel() {
+    return {
+      placeholder: 'Jump to ticket, #20 for its actions, or run a command…',
+      rows: (q) => {
+        const ref = parseTicketRef(q);
+        if (ref !== null) { // #20 / 020: that ticket's actions
+          const hits = ticketsByRef(S.tickets, ref);
+          return hits.length ? [{ heading: 'Tickets' }, ...hits.map((x) => ({ label: `#${x.id} ${x.title}`, hint: x.status, always: true, push: () => ticketLevel(x) }))] : [];
         }
-      }
-    }
-    if (mode === 'status') return items;
-    if (t) items.push({ label: ctx.detail() ? 'Add comment to this ticket' : `Add comment to #${t.id}`, hint: 'c', run: () => openNote(t.file) });
-    if (t) items.push({ label: `Delete #${t.id}…`, hint: 'd', run: () => openConfirmDelete(t.file) });
-    items.push({ label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } });
-    items.push(
-      { label: 'Add status…', hint: 'column', run: openAddStatus },
-      { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
-      { label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
-      { label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
-      { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
-      { label: 'Show keyboard shortcuts', hint: '?', run: openHelp },
-    );
-    for (const c of ctx.columns()) {
-      items.push({ label: `${ctx.isHidden(c) ? 'Show' : 'Hide'} column: ${c || '(no status)'}`, hint: 'column', run: () => ctx.toggleColumn(c) });
-    }
-    for (const x of S.tickets) {
-      items.push({ label: `#${x.id} ${x.title}`, hint: x.status, run: () => { location.hash = `#/t/${encodeURIComponent(x.file)}`; } });
-    }
-    return items;
+        const file = contextFile();
+        const t = file && S.tickets.find((x) => x.file === file);
+        const rows = [];
+        if (t) rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', push: () => ticketLevel(t) });
+        rows.push({ heading: 'Commands' },
+          { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
+          { label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
+          { label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
+          { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
+          { label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
+          { label: 'Add status…', hint: 'column', run: openAddStatus },
+          { label: 'Columns…', hint: 'show / hide', push: columnsLevel },
+          { label: 'Show keyboard shortcuts', hint: '?', run: openHelp });
+        if (q.trim()) rows.push({ heading: 'Tickets' }, ...S.tickets.map((x) => ({ label: `#${x.id} ${x.title}`, hint: x.status, run: () => { location.hash = `#/t/${encodeURIComponent(x.file)}`; } })));
+        return rows;
+      },
+    };
   }
 
   function openPalette(mode = 'all') {
-    const all = commandItems(mode);
-    if (mode === 'status' && !all.length) { ctx.toast('No ticket selected'); return; }
+    const file = contextFile();
+    const t = file && S.tickets.find((x) => x.file === file);
+    if (mode === 'status' && !t) { ctx.toast('No ticket selected'); return; }
+    const stack = [mode === 'status' ? valueLevel(t, 'status') : rootLevel()];
     let shown = [], sel = 0;
     const input = el('input', {
       type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'cmd-list', 'aria-autocomplete': 'list',
-      placeholder: mode === 'status' ? 'Set status…' : 'Jump to ticket or run a command…', autocomplete: 'off', spellcheck: false,
+      placeholder: stack[0].placeholder, autocomplete: 'off', spellcheck: false,
     });
     const list = el('ul', { id: 'cmd-list', role: 'listbox' });
     const box = el('div', { class: 'dialog palette', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Command menu' }, input, list);
+    const top = () => stack[stack.length - 1];
     const paint = () => {
-      shown = all.filter((i) => matches(i.label, input.value)).slice(0, 50);
+      const rows = filterRows(top().rows(input.value), input.value).slice(0, 50);
+      shown = rows.filter((r) => !r.heading);
       sel = Math.min(sel, Math.max(shown.length - 1, 0));
-      list.replaceChildren(...(shown.length ? shown.map((i, n) => el('li', {
-        id: `cmd-${n}`, role: 'option', 'aria-selected': String(n === sel), class: n === sel ? 'sel' : '',
-        onmousedown: (e) => { e.preventDefault(); run(i); },
-      }, el('span', {}, i.label), el('small', {}, i.hint ?? ''))) : [el('li', { class: 'none' }, 'No matches')]));
+      list.replaceChildren(...(shown.length ? rows.map((r) => {
+        if (r.heading) return el('li', { class: 'heading', role: 'presentation' }, r.heading);
+        const n = shown.indexOf(r);
+        return el('li', {
+          id: `cmd-${n}`, role: 'option', 'aria-selected': String(n === sel), class: n === sel ? 'sel' : '',
+          onmousedown: (e) => { e.preventDefault(); run(r); },
+        }, el('span', {}, r.label), el('small', {}, r.hint ?? ''));
+      }) : [el('li', { class: 'none' }, 'No matches')]));
       input.setAttribute('aria-activedescendant', shown.length ? `cmd-${sel}` : '');
+      input.placeholder = top().placeholder;
       list.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
     };
-    const run = (i) => { closeOverlay(); i.run(); };
+    const run = (r) => {
+      if (r.push) { stack.push(r.push()); input.value = ''; sel = 0; paint(); return; }
+      closeOverlay(); r.run();
+    };
+    const back = () => { stack.pop(); input.value = ''; sel = 0; paint(); };
     input.addEventListener('input', () => { sel = 0; paint(); });
     input.addEventListener('keydown', (e) => {
       const ctrl = e.ctrlKey && !e.altKey;
       if (e.key === 'ArrowDown' || (ctrl && e.key === 'n')) { sel = Math.min(sel + 1, shown.length - 1); paint(); }
       else if (e.key === 'ArrowUp' || (ctrl && e.key === 'p')) { sel = Math.max(sel - 1, 0); paint(); }
       else if (e.key === 'Enter') { if (shown[sel]) run(shown[sel]); }
+      else if (stack.length > 1 && (e.key === 'Escape' || (e.key === 'Backspace' && !input.value))) back(); // one step back
       else return;
       e.preventDefault();
     });
