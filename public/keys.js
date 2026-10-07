@@ -164,6 +164,9 @@ export function initKeys(ctx) {
       { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
       { label: 'Show keyboard shortcuts', hint: '?', run: openHelp },
     );
+    for (const c of ctx.columns()) {
+      items.push({ label: `${ctx.isHidden(c) ? 'Show' : 'Hide'} column: ${c || '(no status)'}`, hint: 'column', run: () => ctx.toggleColumn(c) });
+    }
     for (const x of S.tickets) {
       items.push({ label: `#${x.id} ${x.title}`, hint: x.status, run: () => { location.hash = `#/t/${encodeURIComponent(x.file)}`; } });
     }

@@ -60,6 +60,9 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   browsers see it too.
 - **Add status**: the "+ Status" button on the board (or "Add status…" in Ctrl+K) appends a
   status to `statuses:` in `_config.yml`; it becomes a column, a form option and the next number key.
+- **Hide columns**: the × in a column header hides it; a "Hidden: …" strip above the board lists hidden
+  columns with ticket counts (and how many match the current filter) and restores one on click.
+  Also "Show/Hide column: …" in Ctrl+K. Stored per browser, not in `_config.yml`; the table view is unaffected.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
 - **+ Idea** (or `i`): quick capture. Type one or a few sentences, no title;

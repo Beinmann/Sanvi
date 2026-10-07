@@ -164,8 +164,9 @@ function renderBoard() {
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
   if (Q.view === 'table') { view.replaceChildren(filterBar(), tableView()); if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); } return; }
   let num = 0;
-  view.replaceChildren(filterBar(), el('div', { class: 'board' }, columns().map((status) => {
-    const n = status ? ++num : 0;
+  view.replaceChildren(filterBar(), hiddenStrip(), el('div', { class: 'board' }, columns().map((status) => {
+    const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
+    if (hidden.has(status)) return null;
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
       .sort((a, b) => (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
     return el('section', {
@@ -181,7 +182,8 @@ function renderBoard() {
       draggable: true, title: 'Drag to reorder columns',
       ondragstart: (e) => { e.dataTransfer.setData(COLUMN_DRAG, status); e.dataTransfer.effectAllowed = 'move'; },
     } : {}, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
-    el('span', {}, status || '(no status)'), el('span', {}, String(items.length))), items.map(card));
+    el('span', {}, status || '(no status)'), el('span', { class: 'count' }, String(items.length)),
+      el('button', { type: 'button', class: 'hide', title: `Hide ${status || 'this'} column`, 'aria-label': `Hide ${status || 'no-status'} column`, onclick: () => toggleColumn(status) }, '×')), items.map(card));
   })));
   if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); }
   if (target) [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target)?.focus();
@@ -258,6 +260,28 @@ async function save() {
     else toast(`Save failed: ${e.message}`);
     return false;
   }
+}
+
+// Hidden board columns: a per-browser view preference (not written to the config file).
+const hidden = new Set((() => { try { return JSON.parse(localStorage.getItem('tk.hidden') || '[]'); } catch { return []; } })());
+function toggleColumn(status) {
+  if (hidden.has(status)) hidden.delete(status); else hidden.add(status);
+  try { localStorage.setItem('tk.hidden', JSON.stringify([...hidden])); } catch { /* ignore */ }
+  if (document.querySelector('.board')) renderBoard();
+}
+const isHidden = (status) => hidden.has(status);
+
+// Never hide silently: a strip lists hidden columns with counts and restores one on click.
+function hiddenStrip() {
+  const list = columns().filter((c) => hidden.has(c));
+  if (!list.length) return null;
+  const filtering = !!Q.text.trim();
+  return el('div', { class: 'hiddenstrip' }, 'Hidden: ', list.map((status) => {
+    const all = S.tickets.filter((t) => t.status === status);
+    const hits = filtering ? all.filter((t) => matchTicket(t, Q.parsed)).length : 0;
+    return el('button', { type: 'button', class: hits ? 'hit' : '', title: `Show ${status || '(no status)'}`, onclick: () => toggleColumn(status) },
+      `${status || '(no status)'} (${all.length}${filtering ? `, ${hits} match filter` : ''})`);
+  }));
 }
 
 // Vim mode is an opt-in per-browser preference; storage can throw (private windows etc.).
@@ -451,7 +475,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, heldFile: () => held, addStatus,
+  S, el, columns, toast, moveTicket, setTab, heldFile: () => held, addStatus, toggleColumn, isHidden,
   saveIdea: async (text) => { const t = await api('POST', 'ideas', { text }); toast(`Idea captured as #${t.id}`); return t; },
   detail: () => D,
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },

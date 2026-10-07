@@ -35,7 +35,7 @@ main { padding: 16px; }
 .col { flex: 0 0 280px; border-radius: var(--r); padding: 4px; min-height: 120px; }
 .col.over { outline: 2px dashed var(--accent); background: var(--accent-soft); }
 .col h2 { font-size: 13px; font-weight: 600; color: var(--text); margin: 4px 6px 10px; display: flex; align-items: center; gap: 8px; }
-.col h2 span:last-child { margin-left: auto; color: var(--muted); font-weight: 500; }
+.col h2 .count { margin-left: auto; color: var(--muted); font-weight: 500; }
 .col h2::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--dot, var(--muted)); flex: none; }
 .col[data-status="open"] { --dot: var(--dot-open); } .col[data-status="in-progress"] { --dot: var(--dot-in-progress); }
 .col[data-status="blocked"] { --dot: var(--dot-blocked); } .col[data-status="deferred"] { --dot: var(--dot-deferred); }
@@ -123,3 +123,8 @@ table.tickets td.none { color: var(--muted); text-align: center; }
 body.holding .col h2 .num, .board:has(.card:focus-visible) .col h2 .num { display: inline-block; }
 .dialog.form { padding: 16px; display: grid; gap: 10px; }
 .dialog.form h2, .dialog.form p { margin: 0; }
+
+.col h2 .hide { all: unset; cursor: pointer; color: var(--muted); padding: 0 4px; border-radius: 4px; }
+.col h2 .hide:hover, .col h2 .hide:focus-visible { color: var(--text); background: var(--accent-soft); }
+.hiddenstrip { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; font-size: 13px; color: var(--muted); }
+.hiddenstrip button.hit { border-color: var(--warn); color: var(--warn); }
