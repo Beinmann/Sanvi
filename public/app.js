@@ -2,7 +2,7 @@ import { renderMarkdown, splitSummary } from './md.js';
 import { insertNote } from './notes.js';
 import { compact } from './util.js';
 import { serialQueue, coalesce, isTransient, describeFailure } from './queue.js';
-import { parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
+import { planStatusDelete, parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
 
@@ -17,7 +17,7 @@ function el(tag, props = {}, ...kids) {
     else if (v === true) n.setAttribute(k, '');
     else if (v !== false && v != null) n.setAttribute(k, v);
   }
-  for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid);
+  for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) n.append(kid);
   return n;
 }
 
@@ -149,6 +149,31 @@ async function addStatus(input) {
   await refreshAll();
   toast(`Status "${name}" added`);
   return name;
+}
+// Delete a status (063): tickets still using it are moved first (normal version-checked saves, one by one); only when
+// all moves succeeded is it removed from `statuses:`. Ticket files are never deleted.
+async function deleteStatus(status, target) {
+  const plan = planStatusDelete(S.cfg.statuses, S.tickets, status);
+  if (plan.error) { toast(plan.error); return; }
+  if (plan.users.length && !plan.targets.includes(target)) { toast('Choose a status to move the tickets to'); return; }
+  const moved = [];
+  for (const t of plan.users) {
+    try {
+      const saved = await api('PUT', `tickets/${encodeURIComponent(t.file)}`, { version: t.version, fields: { status: target } });
+      ownVersions.add(saved.version);
+      moved.push(`#${t.id}`);
+    } catch (e) {
+      toast(`#${t.id} not moved (${e.status === 409 ? 'changed on disk' : e.message}); status "${status}" kept. Moved so far: ${moved.join(', ') || 'none'}`);
+      await refreshAll();
+      return;
+    }
+  }
+  try {
+    if (plan.inConfig) await api('PUT', 'config', { statuses: S.cfg.statuses.filter((c) => c !== status) });
+  } catch (e) { toast(`Status not removed: ${e.message}. Moved: ${moved.join(', ') || 'none'}`); await refreshAll(); return; }
+  if (hidden.delete(status)) { try { localStorage.setItem('tk.hidden', JSON.stringify([...hidden])); } catch { /* ignore */ } }
+  await refreshAll();
+  toast(`Status "${status}" deleted${moved.length ? `; moved ${moved.length} ticket${moved.length > 1 ? 's' : ''} to ${target}` : ''}`);
 }
 // Drag preview for a column: a faded copy of the whole column (header and cards), not just the header text.
 function columnDragStart(e, status) {
@@ -791,7 +816,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, deleteStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
     done.ticket ??= await api('POST', 'ideas', { text });

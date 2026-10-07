@@ -115,3 +115,15 @@ export function idQuery(parsed) {
   const m = q.words.length === 1 && !q.filters.length && !(q.titleWords ?? []).length && /^#?(\d+)$/.exec(q.words[0]);
   return m ? Number(m[1]) : null;
 }
+
+/**
+ * What deleting `status` involves (063): the tickets still using it, the statuses they could move to, whether it is
+ * in the config at all (an "extra" column found only on tickets has nothing to remove) and why it may not go.
+ */
+export function planStatusDelete(configured, tickets, status) {
+  const inConfig = configured.includes(status);
+  const users = tickets.filter((t) => t.status === status);
+  const targets = configured.filter((c) => c !== status);
+  const error = inConfig && configured.length <= 1 ? 'The last remaining status cannot be deleted' : !inConfig && !users.length ? 'Nothing to delete' : null;
+  return { inConfig, users, targets, error };
+}

@@ -1,12 +1,26 @@
 // Keyboard layer: global hotkeys, Ctrl+K command menu and the `?` help overlay.
 // Pure helpers are exported for tests; DOM wiring happens in initKeys().
 
+import { planStatusDelete } from './filter.js';
+
 // ------------------------------------------------------------ pure helpers
 
 /** Every whitespace-separated token must occur in the label (case-insensitive). */
 export function matches(label, query) {
   const l = label.toLowerCase();
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((tok) => l.includes(tok.replace(/^#/, '')));
+}
+
+export const TICKET_CAP = 5;
+
+/** Ticket rows for the palette: a counted heading, at most `cap` tickets, then a "Show N more" row unless expanded. */
+export function ticketRows(tickets, expanded, expand, cap = TICKET_CAP) {
+  if (!tickets.length) return [];
+  const row = (x) => ({ label: `#${x.id} ${x.title}`, id: x.id, title: x.title, hint: x.status, always: true, run: () => { location.hash = `#/t/${encodeURIComponent(x.file)}`; } });
+  const head = { heading: `Tickets · ${tickets.length}` };
+  if (expanded || tickets.length <= cap) return [head, ...tickets.map(row)];
+  const rest = tickets.length - cap;
+  return [head, ...tickets.slice(0, cap).map(row), { label: `Show ${rest} more ticket${rest > 1 ? 's' : ''}…`, always: true, cmd: false, stay: expand }];
 }
 
 /** "#20", "#020" or "20" -> 20; anything else -> null. */
@@ -372,10 +386,39 @@ export function initKeys(ctx) {
     };
   }
 
+  // Delete a status (063): pick it, then (if tickets use it) pick where they go, then confirm.
+  function confirmLevel(question, label, run) {
+    return { placeholder: question, rows: () => [{ label, hint: 'Enter confirms, Esc cancels', run }] };
+  }
+  function deleteTargetLevel(status, plan) {
+    const n = plan.users.length;
+    return {
+      placeholder: `${n} ticket${n > 1 ? 's use' : ' uses'} "${status}": move them to…`,
+      rows: () => plan.targets.map((c) => ({ label: `Move them to ${c}`, hint: plan.inConfig ? 'then delete the status' : '', push: () => confirmLevel(
+        `Move ${n} ticket${n > 1 ? 's' : ''} to ${c}${plan.inConfig ? ` and delete status ${status}` : ''}?`,
+        `${plan.inConfig ? 'Delete' : 'Move'}: ${n} ticket${n > 1 ? 's' : ''} → ${c}`, () => ctx.deleteStatus(status, c)) })),
+    };
+  }
+  function deleteStatusLevel() {
+    return {
+      placeholder: 'Delete which status?',
+      rows: () => ctx.columns().filter(Boolean).map((c) => {
+        const plan = planStatusDelete(S.cfg.statuses, S.tickets, c);
+        const n = plan.users.length;
+        const hint = !plan.inConfig ? `${n} tickets, not in config` : n ? `${n} ticket${n > 1 ? 's' : ''} use it` : 'unused';
+        const label = plan.inConfig ? c : `${c} (only on tickets)`;
+        if (plan.error) return { label, hint: 'cannot delete', run: () => ctx.toast(plan.error) };
+        return { label, hint,
+          push: () => (n ? deleteTargetLevel(c, plan) : confirmLevel(`Delete status ${c}?`, `Delete status ${c}`, () => ctx.deleteStatus(c, null))) };
+      }),
+    };
+  }
+
   function columnsLevel() {
     return { placeholder: 'Show or hide a column…', rows: () => ctx.columns().map((c) => ({ label: `${ctx.isHidden(c) ? 'Show' : 'Hide'} ${c || '(no status)'}`, hint: ctx.isHidden(c) ? 'hidden' : 'shown', run: () => ctx.toggleColumn(c) })) };
   }
 
+  let expanded = false; // the ticket list was expanded with "Show N more"; stays so while typing
   function rootLevel() {
     return {
       placeholder: 'Jump to ticket, #20 for its actions, or run a command…',
@@ -383,22 +426,23 @@ export function initKeys(ctx) {
         const ref = parseTicketRef(q);
         if (ref !== null) { // #20 / 020: that ticket's actions
           const hits = ticketsByRef(S.tickets, ref);
-          return hits.length ? [{ heading: 'Tickets' }, ...hits.map((x) => ({ label: `#${x.id} ${x.title}`, hint: x.status, always: true, push: () => ticketLevel(x) }))] : [];
+          return hits.length ? [{ heading: `Tickets · ${hits.length}` }, ...hits.map((x) => ({ label: `#${x.id} ${x.title}`, id: x.id, title: x.title, hint: x.status, always: true, push: () => ticketLevel(x) }))] : [];
         }
         const file = contextFile();
         const t = file && S.tickets.find((x) => x.file === file);
         const rows = [];
-        if (t) rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', push: () => ticketLevel(t) });
+        if (t) rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', cmd: true, push: () => ticketLevel(t) });
         rows.push({ heading: 'Commands' },
-          { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
-          { label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
-          { label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
-          { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
-          { label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
-          { label: 'Add status…', hint: 'column', run: openAddStatus },
-          { label: 'Columns…', hint: 'show / hide', push: columnsLevel },
-          { label: 'Show keyboard shortcuts', hint: '?', run: openHelp });
-        if (q.trim()) rows.push({ heading: 'Tickets' }, ...S.tickets.map((x) => ({ label: `#${x.id} ${x.title}`, hint: x.status, run: () => { location.hash = `#/t/${encodeURIComponent(x.file)}`; } })));
+          { cmd: true, label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
+          { cmd: true, label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
+          { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
+          { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
+          { cmd: true, label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
+          { cmd: true, label: 'Add status…', hint: 'column', run: openAddStatus },
+          { cmd: true, label: 'Delete status…', hint: 'column', push: deleteStatusLevel },
+          { cmd: true, label: 'Columns…', hint: 'show / hide', push: columnsLevel },
+          { cmd: true, label: 'Show keyboard shortcuts', hint: '?', run: openHelp });
+        if (q.trim()) rows.push(...ticketRows(S.tickets.filter((x) => matches(`#${x.id} ${x.title}`, q)), expanded, () => { expanded = true; }));
         return rows;
       },
     };
@@ -408,6 +452,7 @@ export function initKeys(ctx) {
     const file = contextFile();
     const t = file && S.tickets.find((x) => x.file === file);
     if (mode === 'status' && !t) { ctx.toast('No ticket selected'); return; }
+    expanded = false;
     const stack = [mode === 'status' ? valueLevel(t, 'status') : rootLevel()];
     let shown = [], sel = 0;
     const input = el('input', {
@@ -424,16 +469,19 @@ export function initKeys(ctx) {
       list.replaceChildren(...(shown.length ? rows.map((r) => {
         if (r.heading) return el('li', { class: 'heading', role: 'presentation' }, r.heading);
         const n = shown.indexOf(r);
-        return el('li', {
-          id: `cmd-${n}`, role: 'option', 'aria-selected': String(n === sel), class: n === sel ? 'sel' : '',
+        const props = {
+          id: `cmd-${n}`, role: 'option', 'aria-selected': String(n === sel), class: `${n === sel ? 'sel ' : ''}${r.id ? 'tk' : r.cmd ? 'cmd' : ''}`.trim(),
           onmousedown: (e) => { e.preventDefault(); run(r); },
-        }, el('span', {}, r.label), el('small', {}, r.hint ?? ''));
+        };
+        if (r.id) return el('li', props, el('span', { class: 'pid' }, `#${r.id}`), el('span', { class: 'ptitle', title: r.title }, r.title), r.hint && el('small', { class: 'chip' }, r.hint));
+        return el('li', props, r.cmd && el('span', { class: 'mark', 'aria-hidden': 'true' }, '›'), el('span', { class: 'plabel' }, r.label), el('small', {}, r.hint ?? ''));
       }) : [el('li', { class: 'none' }, 'No matches')]));
       input.setAttribute('aria-activedescendant', shown.length ? `cmd-${sel}` : '');
       input.placeholder = top().placeholder;
       list.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
     };
     const run = (r) => {
+      if (r.stay) { r.stay(); paint(); return; }
       if (r.push) { stack.push(r.push()); input.value = ''; sel = 0; paint(); return; }
       closeOverlay(); r.run();
     };
