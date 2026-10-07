@@ -419,6 +419,12 @@ async function attachImage(ta, blob) {
     toast(`Image saved as ${path}`);
   } catch (e) { toast(`Image not added: ${e.message}`); }
 }
+// A missing or unreadable attachment says so instead of showing just its alt text (error events do not bubble).
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.closest('.doc')) return;
+  img.replaceWith(el('span', { class: 'missing-image', title: img.getAttribute('src') }, `Image not found: ${img.getAttribute('src')}`));
+}, true);
 const imageOf = (dt) => [...(dt?.files ?? [])].find((f) => f.type.startsWith('image/'));
 
 function renderTab(focusEditor = false) {
