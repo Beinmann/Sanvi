@@ -71,6 +71,7 @@ export const HELP = [
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
   ]],
   ['Ticket', [
+    ['c / Ctrl+Shift+Enter', 'Add a timestamped comment to this ticket (c outside fields, Ctrl+Shift+Enter also while typing; unsaved edits are kept)'],
     ['e / p', 'Edit / preview'],
     ['s', 'Set status (unsaved until you save)'],
     ['Ctrl+S', 'Save'],
@@ -231,9 +232,10 @@ export function initKeys(ctx) {
     const err = el('p', { class: 'hint', role: 'alert' });
     const pics = imageBox(ta);
     const done = {}; // images already stored by a failed attempt
+    const inEditor = document.activeElement?.classList?.contains('editor'); // opened while typing in the description
     const save = async () => {
       if (!ta.value.trim() && !pics.images.length) return;
-      try { await ctx.addNote(file, ta.value, pics.images, done); pics.release(); closeOverlay(); } catch (e) { err.textContent = e.message; }
+      try { await ctx.addNote(file, ta.value, pics.images, done); pics.release(); closeOverlay(); if (inEditor) document.querySelector('.editor')?.focus({ preventScroll: true }); } catch (e) { err.textContent = e.message; }
     };
     ta.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
@@ -324,6 +326,7 @@ export function initKeys(ctx) {
       }
     }
     if (mode === 'status') return items;
+    if (t) items.push({ label: ctx.detail() ? 'Add comment to this ticket' : `Add comment to #${t.id}`, hint: 'c', run: () => openNote(t.file) });
     if (t) items.push({ label: `Delete #${t.id}…`, hint: 'd', run: () => openConfirmDelete(t.file) });
     items.push({ label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } });
     items.push(
@@ -436,6 +439,11 @@ export function initKeys(ctx) {
       else { const t = f && S.tickets.find((x) => x.file === f); if (t) ctx.setPick({ file: t.file, status: t.status }); }
       return;
     }
+    if (mod && e.shiftKey && !e.altKey && e.key === 'Enter' && hashRoute() === 'detail' && ctx.detail()) { // comment, also while typing in the editor
+      e.preventDefault();
+      if (!overlay) openNote(ctx.detail().file);
+      return;
+    }
     if (mod || e.altKey || isTyping(e.target)) return;
 
     const board = hashRoute() === 'board';
@@ -491,7 +499,7 @@ export function initKeys(ctx) {
         openConfirmDelete(f);
         break;
       }
-      case 'c': { const f = board && cardTarget(); if (!f) return; openNote(f); break; }
+      case 'c': { const f = board ? cardTarget() : hashRoute() === 'detail' && ctx.detail()?.file; if (!f) return; openNote(f); break; }
       case 'e': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('edit'); else return; break;
       case 'p': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('view'); else return; break;
       default: return;

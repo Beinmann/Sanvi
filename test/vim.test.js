@@ -145,3 +145,25 @@ test('Ctrl+C leaves insert mode without a selection, copies with one, no-op else
   assert.equal(v.key('c', { ctrl: true }), false);
   assert.equal(v.mode, 'normal');
 });
+
+test('entry keys leave the caret where vim puts it (show() collapses the block selection there)', () => {
+  const at = (keys, cur) => { const v = run('  abc def\nxyz', keys, { cur }); assert.equal(v.mode, 'insert', keys); return v.cur; };
+  assert.equal(at('i', 4), 4);
+  assert.equal(at('a', 4), 5);
+  assert.equal(at('A', 4), 9);
+  assert.equal(at('I', 4), 2);
+  assert.equal(at('o', 4), 10);
+  assert.equal(at('O', 4), 0);
+  assert.equal(at('s', 4), 4);
+  assert.equal(at('C', 4), 4);
+  assert.equal(at('cw', 4), 4);
+});
+
+test('the first typed character after an entry key is inserted, not substituted', () => {
+  assert.equal(run('abc', 'aX<Esc>', { cur: 0 }).text, 'aXbc');
+  assert.equal(run('abc', 'iX<Esc>', { cur: 1 }).text, 'aXbc');
+  assert.equal(run('abc', 'AX<Esc>', { cur: 0 }).text, 'abcX');
+  assert.equal(run('abc', 'IX<Esc>', { cur: 2 }).text, 'Xabc');
+  assert.equal(run('abc', 'oX<Esc>', { cur: 0 }).text, 'abc\nX');
+  assert.equal(run('abc', 'OX<Esc>', { cur: 0 }).text, 'X\nabc');
+});

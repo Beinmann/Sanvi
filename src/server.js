@@ -9,6 +9,7 @@ import {
   ConflictError, NotFoundError, ValidationError,
   writeStatuses,
 } from './core.js';
+import { formatNote } from '../public/notes.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -168,14 +169,15 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       let before = null;
       try { before = readTicket(dir, file); } catch { /* addNote reports it */ }
       let t;
-      try { t = addNote(dir, file, text, version); } catch (e) {
+      const now = new Date();
+      try { t = addNote(dir, file, text, version, now); } catch (e) {
         if (e instanceof ConflictError) {
           changelog.log({ ticket: before?.id ?? file.slice(0, 3), action: 'conflict', before: version, after: e.current?.version });
         }
         throw e;
       }
       if (before && t.version !== before.version) logEdit(before, t);
-      return send(res, 200, t);
+      return send(res, 200, { ...t, note: formatNote(text, now) }); // `note`: the line added, for clients holding a draft
     }
     if (parts.length === 2 && method === 'PUT') {
       const { version, fields, body } = await readJson(req);

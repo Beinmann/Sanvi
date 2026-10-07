@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { noteStamp, formatNote, insertNote } from '../public/notes.js';
 
 export const DEFAULT_STATUSES = ['open', 'in-progress', 'testing', 'blocked', 'deferred', 'done'];
 const FILE_RE = /^(\d+)-(.+)\.md$/;
@@ -226,31 +227,14 @@ export function saveTicket(dir, file, { fields = {}, body } = {}, version) {
   return readTicket(dir, file);
 }
 
-const pad2 = (n) => String(n).padStart(2, '0');
-export const noteStamp = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+export { noteStamp };
 
 // Append `- YYYY-MM-DD HH:MM: text` at the end of the `## Notes` section (created if missing).
 // Only that spot changes; goes through saveTicket for the version check.
 export function addNote(dir, file, text, version, now = new Date()) {
   if (typeof text !== 'string' || !text.trim()) throw new ValidationError('note text is required');
   const t = readTicket(dir, file);
-  const eol = t.body.includes('\r\n') ? '\r\n' : '\n';
-  const lines = t.body.split(/\r\n|\n/);
-  const item = `- ${noteStamp(now)}: ${text.trim().split(/\r\n|\n|\r/).map((l, i) => (i && l.trim() ? `  ${l.trimEnd()}` : l.trimEnd())).join(eol)}`;
-  const start = lines.findIndex((l) => /^##\s+Notes\s*$/i.test(l));
-  let out;
-  if (start < 0) {
-    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-    out = [...lines, ...(lines.length ? [''] : []), '## Notes', '', item, ''];
-  } else {
-    let end = lines.findIndex((l, i) => i > start && /^#{1,2}\s/.test(l));
-    if (end < 0) end = lines.length;
-    let last = end;
-    while (last > start + 1 && !lines[last - 1].trim()) last--;
-    const tail = lines.slice(end);
-    out = [...lines.slice(0, last), ...(last === start + 1 ? [''] : []), item, ...(tail.length ? ['', ...tail] : [''])];
-  }
-  return saveTicket(dir, file, { body: out.join(eol) }, version);
+  return saveTicket(dir, file, { body: insertNote(t.body, formatNote(text, now)) }, version);
 }
 
 export function slugify(title) {

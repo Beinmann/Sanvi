@@ -449,11 +449,12 @@ export function attachVim(ta, host) {
     // already visible while typing, so keep the scroll position (textarea and page) exactly as it was.
     const leaving = shownMode === 'insert' && vim.mode !== 'insert';
     const keep = leaving ? { top: ta.scrollTop, left: ta.scrollLeft, y: window.scrollY, x: window.scrollX } : null;
+    const leavingNormal = shownMode !== 'insert' && vim.mode === 'insert';
     shownMode = vim.mode;
     if (ta.value !== vim.text) ta.value = vim.text;
     const m = vim.mode;
     let a = vim.cur, b = vim.cur;
-    if (m === 'insert') { /* caret managed natively */ }
+    if (m === 'insert') { if (leavingNormal) a = b = vim.cur; /* afterwards the caret is managed natively */ }
     else if (m === 'visual' || m === 'vline') { const [s, e] = vim.selection(); a = s; b = e; }
     else if (m === 'cmd' && vim.cmd.back !== 'normal') { const [s, e] = vim.selection(); a = s; b = e; }
     else b = Math.min(a + 1, ta.value.length); // block cursor
@@ -461,7 +462,7 @@ export function attachVim(ta, host) {
     const empty = m === 'normal' && (ta.value[a] === undefined || ta.value[a] === '\n' || ta.value[a] === '\r');
     if (empty) b = a;
     paintEmptyCursor(empty ? a : -1);
-    if (m !== 'insert') ta.setSelectionRange(a, b);
+    if (m !== 'insert' || leavingNormal) ta.setSelectionRange(a, b);
     if (keep) { ta.scrollTop = keep.top; ta.scrollLeft = keep.left; window.scrollTo(keep.x, keep.y); }
     ta.dataset.vim = m;
     host.onStatus?.(vim.status, m);

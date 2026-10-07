@@ -60,6 +60,7 @@ main { padding: 16px; }
 .banner.err { background: var(--danger-bg); color: var(--danger); }
 .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
 .tabs button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.tabs .comment-btn { margin-left: auto; }
 .doc { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); padding: 8px 20px 16px; }
 .doc pre, .doc code { background: var(--code); border-radius: 4px; }
 .doc code { padding: 1px 4px; }
