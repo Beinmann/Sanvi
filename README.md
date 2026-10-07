@@ -79,7 +79,8 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   dependencies: normal/insert/visual/visual-line, `h j k l w b e 0 ^ $ gg G`
   with counts, `d c y` (+ `dd cc yy`, visual), `x X D C s S Y p P`,
   `i a I A o O`, `u` / `Ctrl-R`, `/` `n` `N`, and `:w` `:q` `:q!` `:wq`.
-  The mode is shown below the editor. In vim mode `Esc` only changes vim
+  The mode is shown below the editor. In vim mode `Esc` (or `Ctrl+C` without a
+  selection) only changes vim
   mode: `:w` saves, `:q` leaves the editor (refused with unsaved changes),
   `:q!` leaves and discards edits, `:wq` does both; `Ctrl+S` works in both
   modes. Without vim mode `Esc` leaves the editor as before.

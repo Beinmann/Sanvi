@@ -130,3 +130,18 @@ test('onChange fires on edits', () => {
   run('abc', 'x', { host: { onChange: (t) => seen.push(t) } });
   assert.deepEqual(seen, ['bc']);
 });
+
+test('Ctrl+C leaves insert mode without a selection, copies with one, no-op elsewhere', () => {
+  const v = new Vim('abc');
+  v.cur = 1;
+  v.key('i');
+  v.sync('abc', 1);
+  assert.equal(v.mode, 'insert');
+  assert.equal(v.key('c', { ctrl: true, selection: true }), false);
+  assert.equal(v.mode, 'insert');
+  assert.equal(v.key('c', { ctrl: true }), true);
+  assert.equal(v.mode, 'normal');
+  assert.equal(v.cur, 0); // cursor moves back one like Esc
+  assert.equal(v.key('c', { ctrl: true }), false);
+  assert.equal(v.mode, 'normal');
+});

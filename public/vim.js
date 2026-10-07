@@ -193,10 +193,11 @@ export class Vim {
   }
 
   // ---- key entry. Returns true when the key was consumed (caller should preventDefault).
-  key(key, { ctrl = false } = {}) {
+  key(key, { ctrl = false, selection = false } = {}) {
     this.message = '';
     if (this.mode === 'insert') {
-      if (key === 'Escape' || (ctrl && key === '[')) { this.leaveInsert(); return true; }
+      // Ctrl+C leaves insert mode like Esc, but only without a selection, so copying still works
+      if (key === 'Escape' || (ctrl && key === '[') || (ctrl && key === 'c' && !selection)) { this.leaveInsert(); return true; }
       return false;
     }
     if (this.mode === 'cmd') return this.cmdKey(key);
@@ -411,10 +412,10 @@ export function attachVim(ta, host) {
   vim.host.onChange = (t) => host.onChange?.(t);
   ta.addEventListener('keydown', (e) => {
     if (e.isComposing || e.altKey) return;
-    if (e.metaKey || (e.ctrlKey && !['r', '['].includes(e.key))) return; // leave Ctrl+S etc. to the app
+    if (e.metaKey || (e.ctrlKey && !['r', '[', 'c'].includes(e.key))) return; // leave Ctrl+S etc. to the app
     // caret moved behind our back (mouse, focus restore after a re-render): adopt it
     if (vim.mode === 'insert' || (vim.mode === 'normal' && ta.selectionStart !== vim.cur)) vim.sync(ta.value, ta.selectionStart);
-    const handled = vim.key(e.key, { ctrl: e.ctrlKey });
+    const handled = vim.key(e.key, { ctrl: e.ctrlKey, selection: ta.selectionStart !== ta.selectionEnd });
     if (handled) e.preventDefault();
     show();
   });
