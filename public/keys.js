@@ -45,6 +45,7 @@ export const HELP = [
     ['Enter', 'Open the focused ticket'],
     ['s', 'Set status of the focused ticket (menu)'],
     ['Shift+H / Shift+L', 'Move the focused ticket to the previous / next status'],
+    ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
   ]],
   ['Ticket', [
     ['e / p', 'Edit / preview'],

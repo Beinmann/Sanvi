@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig,
   ConflictError, NotFoundError, ValidationError,
+  writeStatuses,
 } from './core.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 
@@ -86,6 +87,11 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       if (!/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'content-type must be application/json' });
     }
     if (parts[0] === 'config' && method === 'GET') return send(res, 200, configPayload());
+    if (parts[0] === 'config' && method === 'PUT') {
+      const { statuses } = await readJson(req);
+      writeStatuses(dir, statuses);
+      return send(res, 200, configPayload());
+    }
     if (parts[0] === 'events' && method === 'GET') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       res.write('retry: 1000\n\n');

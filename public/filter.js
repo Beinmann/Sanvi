@@ -63,3 +63,11 @@ export function sortTickets(tickets, key, dir = 'asc', statusOrder = []) {
     return (x < y ? -1 : x > y ? 1 : 0) * sign || byId(a, b);
   });
 }
+
+/** Copy of `list` with the item at `from` placed where the item at `to` is now (before it when moving left, after it when moving right). */
+export function moveItem(list, from, to) {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return [...list];
+  const out = [...list];
+  out.splice(to, 0, out.splice(from, 1)[0]);
+  return out;
+}

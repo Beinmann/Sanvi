@@ -73,3 +73,14 @@ test('sortTickets: keys, direction, status by column order', () => {
   assert.deepEqual(ids('nope'), ['002', '003', '010']);
   assert.equal(ts[0].id, '002'); // input untouched
 });
+
+import { moveItem } from '../public/filter.js';
+
+test('moveItem: takes the target position, input untouched', () => {
+  const l = ['a', 'b', 'c', 'd'];
+  assert.deepEqual(moveItem(l, 0, 2), ['b', 'c', 'a', 'd']);
+  assert.deepEqual(moveItem(l, 3, 1), ['a', 'd', 'b', 'c']);
+  assert.deepEqual(moveItem(l, 1, 1), l);
+  assert.deepEqual(moveItem(l, 1, 9), l);
+  assert.deepEqual(l, ['a', 'b', 'c', 'd']);
+});
