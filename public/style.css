@@ -133,9 +133,13 @@ body.holding .col h2 .num, .board:has(.card:focus-visible) .col h2 .num { displa
 .hiddenstrip .num { display: none; font-size: 11px; padding: 0 6px; margin-right: 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--text); }
 body.holding .hiddenstrip .num, .board:has(.card:focus-visible) ~ .hiddenstrip .num, body:has(.card:focus-visible) .hiddenstrip .num { display: inline-block; }
 .dialog > .hint { margin: 0; padding: 0 16px; font-size: 12px; color: var(--muted); }
-.card .note-btn { all: unset; position: absolute; top: 6px; right: 8px; font-size: 11px; color: var(--muted); cursor: pointer; padding: 0 6px; border-radius: 4px; opacity: 0; }
-.card:hover .note-btn, .card:focus-within .note-btn, .card:focus-visible .note-btn { opacity: 1; }
-.card .note-btn:hover, .card .note-btn:focus-visible { color: var(--text); background: var(--accent-soft); opacity: 1; }
+.card .menu-btn { all: unset; position: absolute; bottom: 5px; right: 6px; font-size: 13px; line-height: 1; color: var(--muted); cursor: pointer; padding: 3px 5px; border-radius: 4px; opacity: 0; }
+.card .meta { padding-right: 24px; min-height: 16px; }
+.card:hover .menu-btn, .card:focus-within .menu-btn, .card:focus-visible .menu-btn { opacity: 1; }
+.card .menu-btn:hover, .card .menu-btn:focus-visible { color: var(--text); background: var(--accent-soft); opacity: 1; }
+.cardmenu { position: fixed; z-index: 50; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: 0 6px 24px rgba(0,0,0,.3); padding: 4px; display: grid; min-width: 160px; }
+.cardmenu button { all: unset; display: flex; justify-content: space-between; gap: 16px; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.cardmenu button:hover, .cardmenu button:focus-visible { background: var(--accent); color: var(--accent-fg); }
 .dialog > textarea { display: block; width: calc(100% - 32px); margin: 8px 16px; }
 
 .col h2[draggable="true"] { cursor: grab; user-select: none; -webkit-user-select: none; }

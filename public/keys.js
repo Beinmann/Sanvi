@@ -43,7 +43,7 @@ export const HELP = [
     ['j / k', 'Next / previous card in the column'],
     ['h / l', 'Previous / next column'],
     ['Enter', 'Open the focused ticket'],
-    ['c', 'Add a timestamped comment to the focused ticket'],
+    ['c', 'Add a timestamped comment to the focused (or hovered) ticket; ☰ on a card opens its menu'],
     ['1-9', 'Move the focused (or dragged) ticket to that column; numbers show on the column headers'],
     ['s', 'Set status of the focused ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
@@ -154,6 +154,30 @@ export function initKeys(ctx) {
     openOverlay(box, { focus: ta });
   }
   document.addEventListener('add-note', (e) => { if (!overlay) openNote(e.detail); });
+
+  // Per-card menu (the hamburger at the bottom right of a card); entries are the per-ticket actions.
+  let menu = null;
+  function closeMenu() { menu?.remove(); menu = null; }
+  document.addEventListener('card-menu', (e) => {
+    const { file, anchor } = e.detail;
+    const was = menu?.dataset.file;
+    closeMenu();
+    if (was === file || overlay) return;
+    const entry = (label, hint, run) => el('button', { type: 'button', role: 'menuitem', onclick: () => { closeMenu(); run(); } }, label, el('kbd', {}, hint));
+    menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file }, entry('Add comment', 'c', () => openNote(file)));
+    document.body.append(menu);
+    const r = anchor.getBoundingClientRect();
+    menu.style.left = `${Math.max(4, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 4))}px`;
+    menu.style.top = `${r.bottom + menu.offsetHeight + 4 > innerHeight ? r.top - menu.offsetHeight - 4 : r.bottom + 4}px`;
+    menu.querySelector('button').focus();
+  });
+  document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target) && !e.target.closest?.('.menu-btn')) closeMenu(); });
+  document.addEventListener('keydown', (e) => { if (menu && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); } }, true);
+
+  // The card under the mouse counts as the target of card hotkeys when no card has keyboard focus.
+  let hoverFile = null;
+  document.addEventListener('mouseover', (e) => { hoverFile = e.target.closest?.('.card')?.dataset.file ?? null; });
+  document.addEventListener('mouseleave', () => { hoverFile = null; });
 
   function openAddStatus() {
     const input = el('input', { type: 'text', placeholder: 'New status name, e.g. reopened', autocomplete: 'off', spellcheck: false, 'aria-label': 'New status name' });
@@ -283,7 +307,7 @@ export function initKeys(ctx) {
         ctx.moveTicket(file, target);
         break;
       }
-      case 'c': { const f = board && focusedCard()?.dataset.file; if (!f) return; openNote(f); break; }
+      case 'c': { const f = board && (focusedCard()?.dataset.file ?? hoverFile); if (!f) return; openNote(f); break; }
       case 'e': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('edit'); else return; break;
       case 'p': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('view'); else return; break;
       default: return;

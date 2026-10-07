@@ -68,10 +68,9 @@ function card(t) {
   },
   el('div', {}, el('span', { class: 'id' }, `#${t.id}`), t.title),
   el('button', {
-    type: 'button', class: 'note-btn', title: 'Add a comment (c)', 'aria-label': `Add a comment to #${t.id}`,
-    onclick: (e) => { e.preventDefault(); e.stopPropagation(); document.dispatchEvent(new CustomEvent('add-note', { detail: t.file })); },
-    draggable: 'false',
-  }, '+ note'),
+    type: 'button', class: 'menu-btn', title: 'Ticket menu', 'aria-label': `Menu for #${t.id}`, 'aria-haspopup': 'menu',
+    onclick: (e) => { e.preventDefault(); e.stopPropagation(); document.dispatchEvent(new CustomEvent('card-menu', { detail: { file: t.file, anchor: e.currentTarget } })); },
+  }, '☰'),
   el('div', { class: 'meta' },
     t.area && el('span', { class: 'chip' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
