@@ -54,6 +54,20 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   nothing is written until you choose how to resolve it.
 - Listens on `127.0.0.1` by default and rejects foreign `Host`/`Origin` headers (DNS-rebinding protection). `localhost`, `127.0.0.1` and `*.localhost` are allowed; add others with `--allow-host a,b`. Behind a proxy that reaches the server over a network, also pass `--host 0.0.0.0`; the Host check then still blocks direct IP access.
 
+## Change log
+
+Writes made **through the web UI** (create, status change, edit, and rejected
+409 saves) append one JSON line to `<tickets dir>/../.tk/changes.log`
+(the dir gets a `.gitignore` containing `*`). Fields: `ts`, `ticket` (id),
+`action` (`create|status|edit|conflict`), `source`, `changes` (`{field, from, to}`),
+`body` (lines added/removed, sections touched, ticked/unticked criteria),
+`before`/`after` (content hashes). Bodies are never stored. Successive edits of
+one ticket within 30 s merge into one entry (`merged: N`). No-op saves, hand
+edits and CLI changes are not logged. A logging error never blocks a save.
+
+The log rotates at 1 MB and keeps 5 files (`changes.log`, `.1` ... `.4`). Tune with
+`TK_LOG_MAX_BYTES`, `TK_LOG_KEEP`, `TK_LOG_COALESCE_MS` (ms).
+
 ## CLI (optional)
 
 ```
@@ -79,6 +93,7 @@ Use `--json` for machine-readable output. Nothing requires going through it.
 ## Layout and tests
 
 - `src/core.js` — parse / update / create / validate (shared by server and CLI)
+- `src/changelog.js` — bounded web UI change log
 - `src/instances.js` — instance registry for start/stop/ps
 - `src/server.js` — JSON API, file watcher, SSE
 - `public/` — frontend (`md.js` is a small safe Markdown renderer)

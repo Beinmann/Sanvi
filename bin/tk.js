@@ -141,11 +141,11 @@ async function main() {
       const { createTicketServer } = await import('../src/server.js');
       const app = createTicketServer({ dir, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean) });
       const host = flags.host || '127.0.0.1';
-      const want = Number(flags.port) || 4321;
+      const want = flags.port === undefined ? 4321 : Number(flags.port);
       let addr;
       try { addr = await app.listen(want, host); } catch (e) {
         // An explicit --port is honoured strictly; otherwise fall back to any free port when asked to.
-        if (e.code !== 'EADDRINUSE' || !flags['auto-port'] || flags.port) throw e;
+        if (e.code !== 'EADDRINUSE' || !flags['auto-port'] || flags.port !== undefined) throw e;
         addr = await app.listen(0, host);
       }
       const url = `http://localhost:${addr.port}`;

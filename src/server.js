@@ -8,6 +8,7 @@ import {
   listTickets, readTicket, saveTicket, createTicket, readConfig,
   ConflictError, NotFoundError, ValidationError,
 } from './core.js';
+import { createChangeLog, summarizeBody } from './changelog.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const STATIC = {
@@ -41,19 +42,33 @@ function readJson(req) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [] }) {
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
   const extraHosts = new Set(allowedHosts.map((h) => h.toLowerCase()));
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h);
   dir = path.resolve(dir);
   if (!fs.statSync(dir).isDirectory()) throw new Error(`not a directory: ${dir}`);
   const clients = new Set();
+  const changelog = createChangeLog(dir, logOpts);
 
   const summary = ({ body, ...rest }) => rest;
 
   function configPayload() {
     const cfg = readConfig(dir);
     return { name: path.basename(path.dirname(dir)), statuses: cfg.statuses, configured: cfg.configured };
+  }
+
+  function logEdit(before, after) {
+    const changes = [];
+    for (const f of ['status', 'area', 'priority']) {
+      if ((before[f] || '') !== (after[f] || '')) changes.push({ field: f, from: before[f] || null, to: after[f] || null });
+    }
+    const bodyChanged = before.body !== after.body;
+    const onlyStatus = changes.length === 1 && changes[0].field === 'status' && !bodyChanged;
+    changelog.log({
+      ticket: after.id, action: onlyStatus ? 'status' : 'edit', before: before.version, after: after.version, changes,
+      ...(bodyChanged ? { body: summarizeBody(before.body, after.body) } : {}),
+    });
   }
 
   async function api(req, res, url) {
@@ -78,13 +93,27 @@ export function createTicketServer({ dir, allowedHosts = [] }) {
     if (parts.length === 1 && method === 'GET') return send(res, 200, listTickets(dir).map(summary));
     if (parts.length === 1 && method === 'POST') {
       const { title, area, status, priority } = await readJson(req);
-      return send(res, 201, createTicket(dir, { title, area, status, priority }));
+      const t = createTicket(dir, { title, area, status, priority });
+      changelog.log({ ticket: t.id, action: 'create', after: t.version,
+        changes: ['status', 'area', 'priority'].filter((f) => t[f]).map((f) => ({ field: f, from: null, to: t[f] })) });
+      return send(res, 201, t);
     }
     if (parts.length === 2 && method === 'GET') return send(res, 200, readTicket(dir, decodeURIComponent(parts[1])));
     if (parts.length === 2 && method === 'PUT') {
       const { version, fields, body } = await readJson(req);
       if (!version) throw new ValidationError('version is required');
-      return send(res, 200, saveTicket(dir, decodeURIComponent(parts[1]), { fields, body }, version));
+      const file = decodeURIComponent(parts[1]);
+      let before = null;
+      try { before = readTicket(dir, file); } catch { /* saveTicket reports it */ }
+      let t;
+      try { t = saveTicket(dir, file, { fields, body }, version); } catch (e) {
+        if (e instanceof ConflictError) {
+          changelog.log({ ticket: before?.id ?? file.slice(0, 3), action: 'conflict', before: version, after: e.current?.version });
+        }
+        throw e;
+      }
+      if (before && t.version !== before.version) logEdit(before, t);
+      return send(res, 200, t);
     }
     return send(res, 404, { error: 'not found' });
   }
