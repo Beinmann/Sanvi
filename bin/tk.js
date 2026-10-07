@@ -13,7 +13,7 @@ import {
   ConflictError, NotFoundError, ValidationError,
 } from '../src/core.js';
 
-const HELP = `tk — helper for Markdown tickets (optional; editing the files by hand is fine)
+const HELP = `Sanvi (tk) — helper for Markdown tickets (optional; editing the files by hand is fine)
 
 usage: tk [--dir <tickets dir>] <command>
 

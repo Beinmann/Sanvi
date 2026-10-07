@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 export function stateDir() {
   if (process.env.TK_STATE_DIR) return process.env.TK_STATE_DIR;
   const base = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
-  return path.join(base, 'ticket-tool');
+  return path.join(base, 'sanvi');
 }
 
 const instDir = () => path.join(stateDir(), 'instances');

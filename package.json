@@ -1,10 +1,10 @@
 {
-  "name": "ticket-tool",
+  "name": "sanvi",
   "version": "0.1.0",
   "description": "Local web UI and optional CLI for Markdown tickets with frontmatter",
   "private": true,
   "type": "module",
-  "bin": { "tk": "bin/tk.js" },
+  "bin": { "tk": "bin/tk.js", "sanvi": "bin/tk.js" },
   "scripts": {
     "start": "node bin/tk.js serve",
     "test": "node --test \"test/*.test.js\""

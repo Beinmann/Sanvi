@@ -1,7 +1,21 @@
-# ticket-tool
+# Sanvi
 
 A local web UI and an optional CLI for tickets stored as plain Markdown files
 with frontmatter. No dependencies; needs Node 20+.
+
+The command is `tk` (alias `sanvi`).
+
+## Quick start
+
+```
+git clone https://github.com/Beinmann/Sanvi.git
+cd Sanvi
+npm link                      # optional: puts `tk` and `sanvi` on your PATH
+tk --dir /path/to/tickets serve
+```
+
+Without `npm link`, run `node bin/tk.js ...` from the checkout instead. Then open
+the printed URL (default `http://127.0.0.1:4321`).
 
 The ticket files are the only source of truth. The UI and CLI are views and
 helpers over them, so editing the files by hand (or with an editor or an AI
@@ -41,7 +55,7 @@ column.
 ## Web UI
 
 ```
-node bin/tk.js --dir /path/to/tickets serve [--port 4321]
+tk --dir /path/to/tickets serve [--port 4321]
 ```
 
 - Kanban board; drag a card to change its status.
@@ -141,8 +155,8 @@ tk ps                 # list running instances (dir, port, PID, URL); cleans up 
 ```
 
 Instances (also those from plain `serve`) are registered one JSON file each
-under `$TK_STATE_DIR`, else `$XDG_STATE_HOME/ticket-tool`, else
-`~/.local/state/ticket-tool`; background logs go to `logs/` there. An entry is
+under `$TK_STATE_DIR`, else `$XDG_STATE_HOME/sanvi`, else
+`~/.local/state/sanvi`; background logs go to `logs/` there. An entry is
 only trusted if its PID is alive and (on Linux) is a `tk.js` process.
 
 The tickets dir is `--dir`, `$TK_DIR`, or the nearest `./tickets` upwards.
