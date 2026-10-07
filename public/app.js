@@ -249,7 +249,6 @@ function filterBar() {
   });
   const tab = (v, label) => el('button', { type: 'button', class: Q.view === v ? 'active' : '', 'aria-pressed': String(Q.view === v), onclick: () => setView(v) }, label);
   return el('div', { class: 'filterbar' }, input,
-    el('button', { type: 'button', title: 'Add a status column', onclick: () => document.dispatchEvent(new Event('add-status')) }, '+ Status'),
     TABLE_VIEW && el('span', { class: 'viewswitch' }, tab('board', 'Board'), tab('table', 'Table')),
     Q.view === 'board' && el('span', { class: 'selhint' }, 'No card selected · press j'),
     Q.text.trim() && el('span', { class: 'active-filter' }, 'Filter: ', el('code', {}, formatQuery(Q.parsed))),
@@ -303,7 +302,7 @@ function renderBoard() {
     return;
   }
   let num = 0;
-  show(view, filterBar(), hiddenStrip(), hiddenIdNotice(), pickBar(), el('div', { class: 'board' }, columns().map((status) => {
+  show(view, filterBar(), hiddenStrip(), hiddenIdNotice(), pickBar(), el('div', { class: 'board' }, [...columns().map((status) => {
     const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
     if (hidden.has(status)) return null;
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
@@ -324,7 +323,7 @@ function renderBoard() {
     } : {}, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
     el('span', {}, status || '(no status)'), el('span', { class: 'count' }, String(items.length)),
       el('button', { type: 'button', class: 'hide', title: `Hide ${status || 'this'} column`, 'aria-label': `Hide ${status || 'no-status'} column`, onclick: () => toggleColumn(status) }, '×')), items.map((t) => card(t, matchedOnlyInBody(t, Q.parsed))));
-  })));
+  }), el('div', { class: 'addcol' }, el('button', { type: 'button', title: 'Add a status column', onclick: () => document.dispatchEvent(new Event('add-status')) }, '+ Status'))]));
   restore();
   if (peekFile) view.querySelector(`.peekpop a[data-file="${CSS.escape(peekFile)}"]`)?.focus({ preventScroll: true });
   if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
