@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig,
+  listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig, writeStatuses,
   ConflictError, ValidationError, slugify, createIdea, ideaTitle,
 } from '../src/core.js';
 
@@ -145,4 +145,16 @@ test('createIdea derives a title and keeps the text verbatim', () => {
     assert.equal(ideaTitle('x'.repeat(100)).length <= 61, true);
     assert.match(ideaTitle('word '.repeat(30)), /word…$/);
   } finally { fs.rmSync(dir, { recursive: true }); }
+});
+
+test('writeStatuses: replaces flow/block list in place, keeps other lines, validates', () => {
+  const dir = tmp();
+  writeStatuses(dir, ['b', 'a']);
+  assert.deepEqual(readConfig(dir).statuses, ['b', 'a']);
+  fs.writeFileSync(path.join(dir, '_config.yml'), 'name: x\nstatuses:\n  - x  # first\n  - y\nother: 1\n');
+  writeStatuses(dir, ['y', 'x']);
+  assert.equal(fs.readFileSync(path.join(dir, '_config.yml'), 'utf8'), 'name: x\nstatuses: [y, x]\nother: 1\n');
+  assert.throws(() => writeStatuses(dir, ['a', 'a']), /distinct/);
+  assert.throws(() => writeStatuses(dir, []), /statuses/);
+  assert.throws(() => writeStatuses(dir, ['a,b']), /statuses/);
 });

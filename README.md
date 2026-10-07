@@ -55,6 +55,9 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   checklist progress); click a header to sort, again to reverse, click a row to
   open it. Read-only; view, sort and filter are kept in the URL
   (`#/?q=...&view=table&sort=priority&dir=desc`).
+- **Column order**: drag a status column header onto another column to reorder;
+  the order is written to `statuses:` in `_config.yml`, so the CLI and other
+  browsers see it too.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
 - **+ Idea** (or `i`): quick capture. Type one or a few sentences, no title;

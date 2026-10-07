@@ -119,3 +119,13 @@ test('serves the frontend modules', async () => {
     for (const p of ['/..%2fsrc%2fserver.js', '/.hidden.js', '/nope.js', '/package.json']) assert.equal((await fetch(base + p)).status, 404, p);
   } finally { await app.close(); }
 });
+
+test('PUT /api/config reorders statuses', async () => {
+  const { app, dir, j } = await setup();
+  try {
+    const r = await j('PUT', '/api/config', { statuses: ['done', 'open'] });
+    assert.equal(r.status, 200);
+    assert.deepEqual((await r.json()).statuses, ['done', 'open']);
+    assert.equal((await j('PUT', '/api/config', { statuses: 'nope' })).status, 400);
+  } finally { await app.close(); }
+});

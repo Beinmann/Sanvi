@@ -1,5 +1,5 @@
 import { renderMarkdown } from './md.js';
-import { parseQuery, formatQuery, matchTicket, sortTickets, SORT_KEYS } from './filter.js';
+import { parseQuery, formatQuery, matchTicket, sortTickets, SORT_KEYS, moveItem } from './filter.js';
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
 
@@ -68,6 +68,16 @@ function card(t) {
     t.priority && el('span', { class: 'chip prio' }, t.priority),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
 }
+
+// Reorder status columns by dragging a header; the order is saved in the config file so it is shared.
+async function moveColumn(from, to) {
+  const cols = columns();
+  const next = moveItem(cols, cols.indexOf(from), cols.indexOf(to)).filter(Boolean);
+  if (next.join() === cols.filter(Boolean).join()) return;
+  try { await api('PUT', 'config', { statuses: next }); } catch (e) { toast(`Reorder failed: ${e.message}`); }
+  await refreshAll();
+}
+const COLUMN_DRAG = 'application/x-status-column';
 
 async function moveTicket(file, status) {
   const t = S.tickets.find((x) => x.file === file);
@@ -145,8 +155,15 @@ function renderBoard() {
       class: 'col', 'data-status': status,
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add('over'); },
       ondragleave: (e) => e.currentTarget.classList.remove('over'),
-      ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove('over'); moveTicket(e.dataTransfer.getData('text/plain'), status); },
-    }, el('h2', {}, el('span', {}, status || '(no status)'), el('span', {}, String(items.length))), items.map(card));
+      ondrop: (e) => {
+        e.preventDefault(); e.currentTarget.classList.remove('over');
+        const col = e.dataTransfer.getData(COLUMN_DRAG);
+        if (col) moveColumn(col, status); else moveTicket(e.dataTransfer.getData('text/plain'), status);
+      },
+    }, el('h2', status ? {
+      draggable: true, title: 'Drag to reorder columns',
+      ondragstart: (e) => { e.dataTransfer.setData(COLUMN_DRAG, status); e.dataTransfer.effectAllowed = 'move'; },
+    } : {}, el('span', {}, status || '(no status)'), el('span', {}, String(items.length))), items.map(card));
   })));
   if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); }
   if (target) [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target)?.focus();

@@ -179,6 +179,20 @@ export function readConfig(dir) {
 
 // --- writing ----------------------------------------------------------
 
+/** Persist the status order in `_config.yml`, replacing an existing `statuses` entry (flow or block) in place and keeping other lines. */
+export function writeStatuses(dir, statuses) {
+  if (!Array.isArray(statuses) || !statuses.length || statuses.some((s) => typeof s !== 'string' || !s.trim() || /[\r\n,\[\]"']/.test(s))
+    || new Set(statuses).size !== statuses.length) throw new ValidationError('statuses must be a list of distinct, non-empty names without commas, brackets or quotes');
+  const file = path.join(dir, '_config.yml');
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch { /* new file */ }
+  const line = `statuses: [${statuses.join(', ')}]\n`;
+  const re = /^statuses:[ \t]*(?:\[.*\][ \t]*\r?\n?|\r?\n(?:[ \t]*-[ \t]+.+\r?\n?)+)/m;
+  if (re.test(text)) text = text.replace(re, () => line);
+  else text = `${line}${text}`;
+  atomicWrite(file, text);
+}
+
 function atomicWrite(p, content) {
   const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tmp, content);
