@@ -88,3 +88,18 @@ export function renderMarkdown(src) {
   }
   return out.join('\n');
 }
+
+/**
+ * Split an optional `## Summary` section out of a ticket body. Returns { summary, rest }: `summary` is the
+ * section's text (or null), `rest` the body without it. The section ends at the next `#` / `##` heading.
+ */
+export function splitSummary(body) {
+  const lines = String(body ?? '').split('\n');
+  const start = lines.findIndex((l) => /^##\s+summary\s*#*\s*$/i.test(l));
+  if (start < 0) return { summary: null, rest: body };
+  let end = lines.findIndex((l, i) => i > start && /^#{1,2}\s/.test(l));
+  if (end < 0) end = lines.length;
+  const summary = lines.slice(start + 1, end).join('\n').trim();
+  if (!summary) return { summary: null, rest: body };
+  return { summary, rest: [...lines.slice(0, start), ...lines.slice(end)].join('\n') };
+}

@@ -94,3 +94,25 @@ test('checkStatusName: normalises and validates', () => {
   assert.match(checkStatusName('-x', []).error, /letters/);
   assert.match(checkStatusName('Open', ['open']).error, /exists/);
 });
+
+import { scoreTicket, matchedOnlyInBody } from '../public/filter.js';
+
+test('search: title ranks above body, title: filter, id lookup, in-text marker', () => {
+  const inTitle = T({ id: '012', title: 'Table view', body: 'nothing' });
+  const inBody = T({ id: '013', title: 'Other', body: 'mentions table somewhere' });
+  const q = parseQuery('table');
+  assert.ok(matchTicket(inTitle, q) && matchTicket(inBody, q));
+  assert.ok(scoreTicket(inTitle, q) > scoreTicket(inBody, q));
+  assert.ok(!matchedOnlyInBody(inTitle, q) && matchedOnlyInBody(inBody, q));
+  assert.ok(scoreTicket(T({ title: 'Comfortable' }), q) < scoreTicket(inTitle, q)); // word-start beats mid-word
+  const t = parseQuery('title:table');
+  assert.ok(matchTicket(inTitle, t) && !matchTicket(inBody, t));
+  assert.equal(formatQuery(t), 'title:table');
+  assert.ok(matchTicket(inTitle, parseQuery('#12')) && !matchTicket(inBody, parseQuery('#12')));
+  assert.ok(matchTicket(inTitle, parseQuery('12')));
+  assert.ok(scoreTicket(inTitle, '12') >= 100);
+  assert.ok(!matchTicket(T({ title: 'x', body: 'issue #12 here' }), parseQuery('#12'))); // #n is id only
+  assert.ok(matchTicket(T({ title: 'x', body: 'port 4321' }), parseQuery('4321'))); // bare number still text
+  assert.equal(scoreTicket(inTitle, ''), 0);
+  assert.deepEqual(parseQuery('title:').words, ['title:']); // malformed stays text
+});

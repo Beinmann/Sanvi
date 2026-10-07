@@ -397,7 +397,13 @@ export class Vim {
 // DOM binding. `host` = { onChange(text), onSave(), onQuit(force), onStatus(str, mode) }
 export function attachVim(ta, host) {
   const vim = new Vim(ta.value, { ...host });
+  let shownMode = vim.mode;
   const show = () => {
+    // Leaving insert mode re-selects the block cursor, which makes browsers scroll to it. The caret was
+    // already visible while typing, so keep the scroll position (textarea and page) exactly as it was.
+    const leaving = shownMode === 'insert' && vim.mode !== 'insert';
+    const keep = leaving ? { top: ta.scrollTop, left: ta.scrollLeft, y: window.scrollY, x: window.scrollX } : null;
+    shownMode = vim.mode;
     if (ta.value !== vim.text) ta.value = vim.text;
     const m = vim.mode;
     let a = vim.cur, b = vim.cur;
@@ -406,6 +412,7 @@ export function attachVim(ta, host) {
     else if (m === 'cmd' && vim.cmd.back !== 'normal') { const [s, e] = vim.selection(); a = s; b = e; }
     else b = Math.min(a + 1, ta.value.length); // block cursor
     if (m !== 'insert') ta.setSelectionRange(a, b);
+    if (keep) { ta.scrollTop = keep.top; ta.scrollLeft = keep.left; window.scrollTo(keep.x, keep.y); }
     ta.dataset.vim = m;
     host.onStatus?.(vim.status, m);
   };

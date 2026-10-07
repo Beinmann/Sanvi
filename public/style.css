@@ -147,3 +147,7 @@ body.holding .hiddenstrip .num, .board:has(.card:focus-visible) ~ .hiddenstrip .
 .col h2[draggable="true"] > .hide { pointer-events: auto; }
 .col.dragging-col { opacity: .4; }
 .drag-ghost { position: fixed; top: -10000px; left: 0; max-height: 280px; overflow: hidden; opacity: .9; background: var(--panel); border: 1px solid var(--accent); box-shadow: 0 8px 24px rgba(0,0,0,.25); pointer-events: none; }
+
+.summary { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--r); padding: 10px 14px; margin-bottom: 16px; }
+.summary h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 6px; color: var(--muted); }
+.summary .doc > :first-child { margin-top: 0; } .summary .doc > :last-child { margin-bottom: 0; }

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { createTicketServer } from '../src/server.js';
-import { renderMarkdown } from '../public/md.js';
+import { renderMarkdown, splitSummary } from '../public/md.js';
 
 async function setup() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-srv-'));
@@ -134,4 +134,14 @@ test('PUT /api/config reorders statuses', async () => {
     assert.deepEqual((await r.json()).statuses, ['done', 'open']);
     assert.equal((await j('PUT', '/api/config', { statuses: 'nope' })).status, 400);
   } finally { await app.close(); }
+});
+
+test('splitSummary: leading Summary section is lifted out, optional, ends at next heading', () => {
+  const body = '# T\n\n## Summary\n- did x\n- To test: y\n\n## Problem\ntext\n';
+  const r = splitSummary(body);
+  assert.equal(r.summary, '- did x\n- To test: y');
+  assert.equal(r.rest, '# T\n\n## Problem\ntext\n');
+  assert.deepEqual(splitSummary('# T\n\n## Problem\nx'), { summary: null, rest: '# T\n\n## Problem\nx' });
+  assert.equal(splitSummary('# T\n## Summary\n\n## P').summary, null); // empty section: ignored
+  assert.equal(splitSummary('# T\n## summary\nok').summary, 'ok');
 });

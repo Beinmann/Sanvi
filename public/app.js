@@ -1,5 +1,5 @@
-import { renderMarkdown } from './md.js';
-import { parseQuery, formatQuery, matchTicket, sortTickets, SORT_KEYS, moveItem, checkStatusName } from './filter.js';
+import { renderMarkdown, splitSummary } from './md.js';
+import { parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName } from './filter.js';
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
 
@@ -60,7 +60,7 @@ const ownVersions = new Set(); // versions this browser wrote; a refresh seeing 
 let held = null;
 function endHold() { held = null; document.body.classList.remove('holding'); }
 
-function card(t) {
+function card(t, inText = false) {
   return el('a', {
     class: `card${changedOnDisk.has(t.file) ? ' changed' : ''}`, 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); held = t.file; document.body.classList.add('holding'); },
@@ -72,6 +72,7 @@ function card(t) {
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); document.dispatchEvent(new CustomEvent('card-menu', { detail: { file: t.file, anchor: e.currentTarget } })); },
   }, '☰'),
   el('div', { class: 'meta' },
+    inText && el('span', { class: 'chip', title: 'Matched in the description, not the title' }, 'in text'),
     t.area && el('span', { class: 'chip' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
@@ -202,7 +203,7 @@ function renderBoard() {
     const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
     if (hidden.has(status)) return null;
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
-      .sort((a, b) => (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
+      .sort((a, b) => scoreTicket(b, Q.parsed) - scoreTicket(a, Q.parsed) || (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
     return el('section', {
       class: 'col', 'data-status': status,
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add('over'); },
@@ -218,7 +219,7 @@ function renderBoard() {
       ondragend: (e) => e.currentTarget.closest('.col')?.classList.remove('dragging-col'),
     } : {}, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
     el('span', {}, status || '(no status)'), el('span', { class: 'count' }, String(items.length)),
-      el('button', { type: 'button', class: 'hide', title: `Hide ${status || 'this'} column`, 'aria-label': `Hide ${status || 'no-status'} column`, onclick: () => toggleColumn(status) }, '×')), items.map(card));
+      el('button', { type: 'button', class: 'hide', title: `Hide ${status || 'this'} column`, 'aria-label': `Hide ${status || 'no-status'} column`, onclick: () => toggleColumn(status) }, '×')), items.map((t) => card(t, matchedOnlyInBody(t, Q.parsed))));
   })));
   restore();
   if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
@@ -230,7 +231,10 @@ const COLS = [['id', 'ID'], ['title', 'Title'], ['status', 'Status'], ['area', '
 
 // Read-only projection of the same tickets and filter as the board.
 function tableView() {
-  const rows = sortTickets(S.tickets.filter((t) => matchTicket(t, Q.parsed)), Q.sort, Q.dir, columns());
+  let rows = sortTickets(S.tickets.filter((t) => matchTicket(t, Q.parsed)), Q.sort, Q.dir, columns());
+  if (Q.sort === 'id' && Q.dir === 'asc' && Q.parsed.words.length) { // default order + a text query: best matches first
+    rows = rows.map((t) => [scoreTicket(t, Q.parsed), t]).sort((a, b) => b[0] - a[0]).map((x) => x[1]); // stable
+  }
   const head = COLS.map(([key, label]) => el('th', { 'aria-sort': Q.sort === key ? (Q.dir === 'asc' ? 'ascending' : 'descending') : 'none' },
     el('button', { type: 'button', onclick: () => sortBy(key) }, label, Q.sort === key ? (Q.dir === 'asc' ? ' ▲' : ' ▼') : '')));
   const open = (t) => { location.hash = `#/t/${encodeURIComponent(t.file)}`; };
@@ -381,9 +385,14 @@ function renderTab(focusEditor = false) {
     }
     if (focusEditor) ta.focus();
   } else {
+    const { summary, rest } = splitSummary(D.draft.body);
     const doc = el('div', { class: 'doc' });
-    doc.innerHTML = renderMarkdown(D.draft.body);
-    box.replaceChildren(doc);
+    doc.innerHTML = renderMarkdown(rest);
+    if (summary) {
+      const sum = el('aside', { class: 'summary', 'aria-label': 'Summary' }, el('h2', {}, 'Summary'), el('div', { class: 'doc' }));
+      sum.lastChild.innerHTML = renderMarkdown(summary);
+      box.replaceChildren(sum, doc);
+    } else box.replaceChildren(doc);
   }
   for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('active', b.dataset.tab === D.tab);
 }

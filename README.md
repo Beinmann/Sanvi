@@ -45,7 +45,8 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 ```
 
 - Kanban board; drag a card to change its status.
-- Search box above the board: free text (title and body) plus
+- Search box above the board: free text (title and body; title matches sort first in a column, and cards matched only
+  in the description show an "in text" chip), `title:word` (title only), `12` / `#12` (ticket by id; `#12` matches only the id) plus
   `status:`, `area:`, `priority:` filters, comma-separated values, `-` to
   exclude (`migrate -area:research status:open,blocked`). Everything ANDs;
   `area:` alone means "not set". Unknown `key:` tokens are plain text. The
@@ -65,6 +66,7 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 - **Hide columns**: the × in a column header hides it; a "Hidden: …" strip above the board lists hidden
   columns with ticket counts (and how many match the current filter) and restores one on click. A ticket dropped on a hidden entry moves there without showing the column.
   Also "Show/Hide column: …" in Ctrl+K. Stored per browser, not in `_config.yml`; the table view is unaffected.
+- A body section `## Summary` (2-5 lines: what was done, "To test: …") is shown in a highlighted box at the top of the ticket page. Optional; nothing else changes without it.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
 - **+ Idea** (or `i`, or **Ctrl+I** from anywhere, even mid-edit; your edit is kept): quick capture
