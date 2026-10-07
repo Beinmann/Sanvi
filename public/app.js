@@ -52,9 +52,13 @@ function columns() {
   return cols;
 }
 
+// Files changed by someone else (terminal, agent) in the last few seconds get a flag on their card.
+const changedOnDisk = new Set();
+const ownWrites = new Set();
+
 function card(t) {
   return el('a', {
-    class: 'card', 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
+    class: `card${changedOnDisk.has(t.file) ? ' changed' : ''}`, 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); },
     ondragend: (e) => e.currentTarget.classList.remove('dragging'),
   },
@@ -68,9 +72,11 @@ function card(t) {
 async function moveTicket(file, status) {
   const t = S.tickets.find((x) => x.file === file);
   if (!t || t.status === status) return;
+  ownWrites.add(file);
   try {
     await api('PUT', `tickets/${encodeURIComponent(file)}`, { version: t.version, fields: { status } });
   } catch (e) {
+    ownWrites.delete(file);
     toast(e.status === 409 ? `#${t.id} changed on disk; not moved. Board refreshed.` : `Move failed: ${e.message}`);
   }
   await refreshAll();
@@ -159,6 +165,7 @@ async function save() {
   const sent = { ...D.draft };
   const fields = {};
   for (const k of ['status', 'area', 'priority']) if (sent[k] !== D.loaded[k]) fields[k] = sent[k];
+  ownWrites.add(D.file);
   try {
     const t = await api('PUT', `tickets/${encodeURIComponent(D.file)}`, {
       version: D.loaded.version, fields, ...(sent.body !== D.loaded.body ? { body: sent.body } : {}),
@@ -170,6 +177,7 @@ async function save() {
     toast('Saved');
     return true;
   } catch (e) {
+    ownWrites.delete(D.file);
     if (e.status === 409) { D.stale = e.data.current; D.conflict = true; updateBanner(); $('#banner button')?.focus(); }
     else toast(`Save failed: ${e.message}`);
     return false;
@@ -349,9 +357,16 @@ initKeys({
 $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
 
 async function refreshAll() {
+  const before = new Map(S.tickets.map((t) => [t.file, t.version]));
   try {
     [S.cfg, S.tickets] = await Promise.all([api('GET', 'config'), api('GET', 'tickets?bodies=1')]);
   } catch (e) { toast(`Load failed: ${e.message}`); return; }
+  for (const t of S.tickets) {
+    if (!before.has(t.file) || before.get(t.file) === t.version) continue;
+    if (ownWrites.delete(t.file)) continue;
+    changedOnDisk.add(t.file);
+    setTimeout(() => { changedOnDisk.delete(t.file); if (document.querySelector('.board')) renderBoard(); }, 6000);
+  }
   const h = location.hash || '#/';
   if (h.startsWith('#/t/')) await refreshDetail();
   else if (h === '#/' || h === '' || h.startsWith('#/?')) renderBoard();
