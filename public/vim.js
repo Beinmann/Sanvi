@@ -411,6 +411,10 @@ export function attachVim(ta, host) {
     else if (m === 'visual' || m === 'vline') { const [s, e] = vim.selection(); a = s; b = e; }
     else if (m === 'cmd' && vim.cmd.back !== 'normal') { const [s, e] = vim.selection(); a = s; b = e; }
     else b = Math.min(a + 1, ta.value.length); // block cursor
+    // A block over a newline or past the end paints nothing: use the (accent-coloured) native caret there.
+    const empty = m === 'normal' && (ta.value[a] === undefined || ta.value[a] === '\n' || ta.value[a] === '\r');
+    if (empty) b = a;
+    ta.toggleAttribute('data-vim-empty', empty);
     if (m !== 'insert') ta.setSelectionRange(a, b);
     if (keep) { ta.scrollTop = keep.top; ta.scrollLeft = keep.left; window.scrollTo(keep.x, keep.y); }
     ta.dataset.vim = m;
