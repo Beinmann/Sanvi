@@ -68,6 +68,7 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 - **Pick up and drop**: `Space` on a focused card picks it up; `h`/`l` choose the column (hidden ones
   too), `Space`/`Enter` drops, `1`-`9` drops at once, `Esc` cancels. Nothing is saved until the drop.
 - **Search from anywhere**: `/` (or `Ctrl+/` also while typing) goes to the board and focuses the search box.
+- **Selection**: the board keeps an explicit selected card (highlighted; `j`/`k`/`h`/`l` move it, a click or Tab selects, Esc clears). Keys like `Enter`, `c`, `s`, `d`, `Space` act on it, independent of browser focus; the hovered card is only used while nothing is selected.
 - **Peek**: the ▾ next to a "Hidden: …" entry lists that status's tickets (honouring the filter) without showing the column; `j`/`k` move, Enter opens, Esc closes, an item can be dragged onto a visible column.
 - **Delete and trash**: `d` on a focused (or hovered) card, the ☰ menu or Ctrl+K asks first (Enter / `y` deletes, Esc cancels).
   The ticket and its images move to `tickets/.trash/` and stay restorable for 30 days (`TRASH_DAYS` in `src/core.js`;

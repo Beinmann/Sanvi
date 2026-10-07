@@ -14,6 +14,24 @@ export function matches(label, query) {
  * {col, row} or null. Returns the new {col, row}, or null if nothing to focus.
  * dir: 'next' | 'prev' (within column), 'left' | 'right' (across non-empty columns).
  */
+/**
+ * Which card a j/k/h/l press selects. `cols` = arrays of file names in board order; `selected`/`last` = file
+ * names or null. With a selection it steps from it; without one it re-selects the last selected card if it is
+ * still on the board, else the first card of the first non-empty column. Returns a file name or null.
+ */
+export function navigate(cols, selected, last, dir) {
+  const find = (f) => {
+    if (!f) return null;
+    for (let col = 0; col < cols.length; col++) { const row = cols[col].indexOf(f); if (row >= 0) return { col, row }; }
+    return null;
+  };
+  const cur = find(selected);
+  if (cur) { const n = step(cols, cur, dir); return n ? cols[n.col][n.row] : null; }
+  if (find(last)) return last;
+  const n = step(cols, null, dir);
+  return n ? cols[n.col][n.row] : null;
+}
+
 export function step(cols, pos, dir) {
   const filled = cols.map((c, i) => (c.length ? i : -1)).filter((i) => i >= 0);
   if (!filled.length) return null;
@@ -38,18 +56,18 @@ export const HELP = [
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['/', 'Go to the search box (from any view; goes to the board first)'],
     ['Ctrl+/ or Ctrl+E', 'Same, also while typing; an unsaved edit asks before it is left'],
-    ['Esc', 'Close overlay, leave a field, go back to the board'],
+    ['Esc', 'Close overlay, leave a field, go back to the board, then clear the card selection'],
   ]],
   ['Board', [
-    ['j / k', 'Next / previous card in the column'],
+    ['j / k', 'Select next / previous card in the column (with nothing selected: the last selected card, else the first)'],
     ['h / l', 'Previous / next column'],
-    ['Enter', 'Open the focused ticket'],
-    ['Space / Ctrl+Space', 'Pick up the focused (or hovered) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
-    ['c', 'Add a timestamped comment to the focused (or hovered) ticket; ☰ on a card opens its menu'],
+    ['Enter', 'Open the selected ticket'],
+    ['Space / Ctrl+Space', 'Pick up the selected (or hovered, if none) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
+    ['c', 'Add a timestamped comment to the selected (or hovered, if none) ticket; ☰ on a card opens its menu'],
     ['1-9', 'Only in move mode (after Space / Ctrl+Space): drop the ticket in that column; the numbers show on the headers then'],
     ['v', 'Peek into hidden columns: list their tickets; h / l switch status, j / k move, Enter opens, Esc closes'],
-    ['d', 'Delete the focused (or hovered) ticket after a confirmation; it goes to the trash for 30 days'],
-    ['s', 'Set status of the focused ticket (menu)'],
+    ['d', 'Delete the selected (or hovered, if none) ticket after a confirmation; it goes to the trash for 30 days'],
+    ['s', 'Set status of the selected ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
   ]],
   ['Ticket', [
@@ -79,19 +97,20 @@ export function initKeys(ctx) {
   // ---- board focus
   const boardCols = () => ctx.columns().map((s) =>
     [...document.querySelectorAll('.col')].find((c) => c.dataset.status === s)?.querySelectorAll('.card') ?? []);
-  const focusedCard = () => document.activeElement?.closest?.('.card') ?? null;
+  // The card keys act on: the selection; hover only counts while nothing is selected.
+  const selectedFile = () => ctx.selected?.() ?? null;
+  const cardTarget = () => selectedFile() ?? hoverFile;
   function moveFocus(dir) {
-    const cols = boardCols().map((c) => [...c]);
-    const cur = focusedCard();
-    let pos = null;
-    if (cur) cols.forEach((c, ci) => { const ri = c.indexOf(cur); if (ri >= 0) pos = { col: ci, row: ri }; });
-    const next = step(cols, pos, dir);
-    if (next) { const c = cols[next.col][next.row]; c.focus(); c.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+    const cols = boardCols().map((c) => [...c].map((x) => x.dataset.file));
+    const file = navigate(cols, selectedFile(), ctx.lastSelected?.(), dir);
+    if (!file) return;
+    ctx.select(file);
+    [...document.querySelectorAll('.card')].find((c) => c.dataset.file === file)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
   function contextFile() {
     const r = hashRoute();
     if (r === 'detail') return ctx.detail()?.file ?? null;
-    if (r === 'board') return focusedCard()?.dataset.file ?? null;
+    if (r === 'board') return cardTarget();
     return null;
   }
 
@@ -375,7 +394,7 @@ export function initKeys(ctx) {
         e.preventDefault();
         if (hashRoute() === 'new') location.hash = '#/'; else e.target.blur();
       } else if (hashRoute() !== 'board') { e.preventDefault(); location.hash = '#/'; }
-      else if (document.activeElement?.closest?.('.card')) { e.preventDefault(); document.activeElement.blur(); } // clear the card focus
+      else if (selectedFile()) { e.preventDefault(); ctx.select(null); } // clear the selection (and the card focus)
       return;
     }
     if (overlay) { // keep focus inside; the overlays handle their own keys
@@ -386,7 +405,7 @@ export function initKeys(ctx) {
     if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === ' ' || e.code === 'Space') && hashRoute() === 'board' && !isTyping(e.target)) {
       // Ctrl+Space: pick up / drop without depending on where the focus is (plain Space can scroll the page)
       const pk = ctx.pick?.();
-      const f = focusedCard()?.dataset.file ?? hoverFile;
+      const f = cardTarget();
       e.preventDefault();
       if (pk) { const t = S.tickets.find((x) => x.file === pk.file); ctx.setPick(null); if (t && t.status !== pk.status) ctx.moveTicket(pk.file, pk.status); }
       else { const t = f && S.tickets.find((x) => x.file === f); if (t) ctx.setPick({ file: t.file, status: t.status }); }
@@ -424,21 +443,28 @@ export function initKeys(ctx) {
       case 'k': if (board) moveFocus('prev'); else return; break;
       case 'h': if (board) moveFocus('left'); else return; break;
       case 'l': if (board) moveFocus('right'); else return; break;
-      case ' ': { // pick the focused card up (only the card itself, so buttons inside it keep working)
-        const c = board && e.target.classList?.contains('card') ? e.target : null;
-        const t = c && S.tickets.find((x) => x.file === c.dataset.file);
+      case ' ': { // pick the selected card up (not when a button or link has the focus: Space is theirs)
+        if (!board || (e.target !== document.body && !e.target.classList?.contains('card'))) return;
+        const t = S.tickets.find((x) => x.file === cardTarget());
         if (!t) return;
         ctx.setPick({ file: t.file, status: t.status });
         break;
       }
+      case 'Enter': { // open the selected card, also when focus is lost (a focused card opens natively)
+        if (!board || e.target !== document.body) return;
+        const f = cardTarget();
+        if (!f) return;
+        location.hash = `#/t/${encodeURIComponent(f)}`;
+        break;
+      }
       case 'v': ctx.peekToggle(); break; // peek into the hidden columns
       case 'd': { // delete (after confirmation): the focused or hovered card, or the open ticket
-        const f = hashRoute() === 'detail' ? ctx.detail()?.file : board && (focusedCard()?.dataset.file ?? hoverFile);
+        const f = hashRoute() === 'detail' ? ctx.detail()?.file : board && cardTarget();
         if (!f) return;
         openConfirmDelete(f);
         break;
       }
-      case 'c': { const f = board && (focusedCard()?.dataset.file ?? hoverFile); if (!f) return; openNote(f); break; }
+      case 'c': { const f = board && cardTarget(); if (!f) return; openNote(f); break; }
       case 'e': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('edit'); else return; break;
       case 'p': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('view'); else return; break;
       default: return;

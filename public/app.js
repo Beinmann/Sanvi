@@ -74,9 +74,34 @@ function setPick(p) {
   renderBoard();
 }
 
+// Selecting by focus too: Tab, click or any other way of focusing a card makes it the selection.
+document.addEventListener('focusin', (e) => {
+  const c = e.target.closest?.('.card');
+  if (c && c.dataset.file !== selected) setSelected(c.dataset.file, { focus: false });
+});
+
+// The selected card (045): explicit state, independent of DOM focus, so keys keep working after focus is lost.
+// `lastSelected` survives Esc so j/k can come back to it.
+let selected = null;
+let lastSelected = null;
+function setSelected(file, { focus = true } = {}) {
+  selected = file || null;
+  if (selected) lastSelected = selected;
+  document.body.classList.toggle('has-selection', !!selected);
+  let el0 = null;
+  for (const c of document.querySelectorAll('.card')) {
+    const on = c.dataset.file === selected;
+    c.classList.toggle('selected', on);
+    if (on) el0 = c;
+  }
+  const a = document.activeElement;
+  if (!selected) { if (a?.closest?.('.card')) a.blur(); return; }
+  if (focus && el0 && a !== el0 && (!a || a === document.body || a.closest?.('.card'))) el0.focus({ preventScroll: true });
+}
+
 function card(t, inText = false) {
   return el('a', {
-    class: `card${changedOnDisk.has(t.file) ? ' changed' : ''}${pick?.file === t.file ? ' picked' : ''}`, 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
+    class: `card${changedOnDisk.has(t.file) ? ' changed' : ''}${pick?.file === t.file ? ' picked' : ''}${selected === t.file ? ' selected' : ''}`, 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); },
     ondragend: (e) => { e.currentTarget.classList.remove('dragging'); endHold(); },
   },
@@ -204,6 +229,7 @@ function filterBar() {
   return el('div', { class: 'filterbar' }, input,
     el('button', { type: 'button', title: 'Add a status column', onclick: () => document.dispatchEvent(new Event('add-status')) }, '+ Status'),
     el('span', { class: 'viewswitch' }, tab('board', 'Board'), tab('table', 'Table')),
+    Q.view === 'board' && el('span', { class: 'selhint' }, 'No card selected · press j'),
     Q.text.trim() && el('span', { class: 'active-filter' }, 'Filter: ', el('code', {}, formatQuery(Q.parsed))),
     Q.text.trim() && el('button', { type: 'button', onclick: () => { setFilter(''); $('#search')?.focus(); } }, 'Clear'));
 }
@@ -226,7 +252,13 @@ function renderBoard() {
   if (pick && !S.tickets.some((t) => t.file === pick.file)) { pick = null; document.body.classList.remove('moving'); } // the ticket is gone
   const hadFocus = document.activeElement?.id === 'search';
   const caret = hadFocus ? document.activeElement.selectionStart : 0;
-  const target = pendingFocus || document.activeElement?.closest?.('.card')?.dataset.file;
+  const a0 = document.activeElement;
+  const focusFree = !a0 || a0 === document.body || !!a0.closest?.('.card'); // not typing in a field, overlay or list
+  if (pendingFocus) selected = pendingFocus;
+  if (selected && !S.tickets.some((t) => t.file === selected)) selected = null; // it was deleted or renamed
+  if (selected) lastSelected = selected;
+  document.body.classList.toggle('has-selection', !!selected);
+  const target = selected;
   pendingFocus = null;
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
   // keep scroll (page, board, table wrapper, each column) across the re-render
@@ -274,7 +306,7 @@ function renderBoard() {
   if (peekFile) view.querySelector(`.peekpop a[data-file="${CSS.escape(peekFile)}"]`)?.focus({ preventScroll: true });
   if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
   const focusEl = target && [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target);
-  if (focusEl) { focusEl.focus({ preventScroll: true }); } // never scroll here: a move or live refresh keeps the view; j/k/h/l scroll themselves
+  if (focusEl && focusFree && !peekFile) { focusEl.focus({ preventScroll: true }); } // never scroll here: a move or live refresh keeps the view; j/k/h/l scroll themselves
 }
 
 const COLS = [['id', 'ID'], ['title', 'Title'], ['status', 'Status'], ['area', 'Area'], ['priority', 'Priority'], ['progress', 'Progress']];
@@ -704,7 +736,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekToggle, addStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekToggle, selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
     done.ticket ??= await api('POST', 'ideas', { text });
