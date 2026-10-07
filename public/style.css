@@ -75,7 +75,10 @@ main { padding: 16px; }
 .vimmode[data-mode="visual"], .vimmode[data-mode="vline"] { color: var(--warn); }
 .editorbar .hint { margin-left: auto; }
 textarea.editor[data-vim]:not([data-vim="insert"]) { caret-color: transparent; }
-textarea.editor[data-vim][data-vim-empty] { caret-color: var(--accent); } /* cursor on an empty line / at the end: no glyph to highlight */
+/* block cursor where the selection paints nothing (empty line, end of text); positioned by vim.js */
+.vim-cursor { position: absolute; pointer-events: none; background: var(--accent); opacity: .6; }
+.vim-cursor[hidden] { display: none; }
+textarea.editor:not(:focus) + .vim-cursor { display: none; }
 textarea.editor { width: 100%; min-height: 60vh; font: 14px/1.5 ui-monospace, monospace; resize: vertical; }
 .newform.wide { max-width: 640px; }
 .newform .hint { margin: 0; font-size: 12px; color: var(--muted); }

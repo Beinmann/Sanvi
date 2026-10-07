@@ -395,9 +395,53 @@ export class Vim {
 
 // ---------------------------------------------------------------------------
 // DOM binding. `host` = { onChange(text), onSave(), onQuit(force), onStatus(str, mode) }
+// Where character offset `pos` sits inside the textarea (a hidden mirror with the same text metrics),
+// in the coordinates of the textarea's offset parent. Used to paint a cursor where the browser's
+// selection paints nothing (empty lines, end of text).
+function caretBox(ta, pos) {
+  const cs = getComputedStyle(ta);
+  const mirror = document.createElement('div');
+  for (const k of ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'borderStyle', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize', 'textIndent']) mirror.style[k] = cs[k];
+  Object.assign(mirror.style, { position: 'absolute', visibility: 'hidden', top: '0', left: '-9999px', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', overflow: 'hidden' });
+  const mark = document.createElement('span');
+  mark.textContent = '\u200b';
+  mirror.append(ta.value.slice(0, pos), mark);
+  const glyph = document.createElement('span');
+  glyph.textContent = 'x';
+  mirror.append(glyph);
+  document.body.append(mirror);
+  const box = {
+    left: ta.offsetLeft + ta.clientLeft + mark.offsetLeft - ta.scrollLeft, top: ta.offsetTop + ta.clientTop + mark.offsetTop - ta.scrollTop,
+    width: glyph.offsetWidth, height: parseFloat(cs.lineHeight) || mark.offsetHeight,
+  };
+  mirror.remove();
+  return box;
+}
+
 export function attachVim(ta, host) {
   const vim = new Vim(ta.value, { ...host });
   let shownMode = vim.mode;
+  let cursorEl = null;
+  let emptyAt = -1;
+  const paintEmptyCursor = (pos) => {
+    emptyAt = pos;
+    if (pos < 0) { if (cursorEl) cursorEl.hidden = true; return; }
+    if (!cursorEl?.isConnected) {
+      if (!ta.parentNode) return;
+      if (getComputedStyle(ta.parentNode).position === 'static') ta.parentNode.style.position = 'relative';
+      cursorEl = document.createElement('div');
+      cursorEl.className = 'vim-cursor';
+      cursorEl.setAttribute('aria-hidden', 'true');
+      ta.after(cursorEl);
+    }
+    const c = caretBox(ta, pos);
+    const top0 = ta.offsetTop + ta.clientTop;
+    const inside = c.top >= top0 && c.top + c.height <= top0 + ta.clientHeight;
+    cursorEl.hidden = !inside;
+    Object.assign(cursorEl.style, { left: `${c.left}px`, top: `${c.top}px`, width: `${c.width}px`, height: `${c.height}px` });
+  };
+  ta.addEventListener('scroll', () => { if (emptyAt >= 0) paintEmptyCursor(emptyAt); });
   const show = () => {
     // Leaving insert mode re-selects the block cursor, which makes browsers scroll to it. The caret was
     // already visible while typing, so keep the scroll position (textarea and page) exactly as it was.
@@ -414,7 +458,7 @@ export function attachVim(ta, host) {
     // A block over a newline or past the end paints nothing: use the (accent-coloured) native caret there.
     const empty = m === 'normal' && (ta.value[a] === undefined || ta.value[a] === '\n' || ta.value[a] === '\r');
     if (empty) b = a;
-    ta.toggleAttribute('data-vim-empty', empty);
+    paintEmptyCursor(empty ? a : -1);
     if (m !== 'insert') ta.setSelectionRange(a, b);
     if (keep) { ta.scrollTop = keep.top; ta.scrollLeft = keep.left; window.scrollTo(keep.x, keep.y); }
     ta.dataset.vim = m;
