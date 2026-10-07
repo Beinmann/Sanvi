@@ -205,3 +205,12 @@ body.has-selection .selhint { display: none; }
 .addcol { flex: 0 0 auto; align-self: flex-start; margin-top: 4px; }
 .addcol button { all: unset; box-sizing: border-box; cursor: pointer; padding: 6px 14px; border: 2px dashed var(--border); border-radius: var(--r); color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .addcol button:hover, .addcol button:focus-visible { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.palette { display: flex; flex-direction: column; overflow: hidden; }
+.palette ul { overflow: auto; min-height: 0; }
+.palette li.heading { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+.palette li { align-items: center; }
+.palette li .mark { color: var(--muted); width: 1em; flex: none; margin-right: -4px; } .palette li.sel .mark { color: var(--accent-fg); }
+.palette li .plabel { flex: 1; min-width: 0; }
+.palette li.tk .pid { flex: 0 0 4.2em; color: var(--muted); font-variant-numeric: tabular-nums; } .palette li.sel .pid { color: var(--accent-fg); opacity: .8; }
+.palette li.tk .ptitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette li small.chip { flex: none; background: var(--chip); border-radius: 6px; padding: 0 8px; font-size: 11px; color: var(--text); } .palette li.sel small.chip { color: var(--text); opacity: 1; }

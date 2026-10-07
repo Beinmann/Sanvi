@@ -160,6 +160,15 @@ test('writeStatuses: replaces flow/block list in place, keeps other lines, valid
   assert.throws(() => writeStatuses(dir, ['a,b']), /statuses/);
 });
 
+test('writeStatuses: removing a status keeps the other config lines and never touches tickets', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, '_config.yml'), 'name: x\nstatuses: [a, b, c]\nother: 1\n');
+  fs.writeFileSync(path.join(dir, '001-t.md'), '---\nstatus: b\n---\n\n# T\n');
+  writeStatuses(dir, ['a', 'c']);
+  assert.equal(fs.readFileSync(path.join(dir, '_config.yml'), 'utf8'), 'name: x\nstatuses: [a, c]\nother: 1\n');
+  assert.equal(readTicket(dir, '001-t.md').status, 'b');
+});
+
 test('addNote appends to Notes, creates the section, keeps the rest and handles CRLF', () => {
   const dir = tmp();
   const now = new Date(2026, 9, 7, 9, 5);

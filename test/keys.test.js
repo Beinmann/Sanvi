@@ -57,3 +57,31 @@ test('ticketsByRef: exact id first, else id prefix', () => {
   assert.deepEqual(ticketsByRef(ts, 21).map((t) => t.id), ['021']);
   assert.deepEqual(ticketsByRef([{ id: '020' }, { id: '021' }, { id: '200' }], 2).map((t) => t.id), ['020', '021', '200']);
 });
+
+import { ticketRows, TICKET_CAP } from '../public/keys.js';
+import { planStatusDelete } from '../public/filter.js';
+
+test('ticketRows: capped with a counted heading and a "show more" row that expands', () => {
+  const ts = Array.from({ length: 12 }, (_, i) => ({ id: String(i + 1).padStart(3, '0'), title: `t${i}`, status: 'open', file: `${i}.md` }));
+  let expanded = false;
+  const rows = ticketRows(ts, expanded, () => { expanded = true; });
+  assert.equal(rows[0].heading, 'Tickets · 12');
+  assert.equal(rows.length, 1 + TICKET_CAP + 1);
+  const more = rows.at(-1);
+  assert.equal(more.label, 'Show 7 more tickets…');
+  more.stay();
+  assert.equal(expanded, true);
+  assert.equal(ticketRows(ts, true, () => {}).length, 13);
+  assert.equal(ticketRows(ts.slice(0, 5), false, () => {}).length, 6); // at the cap: no "more" row
+  assert.deepEqual(ticketRows([], false, () => {}), []);
+});
+
+test('planStatusDelete: in use, unused, extra column and the last status', () => {
+  const ts = [{ status: 'a' }, { status: 'a' }, { status: 'x' }];
+  const p = planStatusDelete(['a', 'b'], ts, 'a');
+  assert.equal(p.users.length, 2); assert.deepEqual(p.targets, ['b']); assert.equal(p.inConfig, true); assert.equal(p.error, null);
+  assert.equal(planStatusDelete(['a', 'b'], ts, 'b').users.length, 0);
+  const extra = planStatusDelete(['a', 'b'], ts, 'x');
+  assert.equal(extra.inConfig, false); assert.equal(extra.users.length, 1); assert.equal(extra.error, null);
+  assert.match(planStatusDelete(['a'], ts, 'a').error, /last/);
+});
