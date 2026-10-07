@@ -195,3 +195,4 @@ table.trash th, table.trash td { text-align: left; padding: 6px 10px; border-bot
 body.has-selection .selhint { display: none; }
 .focushint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 8px 14px; border: 1px solid var(--warn); border-radius: var(--r); background: var(--warn-bg); color: var(--warn); font-size: 13px; max-width: calc(100vw - 32px); }
 .focushint[hidden] { display: none; }
+.hiddenstrip button.selected { outline: 2px solid var(--accent); outline-offset: 1px; background: var(--accent-soft); }

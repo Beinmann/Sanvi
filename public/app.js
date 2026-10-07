@@ -84,10 +84,24 @@ document.addEventListener('focusin', (e) => {
 // `lastSelected` survives Esc so j/k can come back to it.
 let selected = null;
 let lastSelected = null;
+// The selection can also sit on an entry of the "Hidden: ..." strip (reached with k from a column's top card,
+// or h/l along the strip); Enter there opens that status's list.
+let stripSel = null;
+function paintStripSel() {
+  for (const b of document.querySelectorAll('.stripentry button[data-status]')) b.classList.toggle('selected', stripSel !== null && b.dataset.status === stripSel);
+  document.body.classList.toggle('has-selection', !!selected || stripSel !== null);
+}
+function setStripSel(status) {
+  stripSel = status ?? null;
+  if (stripSel !== null) setSelected(null);
+  paintStripSel();
+}
+
 function setSelected(file, { focus = true } = {}) {
   selected = file || null;
-  if (selected) lastSelected = selected;
-  document.body.classList.toggle('has-selection', !!selected);
+  if (selected) { lastSelected = selected; stripSel = null; }
+  document.body.classList.toggle('has-selection', !!selected || stripSel !== null);
+  paintStripSel();
   let el0 = null;
   for (const c of document.querySelectorAll('.card')) {
     const on = c.dataset.file === selected;
@@ -256,8 +270,9 @@ function renderBoard() {
   const focusFree = !a0 || a0 === document.body || !!a0.closest?.('.card'); // not typing in a field, overlay or list
   if (pendingFocus) selected = pendingFocus;
   if (selected && !S.tickets.some((t) => t.file === selected)) selected = null; // it was deleted or renamed
+  if (stripSel !== null && !hidden.has(stripSel)) stripSel = null; // that column is shown again
   if (selected) lastSelected = selected;
-  document.body.classList.toggle('has-selection', !!selected);
+  document.body.classList.toggle('has-selection', !!selected || stripSel !== null);
   const target = selected;
   pendingFocus = null;
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
@@ -416,7 +431,7 @@ function hiddenStrip() {
     const hits = filtering ? all.filter((t) => matchTicket(t, Q.parsed)).length : 0;
     const n = numbered.indexOf(status) + 1; // same numbering as the column badges
     const main = el('button', {
-      type: 'button', class: `${hits ? 'hit' : ''}${pick?.status === status ? ' target' : ''}`, 'data-status': status, title: `Show ${status || '(no status)'} (drop a ticket here to move it without showing)`,
+      type: 'button', class: `${hits ? 'hit' : ''}${pick?.status === status ? ' target' : ''}${stripSel === status ? ' selected' : ''}`, 'data-status': status, title: `Show ${status || '(no status)'} (drop a ticket here to move it without showing)`,
       onclick: () => toggleColumn(status),
       ondragover: (e) => { if (e.dataTransfer.types.includes(COLUMN_DRAG)) return; e.preventDefault(); e.currentTarget.classList.add('over'); },
       ondragleave: (e) => e.currentTarget.classList.remove('over'),
@@ -442,17 +457,16 @@ function togglePeek(status) {
   renderBoard();
   if (peek) view.querySelector('.peekpop a')?.focus({ preventScroll: true });
 }
-// Keyboard entry (key `v`): open the first hidden status's list, or close it; h/l inside the list switch status.
-function peekToggle() {
-  const list = columns().filter((c) => hidden.has(c));
-  if (!list.length) { toast('No hidden columns to peek into'); return; }
-  if (peek !== null) closePeek(); else togglePeek(list[0]);
+// Enter on a selected strip entry: open (or re-enter) its list. h/l inside the list switch status.
+function peekOpen(status) {
+  if (peek !== status) togglePeek(status); else view.querySelector('.peekpop a')?.focus({ preventScroll: true });
 }
 function peekStep(dir) {
   const list = columns().filter((c) => hidden.has(c));
   const to = list[Math.max(0, Math.min(list.length - 1, list.indexOf(peek) + dir))];
   if (to === undefined || to === peek) return;
   peek = to;
+  stripSel = to;
   renderBoard();
   view.querySelector('.peekpop a')?.focus({ preventScroll: true });
 }
@@ -473,7 +487,10 @@ function peekPopover(status) {
       const at = links.indexOf(document.activeElement);
       if (e.key === 'Escape') closePeek({ refocus: true });
       else if (e.key === 'h' || e.key === 'l' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') peekStep(e.key === 'l' || e.key === 'ArrowRight' ? 1 : -1);
-      else if (e.key === 'j' || e.key === 'ArrowDown') links[Math.min(links.length - 1, at + 1)]?.focus();
+      else if (e.key === ' ') { // pick the ticket up like a card on the board: h/l choose the column, Space/Enter drops
+        const t = S.tickets.find((x) => x.file === document.activeElement?.dataset?.file);
+        if (t) { peek = null; setPick({ file: t.file, status: t.status }); }
+      } else if (e.key === 'j' || e.key === 'ArrowDown') links[Math.min(links.length - 1, at + 1)]?.focus();
       else if (e.key === 'k' || e.key === 'ArrowUp') links[Math.max(0, at - 1)]?.focus();
       else if (e.key !== 'Enter' && e.key !== 'Tab') return; // Enter follows the link natively
       if (e.key !== 'Enter' && e.key !== 'Tab') e.preventDefault();
@@ -736,7 +753,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekToggle, selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
     done.ticket ??= await api('POST', 'ideas', { text });

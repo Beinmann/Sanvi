@@ -65,7 +65,7 @@ export const HELP = [
     ['Space / Ctrl+Space', 'Pick up the selected (or hovered, if none) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
     ['c', 'Add a timestamped comment to the selected (or hovered, if none) ticket; ☰ on a card opens its menu'],
     ['1-9', 'Only in move mode (after Space / Ctrl+Space): drop the ticket in that column; the numbers show on the headers then'],
-    ['v', 'Peek into hidden columns: list their tickets; h / l switch status, j / k move, Enter opens, Esc closes'],
+    ['k at the top card', 'Move up onto the "Hidden: ..." strip; h / l pick a hidden status, Enter lists its tickets (j / k move, Space picks one up to move it, Enter opens it, h / l switch status, Esc closes), j goes back to the cards'],
     ['d', 'Delete the selected (or hovered, if none) ticket after a confirmation; it goes to the trash for 30 days'],
     ['s', 'Set status of the selected ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
@@ -102,11 +102,21 @@ export function initKeys(ctx) {
   const cardTarget = () => selectedFile() ?? hoverFile;
   function moveFocus(dir) {
     const cols = boardCols().map((c) => [...c].map((x) => x.dataset.file));
-    const file = navigate(cols, selectedFile(), ctx.lastSelected?.(), dir);
+    const hiddenList = ctx.hiddenColumns?.() ?? [];
+    const strip = ctx.stripSelected?.() ?? null;
+    if (strip !== null) { // on the "Hidden: ..." strip: h/l along it, j back to the cards
+      if (dir === 'left' || dir === 'right') ctx.selectStrip(hiddenList[Math.max(0, Math.min(hiddenList.length - 1, hiddenList.indexOf(strip) + (dir === 'right' ? 1 : -1)))]);
+      else if (dir === 'next') { const f = navigate(cols, null, ctx.lastSelected?.(), 'next'); if (f) { ctx.select(f); scrollToCard(f); } }
+      return;
+    }
+    const cur = selectedFile();
+    const file = navigate(cols, cur, ctx.lastSelected?.(), dir);
+    if (dir === 'prev' && cur && file === cur && hiddenList.length) { ctx.selectStrip(hiddenList[0]); return; } // top of the column: up to the strip
     if (!file) return;
     ctx.select(file);
-    [...document.querySelectorAll('.card')].find((c) => c.dataset.file === file)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    scrollToCard(file);
   }
+  const scrollToCard = (file) => [...document.querySelectorAll('.card')].find((c) => c.dataset.file === file)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   function contextFile() {
     const r = hashRoute();
     if (r === 'detail') return ctx.detail()?.file ?? null;
@@ -315,7 +325,6 @@ export function initKeys(ctx) {
     }
     if (mode === 'status') return items;
     if (t) items.push({ label: `Delete #${t.id}…`, hint: 'd', run: () => openConfirmDelete(t.file) });
-    items.push({ label: 'Peek into hidden columns', hint: 'v', run: () => ctx.peekToggle() });
     items.push({ label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } });
     items.push(
       { label: 'Add status…', hint: 'column', run: openAddStatus },
@@ -409,7 +418,7 @@ export function initKeys(ctx) {
         e.preventDefault();
         if (hashRoute() === 'new') location.hash = '#/'; else e.target.blur();
       } else if (hashRoute() !== 'board') { e.preventDefault(); location.hash = '#/'; }
-      else if (selectedFile()) { e.preventDefault(); ctx.select(null); } // clear the selection (and the card focus)
+      else if (selectedFile() || ctx.stripSelected?.() != null) { e.preventDefault(); ctx.select(null); ctx.selectStrip?.(null); } // clear the selection (and the card focus)
       return;
     }
     if (overlay) { // keep focus inside; the overlays handle their own keys
@@ -465,14 +474,16 @@ export function initKeys(ctx) {
         ctx.setPick({ file: t.file, status: t.status });
         break;
       }
-      case 'Enter': { // open the selected card, also when focus is lost (a focused card opens natively)
+      case 'Enter': { // on the strip: list the hidden status; else open the selected card
+        const strip = board ? ctx.stripSelected?.() ?? null : null;
+        if (strip !== null) { ctx.peekOpen(strip); break; }
+        // open the selected card, also when focus is lost (a focused card opens natively)
         if (!board || e.target !== document.body) return;
         const f = cardTarget();
         if (!f) return;
         location.hash = `#/t/${encodeURIComponent(f)}`;
         break;
       }
-      case 'v': ctx.peekToggle(); break; // peek into the hidden columns
       case 'd': { // delete (after confirmation): the focused or hovered card, or the open ticket
         const f = hashRoute() === 'detail' ? ctx.detail()?.file : board && cardTarget();
         if (!f) return;

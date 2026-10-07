@@ -69,7 +69,7 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   too), `Space`/`Enter` drops, `1`-`9` drops at once, `Esc` cancels. Nothing is saved until the drop.
 - **Search from anywhere**: `/` (or `Ctrl+/` also while typing) goes to the board and focuses the search box.
 - **Selection**: the board keeps an explicit selected card (highlighted; `j`/`k`/`h`/`l` move it, a click or Tab selects, Esc clears). Keys like `Enter`, `c`, `s`, `d`, `Space` act on it, independent of browser focus; the hovered card is only used while nothing is selected.
-- **Peek**: the ▾ next to a "Hidden: …" entry lists that status's tickets (honouring the filter) without showing the column; `j`/`k` move, Enter opens, Esc closes, an item can be dragged onto a visible column.
+- **Peek**: hidden statuses are reachable with the same keys as cards: `k` on a column's top card moves up onto the "Hidden: …" strip, `h`/`l` pick a status, `Enter` lists its tickets (honouring the filter) without showing the column; in the list `j`/`k` move, `Enter` opens a ticket, `Space` picks it up to move it (then as for any card), `h`/`l` switch status, `Esc` closes; `j` on the strip goes back to the cards. The ▾ next to an entry opens the same list with the mouse; items can be dragged onto a column.
 - **Delete and trash**: `d` on a focused (or hovered) card, the ☰ menu or Ctrl+K asks first (Enter / `y` deletes, Esc cancels).
   The ticket and its images move to `tickets/.trash/` and stay restorable for 30 days (`TRASH_DAYS` in `src/core.js`;
   purged on server start and when the Trash view opens). The **Trash** view restores or deletes for good; a restored
