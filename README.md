@@ -58,6 +58,8 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 - **Column order**: drag a status column header onto another column to reorder;
   the order is written to `statuses:` in `_config.yml`, so the CLI and other
   browsers see it too.
+- **Add status**: the "+ Status" button on the board (or "Add status…" in Ctrl+K) appends a
+  status to `statuses:` in `_config.yml`; it becomes a column, a form option and the next number key.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
 - **+ Idea** (or `i`): quick capture. Type one or a few sentences, no title;

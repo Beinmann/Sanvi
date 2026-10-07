@@ -84,3 +84,13 @@ test('moveItem: takes the target position, input untouched', () => {
   assert.deepEqual(moveItem(l, 1, 9), l);
   assert.deepEqual(l, ['a', 'b', 'c', 'd']);
 });
+
+import { checkStatusName } from '../public/filter.js';
+
+test('checkStatusName: normalises and validates', () => {
+  assert.deepEqual(checkStatusName('  Re Opened ', ['open']), { name: 're-opened', error: null });
+  assert.match(checkStatusName('', []).error, /name/);
+  assert.match(checkStatusName('a,b', []).error, /letters/);
+  assert.match(checkStatusName('-x', []).error, /letters/);
+  assert.match(checkStatusName('Open', ['open']).error, /exists/);
+});

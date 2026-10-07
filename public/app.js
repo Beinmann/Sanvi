@@ -1,5 +1,5 @@
 import { renderMarkdown } from './md.js';
-import { parseQuery, formatQuery, matchTicket, sortTickets, SORT_KEYS, moveItem } from './filter.js';
+import { parseQuery, formatQuery, matchTicket, sortTickets, SORT_KEYS, moveItem, checkStatusName } from './filter.js';
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
 
@@ -81,6 +81,15 @@ async function moveColumn(from, to) {
   try { await api('PUT', 'config', { statuses: next }); } catch (e) { toast(`Reorder failed: ${e.message}`); }
   await refreshAll();
 }
+// Append a status to `statuses:` in the config file (same writer as column reordering).
+async function addStatus(input) {
+  const { name, error } = checkStatusName(input, columns());
+  if (error) throw new Error(error);
+  await api('PUT', 'config', { statuses: [...S.cfg.statuses, name] });
+  await refreshAll();
+  toast(`Status "${name}" added`);
+  return name;
+}
 const COLUMN_DRAG = 'application/x-status-column';
 
 async function moveTicket(file, status) {
@@ -139,6 +148,7 @@ function filterBar() {
   });
   const tab = (v, label) => el('button', { type: 'button', class: Q.view === v ? 'active' : '', 'aria-pressed': String(Q.view === v), onclick: () => setView(v) }, label);
   return el('div', { class: 'filterbar' }, input,
+    el('button', { type: 'button', title: 'Add a status column', onclick: () => document.dispatchEvent(new Event('add-status')) }, '+ Status'),
     el('span', { class: 'viewswitch' }, tab('board', 'Board'), tab('table', 'Table')),
     Q.text.trim() && el('span', { class: 'active-filter' }, 'Filter: ', el('code', {}, formatQuery(Q.parsed))),
     Q.text.trim() && el('button', { type: 'button', onclick: () => { setFilter(''); $('#search')?.focus(); } }, 'Clear'));
@@ -441,7 +451,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, heldFile: () => held,
+  S, el, columns, toast, moveTicket, setTab, heldFile: () => held, addStatus,
   saveIdea: async (text) => { const t = await api('POST', 'ideas', { text }); toast(`Idea captured as #${t.id}`); return t; },
   detail: () => D,
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },

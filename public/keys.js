@@ -130,6 +130,20 @@ export function initKeys(ctx) {
     openOverlay(box, { focus: ta });
   }
 
+  function openAddStatus() {
+    const input = el('input', { type: 'text', placeholder: 'New status name, e.g. reopened', autocomplete: 'off', spellcheck: false, 'aria-label': 'New status name' });
+    const err = el('p', { class: 'hint', role: 'alert' });
+    const submit = async () => {
+      try { await ctx.addStatus(input.value); closeOverlay(); } catch (e) { err.textContent = e.message; }
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+    const box = el('div', { class: 'dialog form', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Add status' },
+      el('h2', {}, 'Add status'), input, err,
+      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: submit }, 'Add')));
+    openOverlay(box, { focus: input });
+  }
+  document.addEventListener('add-status', openAddStatus);
+
   function commandItems(mode) {
     const file = contextFile();
     const t = file && S.tickets.find((x) => x.file === file);
@@ -144,6 +158,7 @@ export function initKeys(ctx) {
     }
     if (mode === 'status') return items;
     items.push(
+      { label: 'Add status…', hint: 'column', run: openAddStatus },
       { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
       { label: 'Quick idea', hint: 'i / Ctrl+I', run: () => { location.hash = '#/idea'; } },
       { label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },

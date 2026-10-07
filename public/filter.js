@@ -71,3 +71,12 @@ export function moveItem(list, from, to) {
   out.splice(to, 0, out.splice(from, 1)[0]);
   return out;
 }
+
+/** Normalise user input for a new status (trim, lowercase, spaces to hyphens) and validate it. Returns { name, error }. */
+export function checkStatusName(input, existing = []) {
+  const name = String(input ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+  if (!name) return { name, error: 'Enter a name' };
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) return { name, error: 'Use letters, digits and hyphens only' };
+  if (existing.includes(name)) return { name, error: `"${name}" already exists` };
+  return { name, error: null };
+}

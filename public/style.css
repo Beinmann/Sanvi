@@ -121,3 +121,5 @@ table.tickets td.none { color: var(--muted); text-align: center; }
 
 .col h2 .num { display: none; font-size: 11px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--text); }
 body.holding .col h2 .num, .board:has(.card:focus-visible) .col h2 .num { display: inline-block; }
+.dialog.form { padding: 16px; display: grid; gap: 10px; }
+.dialog.form h2, .dialog.form p { margin: 0; }
