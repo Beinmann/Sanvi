@@ -63,7 +63,8 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   status to `statuses:` in `_config.yml`; it becomes a column, a form option and the next number key.
 - **Images**: paste or drop an image into the description editor; it is saved as
   `assets/<ticket id>-<n>.<ext>` next to the tickets (PNG/JPEG/GIF/WebP, max 5 MB) and a
-  `![screenshot](assets/...)` link is inserted. `tk validate` warns about image links to missing files.
+  `![screenshot](assets/...)` link is inserted. `tk validate` warns about image links to missing files. The quick-idea and comment boxes take pasted/dropped
+  images too (uploaded on save, so Esc leaves nothing behind); `tk idea` / `tk note` stay text-only.
 - **Pick up and drop**: `Space` on a focused card picks it up; `h`/`l` choose the column (hidden ones
   too), `Space`/`Enter` drops, `1`-`9` drops at once, `Esc` cancels. Nothing is saved until the drop.
 - **Search from anywhere**: `/` (or `Ctrl+/` also while typing) goes to the board and focuses the search box.

@@ -393,16 +393,30 @@ function select(values, current, onchange, id) {
 
 // Upload an image for the open ticket and insert `![screenshot](assets/<id>-<n>.<ext>)` at the cursor.
 // On any error the text is left as it was.
+async function uploadImage(file, blob) {
+  const res = await fetch(`/api/tickets/${encodeURIComponent(file)}/assets`, { method: 'POST', headers: { 'content-type': blob.type }, body: blob });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data.path;
+}
+const imageMd = (paths) => paths.map((p) => `![screenshot](${p})`);
+// Upload the overlay's pending images to `file` (skipping ones a previous attempt already stored, tracked in `done`).
+async function uploadAll(file, images, done, what) {
+  done.paths ??= [];
+  for (let i = done.paths.length; i < images.length; i++) {
+    try { done.paths.push(await uploadImage(file, images[i].blob)); } catch (e) {
+      throw new Error(`${what} but image ${i + 1} (${images[i].name || 'pasted'}) failed: ${e.message}. Press save again to retry; your text is kept.`);
+    }
+  }
+}
 async function attachImage(ta, blob) {
   try {
-    const res = await fetch(`/api/tickets/${encodeURIComponent(D.file)}/assets`, { method: 'POST', headers: { 'content-type': blob.type }, body: blob });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || res.statusText);
-    const md = `![screenshot](${data.path})`;
+    const path = await uploadImage(D.file, blob);
+    const md = `![screenshot](${path})`;
     const at = ta.selectionEnd;
     ta.setRangeText(md, at, at, 'end');
     ta.dispatchEvent(new Event('input', { bubbles: true }));
-    toast(`Image saved as ${data.path}`);
+    toast(`Image saved as ${path}`);
   } catch (e) { toast(`Image not added: ${e.message}`); }
 }
 const imageOf = (dt) => [...(dt?.files ?? [])].find((f) => f.type.startsWith('image/'));
@@ -562,13 +576,32 @@ document.addEventListener('keydown', (e) => {
 });
 initKeys({
   S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, addStatus, toggleColumn, isHidden,
-  saveIdea: async (text) => { const t = await api('POST', 'ideas', { text }); toast(`Idea captured as #${t.id}`); return t; },
+  // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
+  saveIdea: async (text, images = [], done = {}) => {
+    done.ticket ??= await api('POST', 'ideas', { text });
+    const t = done.ticket;
+    await uploadAll(t.file, images, done, `Idea #${t.id} was saved,`);
+    if (done.paths?.length && !done.linked) {
+      const cur = await api('GET', `tickets/${encodeURIComponent(t.file)}`);
+      const links = `${imageMd(done.paths).join('\n\n')}\n`;
+      const at = cur.body.indexOf('\n## Acceptance criteria');
+      const body = at < 0 ? `${cur.body.replace(/\n*$/, '\n')}\n${links}` : `${cur.body.slice(0, at).replace(/\n*$/, '\n')}\n${links}${cur.body.slice(at)}`;
+      try { ownVersions.add((await api('PUT', `tickets/${encodeURIComponent(t.file)}`, { version: cur.version, body })).version); } catch (e) {
+        throw new Error(`Idea #${t.id} was saved with its images, but linking them failed: ${e.message}. Press save again to retry; your text is kept.`);
+      }
+    }
+    done.linked = true;
+    toast(`Idea captured as #${t.id}`);
+    return t;
+  },
   detail: () => D,
-  addNote: async (file, text) => {
+  addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
     if (!t) throw new Error('ticket not found');
+    await uploadAll(file, images, done, 'Comment not added:');
+    const full = [text.trim(), ...imageMd(done.paths ?? [])].filter(Boolean).join('\n');
     try {
-      const saved = await api('POST', `tickets/${encodeURIComponent(file)}/notes`, { version: t.version, text });
+      const saved = await api('POST', `tickets/${encodeURIComponent(file)}/notes`, { version: t.version, text: full });
       ownVersions.add(saved.version);
     } catch (e) {
       if (e.status === 409) { await refreshAll(); throw new Error(`#${t.id} changed on disk; comment not saved (your text is kept). Try again.`); }

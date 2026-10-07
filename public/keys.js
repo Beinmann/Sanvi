@@ -115,22 +115,45 @@ export function initKeys(ctx) {
     openOverlay(box);
   }
 
+  // Images pasted or dropped into an overlay's textarea: kept in memory with removable thumbnails and only
+  // uploaded on save, so cancelling leaves no files behind. Returns { images, node }.
+  function imageBox(ta) {
+    const images = [];
+    const node = el('div', { class: 'thumbs' });
+    const paint = () => node.replaceChildren(...images.map((im, i) => el('span', { class: 'thumb' },
+      el('img', { src: im.url, alt: im.name || 'pasted image' }),
+      el('button', { type: 'button', title: 'Remove image', 'aria-label': 'Remove image', onclick: () => { URL.revokeObjectURL(im.url); images.splice(i, 1); paint(); ta.focus(); } }, '×'))));
+    const add = (files) => {
+      const imgs = [...(files ?? [])].filter((f) => f.type.startsWith('image/'));
+      for (const f of imgs) images.push({ blob: f, name: f.name, url: URL.createObjectURL(f) });
+      if (imgs.length) paint();
+      return imgs.length > 0;
+    };
+    ta.addEventListener('paste', (e) => { if (add(e.clipboardData?.files)) e.preventDefault(); });
+    ta.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types ?? [])].includes('Files')) e.preventDefault(); });
+    ta.addEventListener('drop', (e) => { if (add(e.dataTransfer?.files)) e.preventDefault(); });
+    return { images, node, release: () => images.forEach((im) => URL.revokeObjectURL(im.url)) };
+  }
+
   // Idea capture as an overlay, so it works mid-edit: no route change, so no
   // draft is discarded; closing restores focus to the field the user was in.
   function openIdea() {
     const ta = el('textarea', { rows: 6, placeholder: 'Describe the idea in a sentence or a few. No title needed.', 'aria-label': 'Quick idea' });
+    const pics = imageBox(ta);
+    const done = {}; // survives a failed save, so a retry does not create the idea twice
+    const err = el('p', { class: 'hint', role: 'alert' });
     const save = async () => {
       const text = ta.value.trim();
       if (!text) return;
-      try { await ctx.saveIdea(text); closeOverlay(); } catch (err) { ctx.toast(err.message); }
+      try { await ctx.saveIdea(text, pics.images, done); pics.release(); closeOverlay(); } catch (e) { err.textContent = e.message; ctx.toast(e.message); }
     };
     ta.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
     });
     const box = el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quick idea' },
       el('h2', {}, 'Quick idea'),
-      el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Ctrl+Enter saves, Esc cancels.'),
-      ta,
+      el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Paste or drop images to attach them. Ctrl+Enter saves, Esc cancels.'),
+      ta, pics.node, err,
       el('div', {}, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
     openOverlay(box, { focus: ta });
   }
@@ -141,17 +164,19 @@ export function initKeys(ctx) {
     if (!t) return;
     const ta = el('textarea', { rows: 4, placeholder: 'Comment. Ctrl+Enter saves, Esc cancels.', 'aria-label': 'Comment' });
     const err = el('p', { class: 'hint', role: 'alert' });
+    const pics = imageBox(ta);
+    const done = {}; // images already stored by a failed attempt
     const save = async () => {
-      if (!ta.value.trim()) return;
-      try { await ctx.addNote(file, ta.value); closeOverlay(); } catch (e) { err.textContent = e.message; }
+      if (!ta.value.trim() && !pics.images.length) return;
+      try { await ctx.addNote(file, ta.value, pics.images, done); pics.release(); closeOverlay(); } catch (e) { err.textContent = e.message; }
     };
     ta.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
     });
     const box = el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Comment on #${t.id}` },
       el('h2', {}, `Comment on #${t.id}`),
-      el('p', { class: 'hint' }, 'Added with a timestamp at the end of the ticket\'s Notes.'),
-      ta, err,
+      el('p', { class: 'hint' }, 'Added with a timestamp at the end of the ticket\'s Notes. Paste or drop images to attach them.'),
+      ta, pics.node, err,
       el('div', {}, el('button', { class: 'primary', type: 'button', onclick: save }, 'Add comment'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
     openOverlay(box, { focus: ta });
   }

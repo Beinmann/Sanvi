@@ -162,3 +162,9 @@ body.moving .hiddenstrip .num { display: inline-block; }
 .hiddenstrip button.target { outline: 2px solid var(--accent); background: var(--accent-soft); }
 .pickbar { margin-bottom: 10px; padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--r); background: var(--accent-soft); font-size: 13px; }
 .hiddennotice { margin-bottom: 10px; padding: 6px 10px; border: 1px solid var(--warn); border-radius: var(--r); background: var(--warn-bg); font-size: 13px; display: grid; gap: 4px; }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px; }
+.thumbs:empty { display: none; }
+.thumb { position: relative; }
+.thumb img { height: 64px; max-width: 140px; object-fit: cover; border: 1px solid var(--border); border-radius: 4px; display: block; }
+.thumb button { all: unset; position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; text-align: center; line-height: 18px; border-radius: 50%; background: var(--panel); border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+.thumb button:hover, .thumb button:focus-visible { background: var(--accent); color: var(--accent-fg); }
