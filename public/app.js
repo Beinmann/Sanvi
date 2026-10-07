@@ -195,7 +195,7 @@ function renderBoard() {
         if (col) moveColumn(col, status); else moveTicket(e.dataTransfer.getData('text/plain'), status);
       },
     }, el('h2', S.cfg.statuses.includes(status) ? {
-      draggable: true, title: 'Drag to reorder columns',
+      draggable: 'true', title: 'Drag to reorder columns',
       ondragstart: (e) => { e.dataTransfer.setData(COLUMN_DRAG, status); e.dataTransfer.effectAllowed = 'move'; },
     } : {}, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
     el('span', {}, status || '(no status)'), el('span', { class: 'count' }, String(items.length)),
