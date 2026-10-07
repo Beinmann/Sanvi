@@ -45,6 +45,11 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
 ```
 
 - Kanban board; drag a card to change its status.
+- Search box above the board: free text (title and body) plus
+  `status:`, `area:`, `priority:` filters, comma-separated values, `-` to
+  exclude (`migrate -area:research status:open,blocked`). Everything ANDs;
+  `area:` alone means "not set". Unknown `key:` tokens are plain text. The
+  query is stored in the URL (`#/?q=...`) so views can be bookmarked.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
 - Edits made outside the UI show up live. If you have unsaved edits, a
@@ -96,7 +101,8 @@ Use `--json` for machine-readable output. Nothing requires going through it.
 - `src/changelog.js` — bounded web UI change log
 - `src/instances.js` — instance registry for start/stop/ps
 - `src/server.js` — JSON API, file watcher, SSE
-- `public/` — frontend (`md.js` is a small safe Markdown renderer)
+- `public/` — frontend (`md.js` is a small safe Markdown renderer,
+  `filter.js` the pure board filter, reusable by other views)
 - `npm test`
 
 ## Concurrency note

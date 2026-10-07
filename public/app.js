@@ -1,4 +1,5 @@
 import { renderMarkdown } from './md.js';
+import { parseQuery, formatQuery, matchTicket } from './filter.js';
 
 const $ = (sel) => document.querySelector(sel);
 const view = $('#view');
@@ -73,10 +74,38 @@ async function moveTicket(file, status) {
   await refreshAll();
 }
 
+// Filter query lives in the hash: "#/?q=text -area:x". Board-only state.
+const Q = { text: '', parsed: parseQuery('') };
+function setQuery(text) { Q.text = text; Q.parsed = parseQuery(text); }
+function queryFromHash() {
+  const h = location.hash || '#/';
+  if (!h.startsWith('#/?') && h !== '#/') return null;
+  return new URLSearchParams(h.slice(3)).get('q') || '';
+}
+function hashForQuery(text) { return text ? `#/?q=${encodeURIComponent(text)}` : '#/'; }
+function setFilter(text) {
+  setQuery(text);
+  const h = hashForQuery(text);
+  if (location.hash !== h) { currentHash = h; history.replaceState(null, '', h); }
+  renderBoard();
+}
+
+function filterBar() {
+  const input = el('input', {
+    id: 'search', type: 'search', value: Q.text, placeholder: 'Search… e.g. migrate -area:research status:open,blocked',
+    oninput: (e) => setFilter(e.target.value),
+  });
+  return el('div', { class: 'filterbar' }, input,
+    Q.text.trim() && el('span', { class: 'active-filter' }, 'Filter: ', el('code', {}, formatQuery(Q.parsed))),
+    Q.text.trim() && el('button', { type: 'button', onclick: () => { setFilter(''); $('#search')?.focus(); } }, 'Clear'));
+}
+
 function renderBoard() {
+  const hadFocus = document.activeElement?.id === 'search';
+  const caret = hadFocus ? document.activeElement.selectionStart : 0;
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
-  view.replaceChildren(el('div', { class: 'board' }, columns().map((status) => {
-    const items = S.tickets.filter((t) => t.status === status)
+  view.replaceChildren(filterBar(), el('div', { class: 'board' }, columns().map((status) => {
+    const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
       .sort((a, b) => (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
     return el('section', {
       class: 'col',
@@ -85,6 +114,7 @@ function renderBoard() {
       ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove('over'); moveTicket(e.dataTransfer.getData('text/plain'), status); },
     }, el('h2', {}, el('span', {}, status || '(no status)'), el('span', {}, String(items.length))), items.map(card));
   })));
+  if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); }
 }
 
 // --------------------------------------------------------------- detail
@@ -246,7 +276,7 @@ async function route() {
   } else {
     D = null;
     if (h === '#/new') renderNew();
-    else { await refreshAll(); }
+    else { setQuery(queryFromHash() ?? ''); await refreshAll(); }
   }
 }
 
@@ -266,11 +296,11 @@ $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
 
 async function refreshAll() {
   try {
-    [S.cfg, S.tickets] = await Promise.all([api('GET', 'config'), api('GET', 'tickets')]);
+    [S.cfg, S.tickets] = await Promise.all([api('GET', 'config'), api('GET', 'tickets?bodies=1')]);
   } catch (e) { toast(`Load failed: ${e.message}`); return; }
   const h = location.hash || '#/';
   if (h.startsWith('#/t/')) await refreshDetail();
-  else if (h === '#/' || h === '') renderBoard();
+  else if (h === '#/' || h === '' || h.startsWith('#/?')) renderBoard();
 }
 
 // live updates
@@ -282,6 +312,6 @@ es.onmessage = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(ref
 
 currentHash = location.hash;
 (async () => {
-  [S.cfg, S.tickets] = await Promise.all([api('GET', 'config'), api('GET', 'tickets')]);
+  [S.cfg, S.tickets] = await Promise.all([api('GET', 'config'), api('GET', 'tickets?bodies=1')]);
   route();
 })();

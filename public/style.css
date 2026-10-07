@@ -61,3 +61,7 @@ textarea.editor { width: 100%; min-height: 60vh; font: 14px/1.5 ui-monospace, mo
 .newform { display: grid; gap: 8px; max-width: 420px; margin: 24px auto; background: var(--panel); padding: 16px; border-radius: 10px; border: 1px solid var(--border); }
 .newform label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
 @media (max-width: 600px) { .col { flex-basis: 85vw; } main { padding: 8px; } }
+
+.filterbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.filterbar input { flex: 1 1 280px; max-width: 520px; }
+.active-filter { color: var(--muted); font-size: 13px; }
