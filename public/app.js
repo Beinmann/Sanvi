@@ -203,8 +203,8 @@ function renderBoard() {
   })));
   restore();
   if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
-  const card = target && [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target);
-  if (card) { card.focus({ preventScroll: true }); card.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } // stays visible, no jump if it already is
+  const focusEl = target && [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target);
+  if (focusEl) { focusEl.focus({ preventScroll: true }); focusEl.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } // stays visible, no jump if it already is
 }
 
 const COLS = [['id', 'ID'], ['title', 'Title'], ['status', 'Status'], ['area', 'Area'], ['priority', 'Priority'], ['progress', 'Progress']];
