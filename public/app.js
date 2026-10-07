@@ -161,8 +161,24 @@ function renderBoard() {
   const target = pendingFocus || document.activeElement?.closest?.('.card')?.dataset.file;
   pendingFocus = null;
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
-  if (Q.view === 'table') { view.replaceChildren(filterBar(), tableView()); if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); } return; }
-  const scroll = { x: document.querySelector('.board')?.scrollLeft ?? 0, y: window.scrollY };
+  // keep scroll (page, board, table wrapper, each column) across the re-render
+  const scroll = {
+    y: window.scrollY, x: document.querySelector('.board')?.scrollLeft ?? 0, tx: document.querySelector('.tablewrap')?.scrollLeft ?? 0,
+    cols: Object.fromEntries([...document.querySelectorAll('.col')].map((c) => [c.dataset.status, c.scrollTop])),
+  };
+  const restore = () => {
+    const b = document.querySelector('.board'), t = document.querySelector('.tablewrap');
+    if (b) b.scrollLeft = scroll.x;
+    if (t) t.scrollLeft = scroll.tx;
+    for (const c of document.querySelectorAll('.col')) c.scrollTop = scroll.cols[c.dataset.status] ?? 0;
+    window.scrollTo(0, scroll.y);
+  };
+  if (Q.view === 'table') {
+    view.replaceChildren(filterBar(), tableView());
+    restore();
+    if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
+    return;
+  }
   let num = 0;
   view.replaceChildren(filterBar(), hiddenStrip(), el('div', { class: 'board' }, columns().map((status) => {
     const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
@@ -185,11 +201,10 @@ function renderBoard() {
     el('span', {}, status || '(no status)'), el('span', { class: 'count' }, String(items.length)),
       el('button', { type: 'button', class: 'hide', title: `Hide ${status || 'this'} column`, 'aria-label': `Hide ${status || 'no-status'} column`, onclick: () => toggleColumn(status) }, '×')), items.map(card));
   })));
-  const board = document.querySelector('.board');
-  if (board) board.scrollLeft = scroll.x;
-  window.scrollTo(0, scroll.y);
-  if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); }
-  if (target) [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target)?.focus();
+  restore();
+  if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
+  const card = target && [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target);
+  if (card) { card.focus({ preventScroll: true }); card.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } // stays visible, no jump if it already is
 }
 
 const COLS = [['id', 'ID'], ['title', 'Title'], ['status', 'Status'], ['area', 'Area'], ['priority', 'Priority'], ['progress', 'Progress']];
