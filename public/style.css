@@ -137,3 +137,9 @@ body.holding .hiddenstrip .num, .board:has(.card:focus-visible) ~ .hiddenstrip .
 .card:hover .note-btn, .card:focus-within .note-btn, .card:focus-visible .note-btn { opacity: 1; }
 .card .note-btn:hover, .card .note-btn:focus-visible { color: var(--text); background: var(--accent-soft); opacity: 1; }
 .dialog > textarea { display: block; width: calc(100% - 32px); margin: 8px 16px; }
+
+.col h2[draggable="true"] { cursor: grab; user-select: none; -webkit-user-select: none; }
+.col h2[draggable="true"] > * { pointer-events: none; }
+.col h2[draggable="true"] > .hide { pointer-events: auto; }
+.col.dragging-col { opacity: .4; }
+.drag-ghost { position: fixed; top: -10000px; left: 0; max-height: 280px; overflow: hidden; opacity: .9; background: var(--panel); border: 1px solid var(--accent); box-shadow: 0 8px 24px rgba(0,0,0,.25); pointer-events: none; }

@@ -95,6 +95,19 @@ async function addStatus(input) {
   toast(`Status "${name}" added`);
   return name;
 }
+// Drag preview for a column: a faded copy of the whole column (header and cards), not just the header text.
+function columnDragStart(e, status) {
+  e.dataTransfer.setData(COLUMN_DRAG, status);
+  e.dataTransfer.effectAllowed = 'move';
+  const col = e.currentTarget.closest('.col');
+  if (!col) return;
+  const ghost = col.cloneNode(true);
+  ghost.classList.add('drag-ghost');
+  ghost.style.width = `${col.offsetWidth}px`;
+  document.body.append(ghost);
+  e.dataTransfer.setDragImage?.(ghost, 24, 16);
+  setTimeout(() => { ghost.remove(); col.classList.add('dragging-col'); }, 0); // after the browser took its snapshot
+}
 const COLUMN_DRAG = 'application/x-status-column';
 
 async function moveTicket(file, status) {
@@ -202,7 +215,8 @@ function renderBoard() {
       },
     }, el('h2', S.cfg.statuses.includes(status) ? {
       draggable: 'true', title: 'Drag to reorder columns',
-      ondragstart: (e) => { e.dataTransfer.setData(COLUMN_DRAG, status); e.dataTransfer.effectAllowed = 'move'; },
+      ondragstart: (e) => columnDragStart(e, status),
+      ondragend: (e) => e.currentTarget.closest('.col')?.classList.remove('dragging-col'),
     } : {}, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
     el('span', {}, status || '(no status)'), el('span', { class: 'count' }, String(items.length)),
       el('button', { type: 'button', class: 'hide', title: `Hide ${status || 'this'} column`, 'aria-label': `Hide ${status || 'no-status'} column`, onclick: () => toggleColumn(status) }, '×')), items.map(card));
