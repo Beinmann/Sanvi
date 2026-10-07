@@ -50,6 +50,7 @@ test('list, save, conflict, create', async () => {
 
     const cur = await (await j('GET', '/api/tickets/001-a.md')).json();
     r = await j('POST', '/api/tickets/001-a.md/notes', { version: cur.version, text: 'a comment' });
+    assert.match((await r.clone().json()).note, /^- \d{4}-\d\d-\d\d \d\d:\d\d: a comment$/); // the added line, for clients holding a draft
     assert.equal(r.status, 200);
     assert.match(fs.readFileSync(path.join(dir, '001-a.md'), 'utf8'), /## Notes\n\n- \d{4}-\d\d-\d\d \d\d:\d\d: a comment\n$/);
     assert.equal((await j('POST', '/api/tickets/001-a.md/notes', { version: cur.version, text: 'again' })).status, 409);

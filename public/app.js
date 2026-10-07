@@ -1,4 +1,5 @@
 import { renderMarkdown, splitSummary } from './md.js';
+import { insertNote } from './notes.js';
 import { compact } from './util.js';
 import { serialQueue, coalesce, isTransient, describeFailure } from './queue.js';
 import { parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
@@ -195,6 +196,8 @@ async function doMove(file, status) {
 }
 
 // Board/table state lives in the hash: "#/?q=text -area:x&view=table&sort=priority&dir=desc".
+// The table view is switched off for now (056): the code stays, but no tab leads to it and #/?view=table shows the board.
+const TABLE_VIEW_ENABLED = false;
 const Q = { text: '', parsed: parseQuery(''), view: 'board', sort: 'id', dir: 'asc' };
 function setQuery(text) { Q.text = text; Q.parsed = parseQuery(text); }
 function loadHash() {
@@ -202,7 +205,7 @@ function loadHash() {
   if (!h.startsWith('#/?') && h !== '#/') return false;
   const p = new URLSearchParams(h.slice(3));
   setQuery(p.get('q') || '');
-  Q.view = p.get('view') === 'table' ? 'table' : 'board';
+  Q.view = TABLE_VIEW_ENABLED && p.get('view') === 'table' ? 'table' : 'board';
   Q.sort = SORT_KEYS.includes(p.get('sort')) ? p.get('sort') : 'id';
   Q.dir = p.get('dir') === 'desc' ? 'desc' : 'asc';
   return true;
@@ -243,7 +246,7 @@ function filterBar() {
   const tab = (v, label) => el('button', { type: 'button', class: Q.view === v ? 'active' : '', 'aria-pressed': String(Q.view === v), onclick: () => setView(v) }, label);
   return el('div', { class: 'filterbar' }, input,
     el('button', { type: 'button', title: 'Add a status column', onclick: () => document.dispatchEvent(new Event('add-status')) }, '+ Status'),
-    el('span', { class: 'viewswitch' }, tab('board', 'Board'), tab('table', 'Table')),
+    TABLE_VIEW_ENABLED && el('span', { class: 'viewswitch' }, tab('board', 'Board'), tab('table', 'Table')),
     Q.view === 'board' && el('span', { class: 'selhint' }, 'No card selected · press j'),
     Q.text.trim() && el('span', { class: 'active-filter' }, 'Filter: ', el('code', {}, formatQuery(Q.parsed))),
     Q.text.trim() && el('button', { type: 'button', onclick: () => { setFilter(''); $('#search')?.focus(); } }, 'Clear'));
@@ -563,6 +566,22 @@ document.addEventListener('error', (e) => {
   if (!(img instanceof HTMLImageElement) || !img.closest('.doc')) return;
   img.replaceWith(el('span', { class: 'missing-image', title: img.getAttribute('src') }, `Image not found: ${img.getAttribute('src')}`));
 }, true);
+// A comment was saved on the open ticket: take over its new version and put the same line into the draft, so a
+// later save of unsaved edits is not refused as stale. Tab, scroll and (in the editor) the selection stay.
+function applyNoteToDetail(saved) {
+  const { note, ...t } = saved;
+  const wasDirty = isDirty();
+  const ed = $('.editor');
+  const keep = { y: window.scrollY, top: ed?.scrollTop ?? 0, sel: ed ? [ed.selectionStart, ed.selectionEnd] : null };
+  D.loaded = t;
+  if (wasDirty) D.draft.body = insertNote(D.draft.body, note);
+  else D.draft = copyDraft(t);
+  renderTab();
+  updateBanner(); updateState();
+  const ta = $('.editor');
+  if (ta) { ta.scrollTop = keep.top; ta.setSelectionRange(Math.min(keep.sel[0], ta.value.length), Math.min(keep.sel[1], ta.value.length)); }
+  window.scrollTo(0, keep.y);
+}
 const imageOf = (dt) => [...(dt?.files ?? [])].find((f) => f.type.startsWith('image/'));
 
 function renderTab(focusEditor = false) {
@@ -626,7 +645,8 @@ function renderDetail({ fresh = false, edit = false } = {}) {
     el('div', { id: 'banner' }),
     el('div', { class: 'tabs' },
       el('button', { type: 'button', 'data-tab': 'view', onclick: () => setTab('view') }, 'Preview'),
-      el('button', { type: 'button', 'data-tab': 'edit', onclick: () => setTab('edit') }, 'Edit')),
+      el('button', { type: 'button', 'data-tab': 'edit', onclick: () => setTab('edit') }, 'Edit'),
+      el('button', { type: 'button', class: 'comment-btn', title: 'Add a timestamped comment (c)', onclick: () => document.dispatchEvent(new CustomEvent('add-note', { detail: D.file })) }, 'Comment')),
     el('div', { id: 'content' })));
   renderTab(edit); updateBanner(); updateState();
   if (ed && D.tab === 'edit') { const t = $('.editor'); t.focus(); t.setSelectionRange(...sel); }
@@ -778,15 +798,19 @@ initKeys({
   addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
     if (!t) throw new Error('ticket not found');
+    const open = D && D.file === file ? D : null; // the ticket is open in the detail view: it may hold an unsaved draft
+    if (open && (open.stale || open.gone)) throw new Error('This ticket changed on disk while you were editing: resolve the banner above first (your comment text is kept).');
     await uploadAll(file, images, done, 'Comment not added:');
     const full = [text.trim(), ...imageMd(done.paths ?? [])].filter(Boolean).join('\n');
+    let saved;
     try {
-      const saved = await api('POST', `tickets/${encodeURIComponent(file)}/notes`, { version: t.version, text: full });
+      saved = await api('POST', `tickets/${encodeURIComponent(file)}/notes`, { version: open ? open.loaded.version : t.version, text: full });
       ownVersions.add(saved.version);
     } catch (e) {
       if (e.status === 409) { await refreshAll(); throw new Error(`#${t.id} changed on disk; comment not saved (your text is kept). Try again.`); }
       throw e;
     }
+    if (open && D === open) applyNoteToDetail(saved);
     await refreshAll();
     toast(`Comment added to #${t.id}`);
   },
