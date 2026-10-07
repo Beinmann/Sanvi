@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig,
-  ConflictError, ValidationError, slugify,
+  ConflictError, ValidationError, slugify, createIdea, ideaTitle,
 } from '../src/core.js';
 
 const SAMPLE = `---
@@ -131,4 +131,18 @@ test('validate flags problems but tolerates unknown statuses', () => {
 test('slugify', () => {
   assert.equal(slugify('  Hello,   World! '), 'hello-world');
   assert.equal(slugify('日本語'), 'ticket');
+});
+
+test('createIdea derives a title and keeps the text verbatim', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-idea-'));
+  try {
+    const t = createIdea(dir, { text: 'Let me capture ideas fast. Second sentence here.\nMore detail.' });
+    assert.equal(t.status, 'design');
+    assert.equal(t.title, 'Let me capture ideas fast');
+    assert.match(t.body, /Second sentence here\.\nMore detail\./);
+    assert.throws(() => createIdea(dir, { text: '  ' }), /required/);
+    assert.throws(() => createIdea(dir, { text: 5 }), /string/);
+    assert.equal(ideaTitle('x'.repeat(100)).length <= 61, true);
+    assert.match(ideaTitle('word '.repeat(30)), /word…$/);
+  } finally { fs.rmSync(dir, { recursive: true }); }
 });

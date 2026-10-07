@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const DEFAULT_STATUSES = ['open', 'in-progress', 'blocked', 'deferred', 'done'];
+export const DEFAULT_STATUSES = ['open', 'in-progress', 'testing', 'blocked', 'deferred', 'done'];
 const FILE_RE = /^(\d+)-(.+)\.md$/;
 const KEY_RE = /^[A-Za-z_][\w-]*$/;
 
@@ -220,7 +220,7 @@ export function slugify(title) {
 
 const pad = (n) => String(n).padStart(3, '0');
 
-export function createTicket(dir, { title, area = '', status, priority = '' } = {}) {
+export function createTicket(dir, { title, area = '', status, priority = '', body: customBody } = {}) {
   title = (title || '').trim();
   if (!title) throw new ValidationError('title is required');
   checkFields({ area, priority, ...(status ? { status } : {}), title });
@@ -230,7 +230,7 @@ export function createTicket(dir, { title, area = '', status, priority = '' } = 
   front = setFrontField(front, 'status', status);
   front = setFrontField(front, 'area', area || null);
   front = setFrontField(front, 'priority', priority || null);
-  const body = `\n# ${title}\n\n## Problem / motivation\n\n\n\n## Acceptance criteria\n\n- [ ] \n`;
+  const body = customBody ?? `\n# ${title}\n\n## Problem / motivation\n\n\n\n## Acceptance criteria\n\n- [ ] \n`;
   for (let attempt = 0; attempt < 5; attempt++) {
     const max = listTickets(dir).reduce((m, t) => Math.max(m, Number(t.id)), 0);
     const file = `${pad(max + 1 + attempt)}-${slug}.md`;
@@ -242,6 +242,28 @@ export function createTicket(dir, { title, area = '', status, priority = '' } = 
     }
   }
   throw new Error('could not allocate a ticket id');
+}
+
+// Quick capture: one or a few sentences, no title. The title is a placeholder
+// derived from the first line; the text goes in verbatim for a later
+// refinement pass (human or AI) that rewrites the ticket properly.
+export const IDEA_STATUS = 'design';
+
+export function ideaTitle(text) {
+  const first = text.trim().split(/\r?\n/)[0].replace(/\s+/g, ' ');
+  const sentence = /^.*?[.!?](?=\s|$)/.exec(first)?.[0] ?? first;
+  if (sentence.length <= 60) return sentence.replace(/[.!?]+$/, '');
+  return `${sentence.slice(0, 60).replace(/\s+\S*$/, '')}…`;
+}
+
+export function createIdea(dir, { text, status = IDEA_STATUS } = {}) {
+  if (text != null && typeof text !== 'string') throw new ValidationError('idea text must be a string');
+  text = (text || '').trim();
+  if (!text) throw new ValidationError('idea text is required');
+  const title = ideaTitle(text);
+  const date = new Date().toISOString().slice(0, 10);
+  const body = `\n# ${title}\n\n## Problem / motivation\n\n${text}\n\n## Acceptance criteria\n\n- [ ] \n\n## Notes\n\n- ${date}: Captured as a quick idea; the title is auto-derived and the text above is unrefined. Needs refinement.\n`;
+  return createTicket(dir, { title, status, body });
 }
 
 // --- validation -------------------------------------------------------

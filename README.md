@@ -32,10 +32,10 @@ you change them. Files starting with `_` or `README` are ignored.
 Optional `<dir>/_config.yml` sets the status columns and their order:
 
 ```yaml
-statuses: [open, in-progress, blocked, deferred, done]
+statuses: [open, in-progress, testing, blocked, deferred, done]
 ```
 
-Without it those five are used. A ticket with any other status gets its own
+Without it those six are used. A ticket with any other status gets its own
 column.
 
 ## Web UI
@@ -52,6 +52,14 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   query is stored in the URL (`#/?q=...`) so views can be bookmarked.
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
+- **+ Idea** (or `i`): quick capture. Type one or a few sentences, no title;
+  **Ctrl+Enter** saves and clears the box for the next one. Each idea becomes
+  a normal ticket with `status: design`, a placeholder title taken from the
+  first sentence, your text verbatim under *Problem / motivation* and a note
+  saying it is unrefined. A later session (human or AI) can list
+  `status:design` tickets, ask questions, and rewrite them into real tickets.
+  `design` is not in the default status set, so it shows up as its own column
+  once an idea exists; add it to `_config.yml` to fix its position.
 - Keyboard (press **?** for the overlay): **Ctrl+K** command menu (jump to a
   ticket, set status, new ticket); on the board `j/k` `h/l` move focus, `/`
   focuses search, `Enter` opens, `s` sets status, `Shift+H/L` moves the card one status left/right, `n`
@@ -93,6 +101,7 @@ The log rotates at 1 MB and keeps 5 files (`changes.log`, `.1` ... `.4`). Tune w
 ```
 tk list [--status S] [--area A] [--json]
 tk show <id|slug> [--json]
+tk idea "<text>"                         # quick capture, status design
 tk new "<title>" [--area A] [--status S] [--priority P]
 tk status <id|slug> <status>
 tk validate          # exit 1 on errors

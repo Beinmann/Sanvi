@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  listTickets, readTicket, saveTicket, createTicket, readConfig,
+  listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig,
   ConflictError, NotFoundError, ValidationError,
 } from './core.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
@@ -92,6 +92,12 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       clients.add(res);
       req.on('close', () => clients.delete(res));
       return;
+    }
+    if (parts[0] === 'ideas' && parts.length === 1 && method === 'POST') {
+      const { text } = await readJson(req);
+      const t = createIdea(dir, { text });
+      changelog.log({ ticket: t.id, action: 'create', after: t.version, changes: [{ field: 'status', from: null, to: t.status }] });
+      return send(res, 201, t);
     }
     if (parts[0] !== 'tickets') return send(res, 404, { error: 'not found' });
     if (parts.length === 1 && method === 'GET') return send(res, 200, url.searchParams.get('bodies') === '1' ? listTickets(dir) : listTickets(dir).map(summary));

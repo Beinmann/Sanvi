@@ -309,6 +309,31 @@ function renderNew() {
   view.querySelector('input').focus();
 }
 
+// ------------------------------------------------------------ quick idea
+
+function renderIdea() {
+  const ta = el('textarea', { rows: 6, required: true, placeholder: 'Describe the idea in a sentence or a few. No title needed.' });
+  const submit = async () => {
+    const text = ta.value.trim();
+    if (!text) return;
+    try {
+      const t = await api('POST', 'ideas', { text });
+      ta.value = '';
+      toast(`Idea captured as #${t.id}`);
+      ta.focus();
+    } catch (err) { toast(err.message); }
+  };
+  ta.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); submit(); }
+  });
+  view.replaceChildren(el('form', { class: 'newform wide', onsubmit: (e) => { e.preventDefault(); submit(); } },
+    el('h2', {}, 'Quick idea'),
+    el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Ctrl+Enter saves and lets you add the next one.'),
+    ta,
+    el('div', {}, el('button', { class: 'primary', type: 'submit' }, 'Save idea'), ' ', el('a', { href: '#/' }, 'Done'))));
+  ta.focus();
+}
+
 // --------------------------------------------------------------- routing
 
 let pendingTab = null;
@@ -325,6 +350,7 @@ async function route() {
     D = null;
     pendingFocus = S.lastFile ?? null;
     if (h === '#/new') renderNew();
+    else if (h === '#/idea') renderIdea();
     else { setQuery(queryFromHash() ?? ''); await refreshAll(); }
   }
 }
@@ -347,6 +373,7 @@ initKeys({
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },
 });
 $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
+$('#idea-btn').addEventListener('click', () => { location.hash = '#/idea'; });
 
 async function refreshAll() {
   try {

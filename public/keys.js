@@ -33,6 +33,7 @@ export const HELP = [
     ['Ctrl+K', 'Command menu: jump to a ticket, change status, new ticket'],
     ['?', 'Show / hide this help'],
     ['n', 'New ticket'],
+    ['i', 'Quick idea (just text, no title)'],
     ['/', 'Board: focus the search box'],
     ['Esc', 'Close overlay, leave a field, go back to the board'],
   ]],
@@ -64,7 +65,7 @@ export function initKeys(ctx) {
 
   const hashRoute = () => {
     const h = location.hash || '#/';
-    return h.startsWith('#/t/') ? 'detail' : h === '#/new' ? 'new' : h === '#/' || h.startsWith('#/?') ? 'board' : 'other';
+    return h.startsWith('#/t/') ? 'detail' : h === '#/new' || h === '#/idea' ? 'new' : h === '#/' || h.startsWith('#/?') ? 'board' : 'other';
   };
 
   // ---- board focus
@@ -123,6 +124,7 @@ export function initKeys(ctx) {
     if (mode === 'status') return items;
     items.push(
       { label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
+      { label: 'Quick idea', hint: 'i', run: () => { location.hash = '#/idea'; } },
       { label: 'Go to board', hint: 'Esc', run: () => { location.hash = '#/'; } },
       { label: 'Show keyboard shortcuts', hint: '?', run: openHelp },
     );
@@ -196,6 +198,7 @@ export function initKeys(ctx) {
       case '?': openHelp(); break;
       case '/': if (board) $('#search')?.focus(); else return; break;
       case 'n': location.hash = '#/new'; break;
+      case 'i': location.hash = '#/idea'; break;
       case 's': openPalette('status'); break;
       case 'j': if (board) moveFocus('next'); else return; break;
       case 'k': if (board) moveFocus('prev'); else return; break;

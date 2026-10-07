@@ -9,7 +9,7 @@ import {
   register, unregister, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
 import {
-  listTickets, findTicket, saveTicket, createTicket, validate, readConfig,
+  listTickets, findTicket, saveTicket, createTicket, createIdea, validate, readConfig,
   ConflictError, NotFoundError, ValidationError,
 } from '../src/core.js';
 
@@ -19,6 +19,7 @@ usage: tk [--dir <tickets dir>] <command>
 
   list [--status S] [--area A] [--json]   list tickets
   show <id|slug> [--json]                 print a ticket
+  idea "<text>"                           quick capture: status design, title derived from the text
   new "<title>" [--area A] [--status S] [--priority P]
                                           create the next ticket from the standard template
   status <id|slug> <status>               change status in the frontmatter only
@@ -80,6 +81,12 @@ async function main() {
       if (!rest[0]) throw new ValidationError('usage: tk show <id|slug>');
       const t = findTicket(dir, rest[0]);
       out(t, fs.readFileSync(path.join(dir, t.file), 'utf8').trimEnd());
+      break;
+    }
+    case 'idea': {
+      if (!rest[0]) throw new ValidationError('usage: tk idea "<text>"');
+      const t = createIdea(dir, { text: rest.join(' ') });
+      out(t, path.join(dir, t.file));
       break;
     }
     case 'new': {
