@@ -118,3 +118,6 @@ table.tickets tr.changed td:first-child { box-shadow: inset 3px 0 var(--warn); }
 table.tickets td.id { color: var(--muted); white-space: nowrap; }
 table.tickets td a { color: inherit; text-decoration: none; }
 table.tickets td.none { color: var(--muted); text-align: center; }
+
+.col h2 .num { display: none; font-size: 11px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--text); }
+body.holding .col h2 .num, .board:has(.card:focus-visible) .col h2 .num { display: inline-block; }

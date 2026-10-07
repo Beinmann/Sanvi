@@ -56,11 +56,15 @@ function columns() {
 const changedOnDisk = new Set();
 const ownWrites = new Set();
 
+// The card being dragged; while held, the column headers show their number keys.
+let held = null;
+function endHold() { held = null; document.body.classList.remove('holding'); }
+
 function card(t) {
   return el('a', {
     class: `card${changedOnDisk.has(t.file) ? ' changed' : ''}`, 'data-file': t.file, href: `#/t/${encodeURIComponent(t.file)}`, draggable: true,
-    ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); },
-    ondragend: (e) => e.currentTarget.classList.remove('dragging'),
+    ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); held = t.file; document.body.classList.add('holding'); },
+    ondragend: (e) => { e.currentTarget.classList.remove('dragging'); endHold(); },
   },
   el('div', {}, el('span', { class: 'id' }, `#${t.id}`), t.title),
   el('div', { class: 'meta' },
@@ -80,6 +84,7 @@ async function moveColumn(from, to) {
 const COLUMN_DRAG = 'application/x-status-column';
 
 async function moveTicket(file, status) {
+  endHold();
   const t = S.tickets.find((x) => x.file === file);
   if (!t || t.status === status) return;
   ownWrites.add(file);
@@ -148,7 +153,9 @@ function renderBoard() {
   pendingFocus = null;
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
   if (Q.view === 'table') { view.replaceChildren(filterBar(), tableView()); if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); } return; }
+  let num = 0;
   view.replaceChildren(filterBar(), el('div', { class: 'board' }, columns().map((status) => {
+    const n = status ? ++num : 0;
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
       .sort((a, b) => (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
     return el('section', {
@@ -163,7 +170,8 @@ function renderBoard() {
     }, el('h2', status ? {
       draggable: true, title: 'Drag to reorder columns',
       ondragstart: (e) => { e.dataTransfer.setData(COLUMN_DRAG, status); e.dataTransfer.effectAllowed = 'move'; },
-    } : {}, el('span', {}, status || '(no status)'), el('span', {}, String(items.length))), items.map(card));
+    } : {}, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
+    el('span', {}, status || '(no status)'), el('span', {}, String(items.length))), items.map(card));
   })));
   if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); }
   if (target) [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target)?.focus();
@@ -433,7 +441,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab,
+  S, el, columns, toast, moveTicket, setTab, heldFile: () => held,
   saveIdea: async (text) => { const t = await api('POST', 'ideas', { text }); toast(`Idea captured as #${t.id}`); return t; },
   detail: () => D,
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },

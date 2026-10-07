@@ -43,6 +43,7 @@ export const HELP = [
     ['j / k', 'Next / previous card in the column'],
     ['h / l', 'Previous / next column'],
     ['Enter', 'Open the focused ticket'],
+    ['1-9', 'Move the focused (or dragged) ticket to that column; numbers show on the column headers'],
     ['s', 'Set status of the focused ticket (menu)'],
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
   ]],
@@ -231,6 +232,13 @@ export function initKeys(ctx) {
       case 'k': if (board) moveFocus('prev'); else return; break;
       case 'h': if (board) moveFocus('left'); else return; break;
       case 'l': if (board) moveFocus('right'); else return; break;
+      case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
+        const file = ctx.heldFile?.() ?? (board && focusedCard()?.dataset.file);
+        const target = ctx.columns().filter(Boolean)[Number(e.key) - 1];
+        if (!file || target == null) return;
+        ctx.moveTicket(file, target);
+        break;
+      }
       case 'e': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('edit'); else return; break;
       case 'p': if (hashRoute() === 'detail' && ctx.detail()) ctx.setTab('view'); else return; break;
       default: return;

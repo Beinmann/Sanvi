@@ -71,7 +71,7 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   once an idea exists; add it to `_config.yml` to fix its position.
 - Keyboard (press **?** for the overlay): **Ctrl+K** command menu (jump to a
   ticket, set status, new ticket); on the board `j/k` `h/l` move focus, `/`
-  focuses search, `Enter` opens, `s` sets status, `n`
+  focuses search, `Enter` opens, `s` sets status, `1`-`9` moves the focused card to that column (the numbers show on the headers while a card is focused or dragged), `n`
   creates, `b` goes to the board; in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
   goes back. Single-key hotkeys are off while typing in a field.
 - Description editor: optional **Vim mode** (checkbox under the editor,
