@@ -88,6 +88,7 @@ let lastSelected = null;
 // or h/l along the strip); Enter there opens that status's list.
 let stripSel = null;
 function paintStripSel() {
+  if (document.activeElement?.closest?.('.stripentry')) document.activeElement.blur(); // the selection, not a stale focus ring, marks the entry
   for (const b of document.querySelectorAll('.stripentry button[data-status]')) b.classList.toggle('selected', stripSel !== null && b.dataset.status === stripSel);
   document.body.classList.toggle('has-selection', !!selected || stripSel !== null);
 }
@@ -474,7 +475,7 @@ function closePeek({ refocus = false } = {}) {
   const was = peek;
   peek = null;
   renderBoard();
-  if (refocus) [...view.querySelectorAll('.stripentry')].find((x) => x.querySelector('button[data-status]')?.dataset.status === was)?.querySelector('.peekbtn')?.focus({ preventScroll: true });
+  if (refocus && stripSel !== was) [...view.querySelectorAll('.stripentry')].find((x) => x.querySelector('button[data-status]')?.dataset.status === was)?.querySelector('.peekbtn')?.focus({ preventScroll: true });
 }
 function peekPopover(status) {
   const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed)).sort(byBoardOrder);
