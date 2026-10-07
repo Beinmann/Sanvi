@@ -37,3 +37,29 @@ export function matchTicket(ticket, parsed) {
   }
   return true;
 }
+
+export const SORT_KEYS = ['id', 'title', 'status', 'area', 'priority', 'progress'];
+const PRIO_RANK = { high: 0, medium: 1, '': 2, low: 3 };
+
+/**
+ * Sort a copy of `tickets` by one of SORT_KEYS. `statusOrder` is the column
+ * order (status sorts by it). Empty values and ties fall back to the id.
+ * Unknown keys keep the id order.
+ */
+export function sortTickets(tickets, key, dir = 'asc', statusOrder = []) {
+  const byId = (a, b) => String(a.file).localeCompare(String(b.file), 'en', { numeric: true });
+  const val = {
+    id: (t) => Number(t.id) || 0,
+    title: (t) => String(t.title ?? '').toLowerCase(),
+    status: (t) => { const i = statusOrder.indexOf(t.status); return i < 0 ? statusOrder.length : i; },
+    area: (t) => String(t.area ?? '').toLowerCase(),
+    priority: (t) => PRIO_RANK[t.priority ?? ''] ?? 2,
+    progress: (t) => (t.progress?.total ? t.progress.done / t.progress.total : -1),
+  }[key];
+  if (!val) return [...tickets].sort(byId);
+  const sign = dir === 'desc' ? -1 : 1;
+  return [...tickets].sort((a, b) => {
+    const x = val(a), y = val(b);
+    return (x < y ? -1 : x > y ? 1 : 0) * sign || byId(a, b);
+  });
+}

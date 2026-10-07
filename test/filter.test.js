@@ -54,3 +54,22 @@ test('missing fields do not throw', () => {
 test('formatQuery round-trips normalised', () => {
   assert.equal(formatQuery(parseQuery('Login -area:Research status:open,blocked')), 'login -area:research status:open,blocked');
 });
+
+import { sortTickets } from '../public/filter.js';
+
+test('sortTickets: keys, direction, status by column order', () => {
+  const ts = [
+    { file: '002-b.md', id: '002', title: 'Beta', status: 'done', priority: 'low', area: 'ui', progress: { done: 1, total: 2 } },
+    { file: '010-a.md', id: '010', title: 'alpha', status: 'open', priority: 'high', area: '', progress: { done: 0, total: 0 } },
+    { file: '003-c.md', id: '003', title: 'Gamma', status: 'open', priority: '', area: 'cli', progress: { done: 2, total: 2 } },
+  ];
+  const ids = (k, d, o) => sortTickets(ts, k, d, o).map((t) => t.id);
+  assert.deepEqual(ids('id'), ['002', '003', '010']);
+  assert.deepEqual(ids('id', 'desc'), ['010', '003', '002']);
+  assert.deepEqual(ids('title'), ['010', '002', '003']);
+  assert.deepEqual(ids('status', 'asc', ['open', 'done']), ['003', '010', '002']);
+  assert.deepEqual(ids('priority'), ['010', '003', '002']);
+  assert.deepEqual(ids('progress', 'desc'), ['003', '002', '010']);
+  assert.deepEqual(ids('nope'), ['002', '003', '010']);
+  assert.equal(ts[0].id, '002'); // input untouched
+});

@@ -1,5 +1,5 @@
 import { renderMarkdown } from './md.js';
-import { parseQuery, formatQuery, matchTicket } from './filter.js';
+import { parseQuery, formatQuery, matchTicket, sortTickets, SORT_KEYS } from './filter.js';
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
 
@@ -82,20 +82,39 @@ async function moveTicket(file, status) {
   await refreshAll();
 }
 
-// Filter query lives in the hash: "#/?q=text -area:x". Board-only state.
-const Q = { text: '', parsed: parseQuery('') };
+// Board/table state lives in the hash: "#/?q=text -area:x&view=table&sort=priority&dir=desc".
+const Q = { text: '', parsed: parseQuery(''), view: 'board', sort: 'id', dir: 'asc' };
 function setQuery(text) { Q.text = text; Q.parsed = parseQuery(text); }
-function queryFromHash() {
+function loadHash() {
   const h = location.hash || '#/';
-  if (!h.startsWith('#/?') && h !== '#/') return null;
-  return new URLSearchParams(h.slice(3)).get('q') || '';
+  if (!h.startsWith('#/?') && h !== '#/') return false;
+  const p = new URLSearchParams(h.slice(3));
+  setQuery(p.get('q') || '');
+  Q.view = p.get('view') === 'table' ? 'table' : 'board';
+  Q.sort = SORT_KEYS.includes(p.get('sort')) ? p.get('sort') : 'id';
+  Q.dir = p.get('dir') === 'desc' ? 'desc' : 'asc';
+  return true;
 }
-function hashForQuery(text) { return text ? `#/?q=${encodeURIComponent(text)}` : '#/'; }
-function setFilter(text) {
-  setQuery(text);
-  const h = hashForQuery(text);
+function hashForState() {
+  const p = new URLSearchParams();
+  if (Q.text) p.set('q', Q.text);
+  if (Q.view === 'table') {
+    p.set('view', 'table');
+    if (Q.sort !== 'id' || Q.dir !== 'asc') { p.set('sort', Q.sort); p.set('dir', Q.dir); }
+  }
+  const qs = p.toString();
+  return qs ? `#/?${qs}` : '#/';
+}
+function syncHash() {
+  const h = hashForState();
   if (location.hash !== h) { currentHash = h; history.replaceState(null, '', h); }
   renderBoard();
+}
+function setFilter(text) { setQuery(text); syncHash(); }
+function setView(view) { Q.view = view; syncHash(); }
+function sortBy(key) {
+  if (Q.sort === key) Q.dir = Q.dir === 'asc' ? 'desc' : 'asc'; else { Q.sort = key; Q.dir = 'asc'; }
+  syncHash();
 }
 
 function filterBar() {
@@ -103,7 +122,9 @@ function filterBar() {
     id: 'search', type: 'search', value: Q.text, placeholder: 'Search… e.g. migrate -area:research status:open,blocked',
     oninput: (e) => setFilter(e.target.value),
   });
+  const tab = (v, label) => el('button', { type: 'button', class: Q.view === v ? 'active' : '', 'aria-pressed': String(Q.view === v), onclick: () => setView(v) }, label);
   return el('div', { class: 'filterbar' }, input,
+    el('span', { class: 'viewswitch' }, tab('board', 'Board'), tab('table', 'Table')),
     Q.text.trim() && el('span', { class: 'active-filter' }, 'Filter: ', el('code', {}, formatQuery(Q.parsed))),
     Q.text.trim() && el('button', { type: 'button', onclick: () => { setFilter(''); $('#search')?.focus(); } }, 'Clear'));
 }
@@ -116,6 +137,7 @@ function renderBoard() {
   const target = pendingFocus || document.activeElement?.closest?.('.card')?.dataset.file;
   pendingFocus = null;
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
+  if (Q.view === 'table') { view.replaceChildren(filterBar(), tableView()); if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); } return; }
   view.replaceChildren(filterBar(), el('div', { class: 'board' }, columns().map((status) => {
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
       .sort((a, b) => (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
@@ -128,6 +150,25 @@ function renderBoard() {
   })));
   if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); }
   if (target) [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target)?.focus();
+}
+
+const COLS = [['id', 'ID'], ['title', 'Title'], ['status', 'Status'], ['area', 'Area'], ['priority', 'Priority'], ['progress', 'Progress']];
+
+// Read-only projection of the same tickets and filter as the board.
+function tableView() {
+  const rows = sortTickets(S.tickets.filter((t) => matchTicket(t, Q.parsed)), Q.sort, Q.dir, columns());
+  const head = COLS.map(([key, label]) => el('th', { 'aria-sort': Q.sort === key ? (Q.dir === 'asc' ? 'ascending' : 'descending') : 'none' },
+    el('button', { type: 'button', onclick: () => sortBy(key) }, label, Q.sort === key ? (Q.dir === 'asc' ? ' ▲' : ' ▼') : '')));
+  const open = (t) => { location.hash = `#/t/${encodeURIComponent(t.file)}`; };
+  return el('div', { class: 'tablewrap' }, el('table', { class: 'tickets' },
+    el('thead', {}, el('tr', {}, head)),
+    el('tbody', {}, rows.length ? rows.map((t) => el('tr', { class: changedOnDisk.has(t.file) ? 'changed' : '', onclick: () => open(t) },
+      el('td', { class: 'id' }, `#${t.id}`),
+      el('td', {}, el('a', { href: `#/t/${encodeURIComponent(t.file)}`, 'data-file': t.file }, t.title)),
+      el('td', {}, t.status),
+      el('td', {}, t.area),
+      el('td', {}, t.priority),
+      el('td', {}, t.progress.total > 0 ? `${t.progress.done}/${t.progress.total}` : ''))) : el('tr', {}, el('td', { colspan: String(COLS.length), class: 'none' }, 'No matching tickets')))));
 }
 
 // --------------------------------------------------------------- detail
@@ -358,7 +399,7 @@ async function route() {
     pendingFocus = S.lastFile ?? null;
     if (h === '#/new') renderNew();
     else if (h === '#/idea') renderIdea();
-    else { setQuery(queryFromHash() ?? ''); await refreshAll(); }
+    else { loadHash(); await refreshAll(); }
   }
 }
 
@@ -392,7 +433,7 @@ async function refreshAll() {
     if (!before.has(t.file) || before.get(t.file) === t.version) continue;
     if (ownWrites.delete(t.file)) continue;
     changedOnDisk.add(t.file);
-    setTimeout(() => { changedOnDisk.delete(t.file); if (document.querySelector('.board')) renderBoard(); }, 6000);
+    setTimeout(() => { changedOnDisk.delete(t.file); if (document.querySelector('.board, .tablewrap')) renderBoard(); }, 6000);
   }
   const h = location.hash || '#/';
   if (h.startsWith('#/t/')) await refreshDetail();

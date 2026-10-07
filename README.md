@@ -50,6 +50,11 @@ node bin/tk.js --dir /path/to/tickets serve [--port 4321]
   exclude (`migrate -area:research status:open,blocked`). Everything ANDs;
   `area:` alone means "not set". Unknown `key:` tokens are plain text. The
   query is stored in the URL (`#/?q=...`) so views can be bookmarked.
+- **Table view**: the Board/Table switch next to the search box shows the same
+  (filtered) tickets as a sortable table (id, title, status, area, priority,
+  checklist progress); click a header to sort, again to reverse, click a row to
+  open it. Read-only; view, sort and filter are kept in the URL
+  (`#/?q=...&view=table&sort=priority&dir=desc`).
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
 - **+ Idea** (or `i`): quick capture. Type one or a few sentences, no title;
