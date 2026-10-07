@@ -491,7 +491,8 @@ function peekPopover(status) {
         const t = S.tickets.find((x) => x.file === document.activeElement?.dataset?.file);
         if (t) { peek = null; setPick({ file: t.file, status: t.status }); }
       } else if (e.key === 'j' || e.key === 'ArrowDown') links[Math.min(links.length - 1, at + 1)]?.focus();
-      else if (e.key === 'k' || e.key === 'ArrowUp') links[Math.max(0, at - 1)]?.focus();
+      else if ((e.key === 'k' || e.key === 'ArrowUp') && at <= 0) closePeek({ refocus: true }); // up past the first ticket: back to the strip
+      else if (e.key === 'k' || e.key === 'ArrowUp') links[at - 1]?.focus();
       else if (e.key !== 'Enter' && e.key !== 'Tab') return; // Enter follows the link natively
       if (e.key !== 'Enter' && e.key !== 'Tab') e.preventDefault();
       e.stopPropagation(); // the board's own keys must not act while the list has the focus
@@ -501,8 +502,7 @@ function peekPopover(status) {
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; },
   }, el('span', { class: 'id' }, `#${t.id}`), el('span', { class: 'ttl' }, t.title),
   el('span', { class: 'meta' }, t.priority && el('span', { class: 'chip prio' }, t.priority), t.area && el('span', { class: 'chip' }, t.area))))
-    : el('p', { class: 'hint' }, total ? `No tickets in ${status || '(no status)'} match the filter.` : `No tickets in ${status || '(no status)'}.`),
-  el('p', { class: 'hint keys' }, 'j/k move · Enter opens · Space moves it · h/l other status · Esc or k at the top closes'));
+    : el('p', { class: 'hint' }, total ? `No tickets in ${status || '(no status)'} match the filter.` : `No tickets in ${status || '(no status)'}.`));
 }
 document.addEventListener('mousedown', (e) => { if (peek && !e.target.closest?.('.stripentry')) { peek = null; if (document.querySelector('.board')) renderBoard(); } });
 
