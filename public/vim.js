@@ -401,9 +401,9 @@ export class Vim {
 function caretBox(ta, pos) {
   const cs = getComputedStyle(ta);
   const mirror = document.createElement('div');
-  for (const k of ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-    'borderStyle', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize', 'textIndent']) mirror.style[k] = cs[k];
-  Object.assign(mirror.style, { position: 'absolute', visibility: 'hidden', top: '0', left: '-9999px', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', overflow: 'hidden' });
+  // Same text box as the textarea: its content width excludes the scrollbar, so wrap points agree.
+  for (const k of ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize', 'textIndent']) mirror.style[k] = cs[k];
+  Object.assign(mirror.style, { boxSizing: 'border-box', width: `${ta.clientWidth}px`, border: '0', position: 'absolute', visibility: 'hidden', top: '0', left: '-9999px', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', overflow: 'hidden' });
   const mark = document.createElement('span');
   mark.textContent = '\u200b';
   mirror.append(ta.value.slice(0, pos), mark);
@@ -441,7 +441,9 @@ export function attachVim(ta, host) {
     cursorEl.hidden = !inside;
     Object.assign(cursorEl.style, { left: `${c.left}px`, top: `${c.top}px`, width: `${c.width}px`, height: `${c.height}px` });
   };
-  ta.addEventListener('scroll', () => { if (emptyAt >= 0) paintEmptyCursor(emptyAt); });
+  const repaint = () => { if (emptyAt >= 0) paintEmptyCursor(emptyAt); };
+  ta.addEventListener('scroll', repaint);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(repaint).observe(ta); // window or textarea resize re-wraps lines
   const show = () => {
     // Leaving insert mode re-selects the block cursor, which makes browsers scroll to it. The caret was
     // already visible while typing, so keep the scroll position (textarea and page) exactly as it was.

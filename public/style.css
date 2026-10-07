@@ -76,7 +76,7 @@ main { padding: 16px; }
 .editorbar .hint { margin-left: auto; }
 textarea.editor[data-vim]:not([data-vim="insert"]) { caret-color: transparent; }
 /* block cursor where the selection paints nothing (empty line, end of text); positioned by vim.js */
-.vim-cursor { position: absolute; pointer-events: none; background: var(--accent); opacity: .6; }
+.vim-cursor { position: absolute; pointer-events: none; background: Highlight; } /* same blue as the native selection used for the block on normal characters */
 .vim-cursor[hidden] { display: none; }
 textarea.editor:not(:focus) + .vim-cursor { display: none; }
 textarea.editor { width: 100%; min-height: 60vh; font: 14px/1.5 ui-monospace, monospace; resize: vertical; }
