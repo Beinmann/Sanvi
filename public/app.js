@@ -214,7 +214,11 @@ function pickBar() {
     el('kbd', {}, 'Space'), '/', el('kbd', {}, 'Enter'), ' drop · ', el('kbd', {}, 'Esc'), ' cancel');
 }
 
+const byBoardOrder = (a, b) => scoreTicket(b, Q.parsed) - scoreTicket(a, Q.parsed) || (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true });
+
 function renderBoard() {
+  const peekFile = document.activeElement?.closest?.('.peekpop a')?.dataset.file; // keep the list's focus across a re-render
+  if (peek && !hidden.has(peek)) peek = null; // the column was shown after all
   if (pick && !S.tickets.some((t) => t.file === pick.file)) { pick = null; document.body.classList.remove('moving'); } // the ticket is gone
   const hadFocus = document.activeElement?.id === 'search';
   const caret = hadFocus ? document.activeElement.selectionStart : 0;
@@ -244,7 +248,7 @@ function renderBoard() {
     const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
     if (hidden.has(status)) return null;
     const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed))
-      .sort((a, b) => scoreTicket(b, Q.parsed) - scoreTicket(a, Q.parsed) || (PRIO[a.priority] ?? 2) - (PRIO[b.priority] ?? 2) || a.file.localeCompare(b.file, 'en', { numeric: true }));
+      .sort(byBoardOrder);
     return el('section', {
       class: `col${pick?.status === status ? ' target' : ''}`, 'data-status': status,
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add('over'); },
@@ -263,6 +267,7 @@ function renderBoard() {
       el('button', { type: 'button', class: 'hide', title: `Hide ${status || 'this'} column`, 'aria-label': `Hide ${status || 'no-status'} column`, onclick: () => toggleColumn(status) }, '×')), items.map((t) => card(t, matchedOnlyInBody(t, Q.parsed))));
   })));
   restore();
+  if (peekFile) view.querySelector(`.peekpop a[data-file="${CSS.escape(peekFile)}"]`)?.focus({ preventScroll: true });
   if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
   const focusEl = target && [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target);
   if (focusEl) { focusEl.focus({ preventScroll: true }); } // never scroll here: a move or live refresh keeps the view; j/k/h/l scroll themselves
@@ -374,7 +379,7 @@ function hiddenStrip() {
     const all = S.tickets.filter((t) => t.status === status);
     const hits = filtering ? all.filter((t) => matchTicket(t, Q.parsed)).length : 0;
     const n = numbered.indexOf(status) + 1; // same numbering as the column badges
-    return el('button', {
+    const main = el('button', {
       type: 'button', class: `${hits ? 'hit' : ''}${pick?.status === status ? ' target' : ''}`, 'data-status': status, title: `Show ${status || '(no status)'} (drop a ticket here to move it without showing)`,
       onclick: () => toggleColumn(status),
       ondragover: (e) => { if (e.dataTransfer.types.includes(COLUMN_DRAG)) return; e.preventDefault(); e.currentTarget.classList.add('over'); },
@@ -386,8 +391,51 @@ function hiddenStrip() {
       },
     }, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
     `${status || '(no status)'} (${all.length}${filtering ? `, ${hits} match filter` : ''})`);
+    const open = peek === status;
+    return el('span', { class: 'stripentry' }, main,
+      el('button', { type: 'button', class: 'peekbtn', title: `Peek at the tickets in ${status || '(no status)'} without showing the column`, 'aria-label': `Peek at ${status || 'no-status'} tickets`, 'aria-expanded': String(open), 'aria-haspopup': 'menu', onclick: () => togglePeek(status) }, '▾'),
+      open && peekPopover(status));
   }));
 }
+
+// Peek (040): a read-only list of a hidden status's tickets in a popover under its strip entry. Nothing is
+// un-hidden or stored. Items open the ticket or can be dragged onto a visible column.
+let peek = null;
+function togglePeek(status) {
+  peek = peek === status ? null : status;
+  renderBoard();
+  if (peek) view.querySelector('.peekpop a')?.focus({ preventScroll: true });
+}
+function closePeek({ refocus = false } = {}) {
+  const was = peek;
+  peek = null;
+  renderBoard();
+  if (refocus) [...view.querySelectorAll('.stripentry')].find((x) => x.querySelector('button[data-status]')?.dataset.status === was)?.querySelector('.peekbtn')?.focus({ preventScroll: true });
+}
+function peekPopover(status) {
+  const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed)).sort(byBoardOrder);
+  const total = S.tickets.filter((t) => t.status === status).length;
+  return el('div', {
+    class: 'peekpop', role: 'menu', 'aria-label': `Tickets in ${status || '(no status)'}`,
+    onkeydown: (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const links = [...e.currentTarget.querySelectorAll('a')];
+      const at = links.indexOf(document.activeElement);
+      if (e.key === 'Escape') closePeek({ refocus: true });
+      else if (e.key === 'j' || e.key === 'ArrowDown') links[Math.min(links.length - 1, at + 1)]?.focus();
+      else if (e.key === 'k' || e.key === 'ArrowUp') links[Math.max(0, at - 1)]?.focus();
+      else if (e.key !== 'Enter' && e.key !== 'Tab') return; // Enter follows the link natively
+      if (e.key !== 'Enter' && e.key !== 'Tab') e.preventDefault();
+      e.stopPropagation(); // the board's own keys must not act while the list has the focus
+    },
+  }, items.length ? items.map((t) => el('a', {
+    href: `#/t/${encodeURIComponent(t.file)}`, role: 'menuitem', draggable: 'true', 'data-file': t.file,
+    ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; },
+  }, el('span', { class: 'id' }, `#${t.id}`), el('span', { class: 'ttl' }, t.title),
+  el('span', { class: 'meta' }, t.priority && el('span', { class: 'chip prio' }, t.priority), t.area && el('span', { class: 'chip' }, t.area))))
+    : el('p', { class: 'hint' }, total ? `No tickets in ${status || '(no status)'} match the filter.` : `No tickets in ${status || '(no status)'}.`));
+}
+document.addEventListener('mousedown', (e) => { if (peek && !e.target.closest?.('.stripentry')) { peek = null; if (document.querySelector('.board')) renderBoard(); } });
 
 // Vim mode is an opt-in per-browser preference; storage can throw (private windows etc.).
 const vimPref = {
@@ -614,6 +662,7 @@ async function route() {
     await openTicket(decodeURIComponent(h.slice(4)), tab);
   } else {
     D = null;
+    peek = null;
     if (pick && h !== '#/' && !h.startsWith('#/?')) setPick(null);
     pendingFocus = S.lastFile ?? null;
     if (h === '#/new') renderNew();
