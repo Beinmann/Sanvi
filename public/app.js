@@ -54,7 +54,7 @@ function columns() {
 
 // Files changed by someone else (terminal, agent) in the last few seconds get a flag on their card.
 const changedOnDisk = new Set();
-const ownWrites = new Set();
+const ownVersions = new Set(); // versions this browser wrote; a refresh seeing one is not an outside change
 
 // The card being dragged; while held, the column headers show their number keys.
 let held = null;
@@ -75,9 +75,9 @@ function card(t) {
 
 // Reorder status columns by dragging a header; the order is saved in the config file so it is shared.
 async function moveColumn(from, to) {
-  const cols = columns();
-  const next = moveItem(cols, cols.indexOf(from), cols.indexOf(to)).filter(Boolean);
-  if (next.join() === cols.filter(Boolean).join()) return;
+  const list = S.cfg.statuses; // only configured statuses move; hidden ones keep their place
+  if (!list.includes(from) || !list.includes(to) || from === to) return;
+  const next = moveItem(list, list.indexOf(from), list.indexOf(to));
   try { await api('PUT', 'config', { statuses: next }); } catch (e) { toast(`Reorder failed: ${e.message}`); }
   await refreshAll();
 }
@@ -96,11 +96,10 @@ async function moveTicket(file, status) {
   endHold();
   const t = S.tickets.find((x) => x.file === file);
   if (!t || t.status === status) return;
-  ownWrites.add(file);
   try {
-    await api('PUT', `tickets/${encodeURIComponent(file)}`, { version: t.version, fields: { status } });
+    const saved = await api('PUT', `tickets/${encodeURIComponent(file)}`, { version: t.version, fields: { status } });
+    ownVersions.add(saved.version);
   } catch (e) {
-    ownWrites.delete(file);
     toast(e.status === 409 ? `#${t.id} changed on disk; not moved. Board refreshed.` : `Move failed: ${e.message}`);
   }
   await refreshAll();
@@ -163,6 +162,7 @@ function renderBoard() {
   pendingFocus = null;
   $('#dirname').textContent = S.cfg.name ? `· ${S.cfg.name}` : '';
   if (Q.view === 'table') { view.replaceChildren(filterBar(), tableView()); if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); } return; }
+  const scroll = { x: document.querySelector('.board')?.scrollLeft ?? 0, y: window.scrollY };
   let num = 0;
   view.replaceChildren(filterBar(), hiddenStrip(), el('div', { class: 'board' }, columns().map((status) => {
     const n = status ? ++num : 0; // numbers follow the full order, hidden columns keep theirs
@@ -178,13 +178,16 @@ function renderBoard() {
         const col = e.dataTransfer.getData(COLUMN_DRAG);
         if (col) moveColumn(col, status); else moveTicket(e.dataTransfer.getData('text/plain'), status);
       },
-    }, el('h2', status ? {
+    }, el('h2', S.cfg.statuses.includes(status) ? {
       draggable: true, title: 'Drag to reorder columns',
       ondragstart: (e) => { e.dataTransfer.setData(COLUMN_DRAG, status); e.dataTransfer.effectAllowed = 'move'; },
     } : {}, n > 0 && n <= 9 && el('kbd', { class: 'num', title: `Press ${n} to move the held or focused ticket here` }, String(n)),
     el('span', {}, status || '(no status)'), el('span', { class: 'count' }, String(items.length)),
       el('button', { type: 'button', class: 'hide', title: `Hide ${status || 'this'} column`, 'aria-label': `Hide ${status || 'no-status'} column`, onclick: () => toggleColumn(status) }, '×')), items.map(card));
   })));
+  const board = document.querySelector('.board');
+  if (board) board.scrollLeft = scroll.x;
+  window.scrollTo(0, scroll.y);
   if (hadFocus) { const i = $('#search'); i.focus(); i.setSelectionRange(caret, caret); }
   if (target) [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target)?.focus();
 }
@@ -243,11 +246,11 @@ async function save() {
   const sent = { ...D.draft };
   const fields = {};
   for (const k of ['status', 'area', 'priority']) if (sent[k] !== D.loaded[k]) fields[k] = sent[k];
-  ownWrites.add(D.file);
   try {
     const t = await api('PUT', `tickets/${encodeURIComponent(D.file)}`, {
       version: D.loaded.version, fields, ...(sent.body !== D.loaded.body ? { body: sent.body } : {}),
     });
+    ownVersions.add(t.version);
     D.loaded = t;
     D.stale = null; D.conflict = false;
     for (const k of Object.keys(sent)) if (D.draft[k] === sent[k]) D.draft[k] = t[k];
@@ -255,7 +258,6 @@ async function save() {
     toast('Saved');
     return true;
   } catch (e) {
-    ownWrites.delete(D.file);
     if (e.status === 409) { D.stale = e.data.current; D.conflict = true; updateBanner(); $('#banner button')?.focus(); }
     else toast(`Save failed: ${e.message}`);
     return false;
@@ -490,7 +492,7 @@ async function refreshAll() {
   } catch (e) { toast(`Load failed: ${e.message}`); return; }
   for (const t of S.tickets) {
     if (!before.has(t.file) || before.get(t.file) === t.version) continue;
-    if (ownWrites.delete(t.file)) continue;
+    if (ownVersions.has(t.version)) continue;
     changedOnDisk.add(t.file);
     setTimeout(() => { changedOnDisk.delete(t.file); if (document.querySelector('.board, .tablewrap')) renderBoard(); }, 6000);
   }

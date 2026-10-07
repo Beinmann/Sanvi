@@ -31,7 +31,7 @@ input, select, textarea { background: var(--panel); border: 1px solid var(--bord
 #toast.show { opacity: .95; }
 
 main { padding: 16px; }
-.board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 12px; }
+.board { display: flex; gap: 12px; align-items: stretch; min-height: calc(100vh - 150px); overflow-x: auto; padding-bottom: 12px; }
 .col { flex: 0 0 280px; border-radius: var(--r); padding: 4px; min-height: 120px; }
 .col.over { outline: 2px dashed var(--accent); background: var(--accent-soft); }
 .col h2 { font-size: 13px; font-weight: 600; color: var(--text); margin: 4px 6px 10px; display: flex; align-items: center; gap: 8px; }
