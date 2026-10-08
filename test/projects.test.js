@@ -97,3 +97,32 @@ test('refine and chat use the project directory and instructions', async () => {
     assert.match(calls[1].prompt, /Never touch the build\.[\s\S]*hello$/);
   } finally { await app.close(); }
 });
+
+test('GET /api/dirs lists sub-directories only, sorted, and reports bad paths; needs agents', async () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-dirs-')));
+  for (const d of ['b', 'a', 'a10', 'a2', '.hid']) fs.mkdirSync(path.join(root, d));
+  fs.writeFileSync(path.join(root, 'file.txt'), 'x');
+  fs.symlinkSync(path.join(root, 'a'), path.join(root, 'link-to-dir'));
+  fs.symlinkSync(path.join(root, 'file.txt'), path.join(root, 'link-to-file'));
+  const dir = setup();
+  const off = createTicketServer({ dir });
+  const on = createTicketServer({ dir, agents: true, agentRun: () => {}, chatsFile: null });
+  try {
+    const get = async (app, q) => fetch(`http://127.0.0.1:${app.port}/api/dirs${q}`);
+    off.port = (await off.listen(0)).port; on.port = (await on.listen(0)).port;
+    assert.equal((await get(off, `?path=${root}`)).status, 403);
+    const r = await (await get(on, `?path=${encodeURIComponent(root)}`)).json();
+    assert.equal(r.path, root);
+    assert.equal(r.parent, path.dirname(root));
+    assert.deepEqual(r.dirs, ['a', 'a2', 'a10', 'b', 'link-to-dir']); // numeric-aware order, no files, no hidden
+    const h = await (await get(on, `?path=${encodeURIComponent(root)}&hidden=1`)).json();
+    assert.ok(h.dirs.includes('.hid'));
+    assert.equal((await (await get(on, '?path=/')).json()).parent, null); // root has no parent
+    assert.ok(Array.isArray((await (await get(on, '')).json()).dirs)); // no path: the home directory
+    for (const bad of [path.join(root, 'missing'), path.join(root, 'file.txt'), 'relative/dir']) {
+      const e = await get(on, `?path=${encodeURIComponent(bad)}`);
+      assert.equal(e.status, 400);
+      assert.match((await e.json()).error, /not a directory|absolute/);
+    }
+  } finally { await off.close(); await on.close(); }
+});

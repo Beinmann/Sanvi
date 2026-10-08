@@ -16,7 +16,7 @@ import { createChats } from './chat.js';
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
-import { projectView, projectInfo, saveProject } from './projects.js';
+import { projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // Any top-level file in public/ is served by name, so new frontend modules need no route.
@@ -197,6 +197,10 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       }
       if (parts.length === 4 && parts[3] === 'cancel' && method === 'POST') return send(res, 200, chats.cancel(parts[2]));
       return send(res, 404, { error: 'not found' });
+    }
+    if (parts[0] === 'dirs' && parts.length === 1 && method === 'GET') { // directory picker: names of the machine's directories, so only with agents
+      if (!chats) return send(res, 403, { error: 'the directory picker needs the server to be started with --agents' });
+      return send(res, 200, listDirs(url.searchParams.get('path'), { hidden: url.searchParams.get('hidden') === '1' }));
     }
     if (parts[0] === 'projects' && parts.length === 1) {
       if (method === 'GET') return send(res, 200, projectView(dir));

@@ -243,3 +243,7 @@ body.has-selection .selhint { display: none; }
 .chip.refining { background: var(--accent-soft); color: var(--accent); }
 .project { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); padding: 8px 14px 12px; margin: 12px 0; } .project.warn { border-color: var(--warn); } .project h2 { margin: 4px 0; font-size: 16px; } .project label { display: grid; gap: 4px; margin: 8px 0; font-size: 13px; color: var(--muted); } .project input, .project textarea { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--bg); width: 100%; }
 .dirrow { display: grid; grid-template-columns: auto 1fr; gap: 6px; align-items: center; font-size: 12px; } .dirrow input { padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--r); background: var(--bg); min-width: 0; }
+.dirfield { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.dirpicker { border: 1px solid var(--border); border-radius: var(--r); background: var(--bg); padding: 6px; margin: 4px 0 8px; } .dirpicker[hidden] { display: none; }
+.dirbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .dirpath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dirlist { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow-y: auto; display: grid; } .dirlist button { width: 100%; text-align: left; border: 0; background: none; padding: 3px 8px; font-weight: 400; } .dirlist button:hover { background: var(--panel2); }

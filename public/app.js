@@ -1019,7 +1019,7 @@ $('#proj-sel').addEventListener('change', (e) => {
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
 $('#projects-btn').addEventListener('click', () => { location.hash = '#/projects'; });
-const projectsPage = initProjects({ el, show, api, toast, view });
+const projectsPage = initProjects({ el, show, api, toast, view, canBrowse: () => agentOn });
 async function paintProjectsBadge() { // the button carries the number of project warnings
   try { await projectsPage.load(); } catch { return; }
   const n = projectsPage.warningCount();

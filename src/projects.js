@@ -7,6 +7,7 @@
 // The empty project name ("default project") lives in `_default.md`. Files may be hand-edited or missing; a file
 // without a `name:` is named after its file name. Tickets stay the only place a ticket's project is written.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { splitDoc, parseFront, slugify, atomicWrite, listTickets, ValidationError } from './core.js';
 
@@ -87,4 +88,27 @@ export function projectProblems(dir) {
     if (!o.dir && !o.instructions) out.push({ file: `${PROJECTS_DIR}/${o.file}`, level: 'warn', message: `project "${o.name || DEFAULT_LABEL}" has no information set (no directory, no instructions)` });
   }
   return out;
+}
+
+/** Sub-directories of `input` (absolute, or ~/...), for the directory picker. Names only, sorted; dot-directories only on request. */
+export function listDirs(input, { hidden = false } = {}) {
+  let p = String(input ?? '').trim() || '~';
+  if (p === '~' || p.startsWith('~/')) p = path.join(os.homedir(), p.slice(1));
+  if (!path.isAbsolute(p)) throw new ValidationError('path must be absolute (or start with ~/)');
+  let real;
+  try {
+    real = fs.realpathSync(p);
+    if (!fs.statSync(real).isDirectory()) throw new Error('not a directory');
+  } catch { throw new ValidationError(`not a directory: ${p}`); }
+  let entries;
+  try { entries = fs.readdirSync(real, { withFileTypes: true }); } catch { throw new ValidationError(`cannot read ${real}`); }
+  const isDir = (e) => {
+    if (e.isDirectory()) return true;
+    if (!e.isSymbolicLink()) return false;
+    try { return fs.statSync(path.join(real, e.name)).isDirectory(); } catch { return false; }
+  };
+  const dirs = entries.filter((e) => isDir(e) && (hidden || !e.name.startsWith('.'))).map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' }));
+  const parent = path.dirname(real);
+  return { path: real, parent: parent === real ? null : parent, dirs };
 }
