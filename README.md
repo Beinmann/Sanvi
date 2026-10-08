@@ -7,6 +7,18 @@ with frontmatter. No dependencies; needs Node 20+.
 
 The command is `tk` (alias `sanvi`).
 
+> **Security warning: the AI features run an agent on your machine.** With
+> `--agents` Sanvi starts the Claude Code CLI, which reads files, edits files
+> and sends their contents (plus ticket text and project instructions) to an AI
+> service. Ticket text is untrusted input to that agent, so a malicious ticket
+> can try to steer it. Sanvi limits what the agent may do (see "Chat with Claude"
+> below), but those limits are a safety net, not a sandbox. **Do not run Sanvi
+> with `--agents` on a system that holds sensitive data** (keys, credentials,
+> private documents, other projects). Use an isolated system instead: a
+> container, a VM or a dedicated machine that contains only the project you
+> want the agent to see. Without `--agents` nothing of this applies and no AI
+> is used.
+
 ## Quick start
 
 ```
@@ -150,7 +162,9 @@ tk --dir /path/to/tickets serve [--port 4321]
 
 `tk serve --agents` (or `tk start --agents`) adds a **Chat** button that talks to the Claude Code CLI installed on this machine. It runs `claude -p` headless in the parent of the tickets dir, with read tools plus Edit only, using whatever login the CLI already has; Sanvi stores no credentials. Each message is one run, resumed with `--resume`, so the chat keeps its context. Without `--agents` the button is hidden and `/api/agent/*` answers 403, because this runs code on your machine. If `ANTHROPIC_API_KEY` is set in the environment of the server, the CLI uses it and bills at API rates.
 
-Each chat has a directory (📁; locked after its first message, remembered per project). `--agents --auto-refine` starts a "Refine #N" chat for every new idea: the agent may read the repo and edit only that ticket file, rewrites it per `tickets/README.md` and sets it to `open`, or leaves it in `design` with open questions in a Note. The cost shown is the CLI's estimate at API prices.
+Each chat has a directory: typed into the field above a new chat (no native file dialog, so it works when Sanvi runs in a container or on another host), locked after the first message, and taken from the chat's project by default.
+
+**Projects** (the Projects page, `tk validate`): each project, including the empty "default project", can be an object with a directory and instructions for the agent, stored as a small Markdown file in `_projects/` next to the tickets (frontmatter `name:` and `dir:`, the instructions as the body; hand edits are fine). Refine runs and chats of a project start in its directory and receive its instructions. Warnings (Projects button, `tk validate`): a ticket whose project has no object, an object with no information set, a directory that does not exist on this machine. `--agents --auto-refine` starts a "Refine #N" chat for every new idea: the agent may read the repo and edit only that ticket file, rewrites it per `tickets/README.md` and sets it to `open`, or leaves it in `design` with open questions in a Note. The cost shown is the CLI's estimate at API prices.
 
 Other agent features (all need `--agents`): a "Refine with Claude" button on `design` tickets and the palette command "Refine all design tickets"; "Ask Claude about the board…" (or a palette query ending in `?`) opens a read-only chat that can read only the tickets dir and the change log. After a refine run the chat list shows ✓ (done), ? (refined, questions left in the Notes) or ⚠ (nothing changed, or a tool call was refused).
 

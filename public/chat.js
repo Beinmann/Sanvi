@@ -10,7 +10,6 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   let chats = [];     // list entries: { id, title, state }
   let chat = null;    // the open chat, as last fetched
   let drafts = {};    // unsent text per chat id
-  let info = { dirs: {} }; // from GET agent: the default directory and the remembered directory per project
   let isOpen = false;
   let wide = store.get('wide') === '1';
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
@@ -103,14 +102,10 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     try { chat = await api('POST', `agent/chats/${chat.id}/messages`, { text }); drafts[chat.id] = ''; await refreshList(); paint(); } catch (e) { toast(`Not sent: ${e.message}`); }
   }
 
-  async function changeDir() {
-    const dir = prompt('Directory this chat runs in (absolute path or ~/...):', chat.cwd);
-    if (dir === null || dir.trim() === chat.cwd) return;
-    try { chat = await api('PUT', `agent/chats/${chat.id}`, { dir }); } catch (e) { toast(`Directory not changed: ${e.message}`); return; }
-    const proj = project();
-    if (proj && info.dirs[proj] !== chat.cwd && confirm(`Start new chats of project "${proj}" in\n${chat.cwd} ?`)) {
-      try { info.dirs = await api('PUT', 'agent/dirs', { project: proj, dir: chat.cwd }); } catch (e) { toast(`Not remembered: ${e.message}`); }
-    }
+  async function changeDir(input) {
+    const dir = input.value.trim();
+    if (!dir || dir === chat.cwd) return;
+    try { chat = await api('PUT', `agent/chats/${chat.id}`, { dir }); } catch (e) { toast(`Directory not changed: ${e.message}`); input.value = chat.cwd; return; }
     paint();
   }
 
@@ -146,11 +141,13 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       el('div', { class: 'chathead' }, select,
         el('button', { type: 'button', title: 'New read-only question about the board', onclick: () => ask().catch((e) => toast(e.message)) }, '?'),
         el('button', { type: 'button', title: 'New chat', onclick: () => openChat(null).catch((e) => toast(e.message)) }, '+'),
-        el('button', { type: 'button', title: chat.messages.length ? 'The directory is fixed once a chat has started' : 'Change the directory this chat runs in', disabled: !!chat.messages.length, onclick: changeDir }, '📁'),
         el('button', { type: 'button', title: 'Delete this chat', disabled: running, onclick: remove }, '🗑'),
         el('button', { type: 'button', title: wide ? 'Smaller' : 'Larger', onclick: () => { wide = !wide; store.set('wide', wide ? '1' : '0'); paint(); } }, wide ? '▢' : '⤢'),
         el('button', { type: 'button', title: 'Close (Esc)', onclick: () => toggle(false) }, '×')),
-      el('div', { class: 'chatmeta muted', title: `${chat.cwd}\nThe cost is the Claude CLI's own estimate at API prices. On a subscription login it is not charged to you; it counts against your plan limits. With ANTHROPIC_API_KEY set it is real spend.` }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.state === 'queued' ? 'waiting for a free slot…' : chat.costUsd ? `≈ $${chat.costUsd.toFixed(3)} at API rates` : 'ready'}`),
+      chat.messages.length || chat.kind !== 'chat'
+        ? el('div', { class: 'chatmeta muted', title: `${chat.cwd}\nThe cost is the Claude CLI's own estimate at API prices. On a subscription login it is not charged to you; it counts against your plan limits. With ANTHROPIC_API_KEY set it is real spend.` }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.state === 'queued' ? 'waiting for a free slot…' : chat.costUsd ? `≈ $${chat.costUsd.toFixed(3)} at API rates` : 'ready'}`)
+        : el('label', { class: 'chatmeta muted dirrow', title: 'Directory this chat runs in (a path on the machine running Sanvi). Fixed after the first message; set per project on the Projects page.' }, 'Directory ',
+          el('input', { value: chat.cwd, spellcheck: 'false', 'aria-label': 'Directory', onchange: (e) => changeDir(e.target), onkeydown: (e) => { if (e.key === 'Enter') e.target.blur(); } })),
       log,
       chat.error ? el('div', { class: 'banner err' }, chat.error) : null,
       chat.warning ? el('div', { class: 'banner' }, chat.warning) : null,
@@ -166,6 +163,6 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   return {
     toggle, onEvent, ask, refine, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && active(c)),
-    start: () => Promise.all([refreshList(), api('GET', 'agent').then((a) => { info = a; })]).catch(() => {}),
+    start: () => refreshList().catch(() => {}),
   };
 }

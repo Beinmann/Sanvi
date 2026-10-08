@@ -197,7 +197,7 @@ function writeList(dir, key, statuses) {
   atomicWrite(file, text);
 }
 
-function atomicWrite(p, content) {
+export function atomicWrite(p, content) {
   const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tmp, content);
   fs.renameSync(tmp, p);

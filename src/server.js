@@ -16,6 +16,7 @@ import { createChats } from './chat.js';
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
+import { projectView, projectInfo, saveProject } from './projects.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // Any top-level file in public/ is served by name, so new frontend modules need no route.
@@ -91,6 +92,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     cwd: path.dirname(dir),
     file: chatsFile === undefined ? chatsPath(dir) : chatsFile,
     check: checkRefine,
+    projectInfo: (name) => projectInfo(dir, name),
     run: agentRun,
     notify: (id) => broadcast({ type: 'chat', id }),
     log: (e) => changelog.log({ ticket: '-', ...e }),
@@ -101,7 +103,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     const t = readTicket(dir, file);
     if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} is already being refined`);
     const chat = chats.create({ project: t.project, kind: 'refine', meta: { file, before: t.version }, title: `Refine #${t.id}: ${t.title}`.slice(0, 80), runOpts: refineRunOpts({ ticketsDir: dir, file }) });
-    chats.send(chat.id, `Refine ticket #${t.id} (${file}): rewrite it into problem, acceptance criteria and approach.`, { prompt: refinePrompt({ ticketsDir: dir, file }), queue: true });
+    chats.send(chat.id, `Refine ticket #${t.id} (${file}): rewrite it into problem, acceptance criteria and approach.`, { prompt: refinePrompt({ ticketsDir: dir, file, project: t.project, instructions: projectInfo(dir, t.project).instructions }), queue: true });
     return chat;
   }
 
@@ -178,15 +180,11 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       });
     }
     if (parts[0] === 'agent') {
-      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir, dirs: chats.dirs() }) });
+      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir }) });
       if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
       if (parts[1] === 'refine-all' && parts.length === 2 && method === 'POST') return send(res, 200, startRefineAll());
       if (parts[1] === 'ask' && parts.length === 2 && method === 'POST') return send(res, 201, startAsk((await readJson(req)).question));
       if (parts[1] === 'refine' && parts.length === 2 && method === 'POST') return send(res, 201, startRefine((await readJson(req)).file));
-      if (parts[1] === 'dirs' && parts.length === 2 && method === 'PUT') {
-        const { project, dir } = await readJson(req);
-        return send(res, 200, chats.setProjectDir(project, dir));
-      }
       if (parts[1] !== 'chats') return send(res, 404, { error: 'not found' });
       if (parts.length === 2 && method === 'GET') return send(res, 200, chats.list());
       if (parts.length === 2 && method === 'POST') return send(res, 201, chats.create(await readJson(req)));
@@ -199,6 +197,15 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       }
       if (parts.length === 4 && parts[3] === 'cancel' && method === 'POST') return send(res, 200, chats.cancel(parts[2]));
       return send(res, 404, { error: 'not found' });
+    }
+    if (parts[0] === 'projects' && parts.length === 1) {
+      if (method === 'GET') return send(res, 200, projectView(dir));
+      if (method === 'PUT') {
+        const { name, dir: pdir, instructions } = await readJson(req);
+        saveProject(dir, { name, dir: pdir, instructions });
+        changelog.log({ ticket: '-', action: 'project', project: name || '' });
+        return send(res, 200, projectView(dir));
+      }
     }
     if (parts[0] === 'events' && method === 'GET') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });

@@ -6,6 +6,7 @@ import { planStatusDelete, parseQuery, formatQuery, matchTicket, scoreTicket, ma
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
 import { initChat } from './chat.js';
+import { initProjects } from './projects.js';
 
 const $ = (sel) => document.querySelector(sel);
 const view = $('#view');
@@ -929,6 +930,7 @@ async function route() {
     if (h === '#/new') renderNew();
     else if (h === '#/trash') renderTrash();
     else if (h === '#/notes') renderNotes();
+    else if (h === '#/projects') projectsPage.render();
     else if (h === '#/idea') location.replace('#/'); // old bookmark: the idea box is an overlay now (i / Ctrl+I)
     else { loadHash(); await refreshAll(); }
   }
@@ -1016,6 +1018,15 @@ $('#proj-sel').addEventListener('change', (e) => {
 });
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
+$('#projects-btn').addEventListener('click', () => { location.hash = '#/projects'; });
+const projectsPage = initProjects({ el, show, api, toast, view });
+async function paintProjectsBadge() { // the button carries the number of project warnings
+  try { await projectsPage.load(); } catch { return; }
+  const n = projectsPage.warningCount();
+  $('#projects-btn').textContent = n ? `Projects ⚠ ${n}` : 'Projects';
+  $('#projects-btn').title = n ? `${n} project warning${n > 1 ? 's' : ''}: open to see them` : 'Projects: directory and instructions for the agent';
+}
+document.addEventListener('projects-changed', paintProjectsBadge);
 let agentOn = false; // server started with --agents
 async function refineTicket(file) {
   try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
@@ -1051,6 +1062,7 @@ async function doRefresh() {
   }
   if (dropStaleProject()) syncHash();
   paintProject();
+  paintProjectsBadge();
   const h = location.hash || '#/';
   if (h.startsWith('#/t/')) await refreshDetail();
   else if (h === '#/trash') renderTrash();

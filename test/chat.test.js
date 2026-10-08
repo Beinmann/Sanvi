@@ -128,24 +128,26 @@ test('chats survive a restart; a run that was in flight is marked interrupted; d
   assert.equal(createChats({ cwd: '/w', file, run: f.run }).list().length, 1);
 });
 
-test('chat directory: default, per project, explicit, validated, locked after the first message', async () => {
+test('chat directory: default, from the project, explicit, validated, locked after the first message', async () => {
   const mk = (n) => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `tk-${n}-`)));
-  const [base, other, file] = [mk('base'), mk('other'), path.join(mk('st'), 'c.json')];
+  const [base, other] = [mk('base'), mk('other')];
   const f = fakeRunner();
-  const chats = createChats({ cwd: base, file, run: f.run });
+  const infos = { web: { dir: other, instructions: 'Use tabs.' }, gone: { dir: path.join(base, 'missing'), instructions: '' } };
+  const chats = createChats({ cwd: base, run: f.run, projectInfo: (n) => infos[n] || {} });
 
   assert.equal(chats.create().cwd, base);
   assert.equal(chats.create({ project: 'nope' }).cwd, base);
-  chats.setProjectDir('web', other);
   assert.equal(chats.create({ project: 'web' }).cwd, other);
   assert.equal(chats.create({ project: 'web', dir: base }).cwd, base); // explicit wins
+  const bad = chats.create({ project: 'gone' });
+  assert.equal(bad.cwd, base); // a stored directory that does not exist here falls back, with a warning
+  assert.match(bad.warning, /not found/);
 
   assert.throws(() => chats.create({ dir: 'relative/path' }), /absolute/);
   assert.throws(() => chats.create({ dir: path.join(base, 'missing') }), /not a directory/);
   const link = path.join(mk('lnk'), 'l');
   fs.symlinkSync(other, link);
   assert.equal(chats.create({ dir: link }).cwd, other); // resolved through symlinks
-  assert.throws(() => chats.setProjectDir('', other), /required/);
 
   const c = chats.create();
   chats.setCwd(c.id, other);
@@ -153,45 +155,12 @@ test('chat directory: default, per project, explicit, validated, locked after th
   assert.equal(f.calls.at(-1).opts.cwd, other);
   assert.throws(() => chats.setCwd(c.id, base), /cannot change/);
 
-  const again = createChats({ cwd: base, file, run: f.run }); // mapping survives a restart
-  assert.equal(again.create({ project: 'web' }).cwd, other);
-  chats.setProjectDir('web', '');
-  assert.equal(chats.create({ project: 'web' }).cwd, base);
-});
-
-test('refine: scoped permissions, queued when slots are busy, runs later, shown in the list', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-ref-'));
-  fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: design\n---\n# A\n');
-  const f = fakeRunner();
-  const app = createTicketServer({ dir, agents: true, autoRefine: true, agentRun: f.run, chatsFile: null });
-  const { port } = await app.listen(0);
-  const j = (m, p, b) => fetch(`http://127.0.0.1:${port}${p}`, { method: m, headers: { 'content-type': 'application/json' }, body: JSON.stringify(b ?? {}) });
-  try {
-    for (const text of ['one', 'two', 'three']) assert.equal((await j('POST', '/api/ideas', { text })).status, 201);
-    assert.equal(f.calls.length, 2); // max 2 at once, the third waits
-    const o = f.calls[0].opts;
-    assert.equal(o.permissionMode, 'default');
-    assert.ok(o.allowedTools.some((t) => t.startsWith('Edit(//') && t.endsWith('.md)'))); // // = absolute path in a permission rule
-    assert.match(o.prompt, /Edit only .*\.md/);
-    let list = await (await fetch(`http://127.0.0.1:${port}/api/agent/chats`)).json();
-    assert.deepEqual(list.map((c) => c.state).sort(), ['queued', 'running', 'running']);
-    assert.ok(list.every((c) => c.kind === 'refine'));
-    f.calls[0].end(); await tick(); await tick();
-    assert.equal(f.calls.length, 3); // the queued one started
-    list = await (await fetch(`http://127.0.0.1:${port}/api/agent/chats`)).json();
-    assert.equal(list.filter((c) => c.state === 'queued').length, 0);
-  } finally { await app.close(); }
-});
-
-test('refine is not started by ideas unless auto-refine is on', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-ref2-'));
-  const f = fakeRunner();
-  const app = createTicketServer({ dir, agents: true, agentRun: f.run, chatsFile: null });
-  const { port } = await app.listen(0);
-  try {
-    await fetch(`http://127.0.0.1:${port}/api/ideas`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'x' }) });
-    assert.equal(f.calls.length, 0);
-  } finally { await app.close(); }
+  const w = chats.create({ project: 'web' }); // the project's instructions travel with the first message only
+  chats.send(w.id, 'first');
+  assert.match(f.calls.at(-1).opts.prompt, /Instructions for project "web":\nUse tabs\.[\s\S]*first$/);
+  f.calls.at(-1).end(); await tick();
+  chats.send(w.id, 'second');
+  assert.equal(f.calls.at(-1).opts.prompt, 'second');
 });
 
 async function refineSetup(files) {

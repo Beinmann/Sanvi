@@ -19,9 +19,8 @@ export function resolveDir(input) {
   } catch { throw new ValidationError(`not a directory: ${p}`); }
 }
 
-export function createChats({ cwd, file, check, notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
+export function createChats({ cwd, file, check, projectInfo = () => ({}), notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
   const chats = new Map();
-  let dirs = {}; // project name -> directory its chats start in
   let running = 0;
   const pending = []; // ids of chats waiting for a free slot
 
@@ -30,13 +29,12 @@ export function createChats({ cwd, file, check, notify = () => {}, run = default
     if (!file) return;
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(`${file}.tmp`, JSON.stringify({ chats: [...chats.values()].map(persisted), dirs }));
+      fs.writeFileSync(`${file}.tmp`, JSON.stringify({ chats: [...chats.values()].map(persisted) }));
       fs.renameSync(`${file}.tmp`, file);
     } catch (e) { console.error(`could not save chats: ${e.message}`); }
   }
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    dirs = Array.isArray(saved) ? {} : saved.dirs || {};
     for (const c of Array.isArray(saved) ? saved : saved.chats) {
       if (c.state === 'running' || c.state === 'queued') { // the run died with the previous server
         c.state = 'failed'; c.error = 'interrupted by a server restart';
@@ -55,11 +53,18 @@ export function createChats({ cwd, file, check, notify = () => {}, run = default
   };
   const view = (c) => ({ id: c.id, title: c.title, kind: c.kind || 'chat', outcome: c.outcome || null, warning: c.warning || null, cwd: c.cwd, state: c.state, error: c.error, costUsd: c.costUsd, messages: c.messages, created: c.created });
 
-  const dirFor = (project) => (project && dirs[project]) || cwd;
-
-  // `dir` is explicit; otherwise the project's remembered directory; otherwise the default.
+  // `dir` is explicit; otherwise the project's directory (from its project object); otherwise the default.
+  // The project's instructions go to the agent with the first message.
   function create({ dir, project, title = 'New chat', kind = 'chat', runOpts, meta, preamble } = {}) {
-    const c = { id: crypto.randomUUID(), title, kind, runOpts, meta, preamble, cwd: dir ? resolveDir(dir) : dirFor(project), state: 'idle', error: null, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
+    const info = projectInfo(project || '') || {};
+    let chatDir = cwd;
+    let warning = null;
+    if (dir) chatDir = resolveDir(dir);
+    else if (info.dir) {
+      try { chatDir = resolveDir(info.dir); } catch { warning = `the directory of project "${project || 'default project'}" (${info.dir}) was not found; using the default directory`; }
+    }
+    if (!preamble && info.instructions) preamble = `Instructions for project "${project || 'default project'}":\n${info.instructions}\n\nUser message:`;
+    const c = { id: crypto.randomUUID(), title, kind, runOpts, meta, preamble, cwd: chatDir, state: 'idle', error: null, warning, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
     chats.set(c.id, c);
     touch(c.id);
     return view(c);
@@ -133,14 +138,6 @@ export function createChats({ cwd, file, check, notify = () => {}, run = default
     return view(c);
   }
 
-  function setProjectDir(project, dir) {
-    project = String(project || '').trim();
-    if (!project) throw new ValidationError('project is required');
-    if (dir) dirs[project] = resolveDir(dir); else delete dirs[project];
-    save();
-    return { ...dirs };
-  }
-
   function cancel(id) {
     const c = get(id);
     if (c.state === 'queued') { pending.splice(pending.indexOf(id), 1); c.state = 'idle'; c.messages.at(-1).text = '(cancelled)'; touch(id); }
@@ -156,9 +153,8 @@ export function createChats({ cwd, file, check, notify = () => {}, run = default
   }
 
   return {
-    create, send, cancel, remove, setCwd, setProjectDir,
+    create, send, cancel, remove, setCwd,
     defaultDir: cwd,
-    dirs: () => ({ ...dirs }),
     get: (id) => view(get(id)),
     list: () => [...chats.values()].map(({ id, title, state, created, kind, outcome, meta }) => ({ id, title, state, created, kind: kind || 'chat', outcome: outcome || null, ticket: meta?.file || null })).sort((a, b) => b.created.localeCompare(a.created)),
   };

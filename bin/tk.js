@@ -32,7 +32,7 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate                                check format; exit 1 on errors
   serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine]]
-                                          run the web UI in the foreground (hosts *.localhost are always allowed)
+                                          run the web UI in the foreground; --agents runs an AI agent (isolated systems only) (hosts *.localhost are always allowed)
   start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine]]
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
@@ -159,7 +159,8 @@ async function main() {
       break;
     }
     case 'validate': {
-      const problems = validate(dir);
+      const { projectProblems } = await import('../src/projects.js');
+      const problems = [...validate(dir), ...projectProblems(dir)];
       out(problems, problems.length ? problems.map((p) => `${p.level.padEnd(5)} ${p.file}: ${p.message}`).join('\n') : 'ok');
       if (problems.some((p) => p.level === 'error')) process.exitCode = 1;
       break;

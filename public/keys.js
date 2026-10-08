@@ -499,6 +499,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
           { cmd: true, label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
           { cmd: true, label: 'Quick note…', hint: 'm / Ctrl+M', run: openScratch },
+          { cmd: true, label: 'Projects (directory, instructions)', hint: 'agent context', run: () => { location.hash = '#/projects'; } },
           { cmd: true, label: 'Notes', hint: 'g', run: () => { location.hash = '#/notes'; } },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
           ...(ctx.projects().mode === 'dropdown' ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
