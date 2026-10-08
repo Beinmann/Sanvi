@@ -201,3 +201,12 @@ test('trash API: delete with version check, list, restore, purge', async () => {
     assert.equal((await j('POST', '/api/trash/999/restore', {})).status, 404);
   } finally { await app.close(); }
 });
+
+test('serves the svg icon', async () => {
+  const { app, base } = await setup();
+  try {
+    const r = await fetch(`${base}/icon.svg`);
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
+  } finally { await app.close(); }
+});

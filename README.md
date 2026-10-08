@@ -1,3 +1,5 @@
+<img src="public/icon.svg" alt="Sanvi icon" width="72" height="72">
+
 # Sanvi
 
 A local web UI and an optional CLI for tickets stored as plain Markdown files
