@@ -63,18 +63,16 @@ separate dirs only for unrelated repos or different status sets.
 
 The header's project switcher pins `project:<name>` to every search: the board
 shows only that project, and new tickets and quick ideas are filed under it
-(changeable in the dialog). `P`, or "Switch project…" in Ctrl+K, opens the list;
-"New project…" appends a name to `projects:` in `_config.yml`. The choices are
-that list plus any project found on tickets, plus "All projects" and "No
-project" (tickets without one). With no projects the switcher is hidden; with
+(changeable in the dialog). `P`, or "Switch project…" in Ctrl+K, opens the list.
+A project exists as long as some ticket has it in `project:`: type a new name
+into a ticket's Project field to create one. The choices are the distinct
+project values on tickets, plus "All projects" and "No project" (tickets
+without one). A stored choice that no ticket has any more falls back to "All
+projects". With no projects the switcher is hidden; with
 exactly one (and every ticket has it) it is a plain label. The most recently used projects are listed first. The choice is kept in the browser
 (`localStorage`) and mirrored as `project:<name>` in the URL; with "All
 projects" each card shows its project as a label. `tk list --project P` and
 `tk new --project P` work too.
-
-```yaml
-projects: [billing, web]
-```
 
 ## Web UI
 

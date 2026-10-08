@@ -163,7 +163,7 @@ export function findTicket(dir, ref) {
   return hit;
 }
 
-// Minimal reader for `_config.yml`: `statuses` and `projects`, each as a flow or block list.
+// Minimal reader for `_config.yml`: `statuses` as a flow or block list. Other keys (a leftover `projects:`) are ignored.
 function readList(text, key) {
   const flow = new RegExp(`^${key}:\\s*\\[(.*)\\]\\s*$`, 'm').exec(text);
   if (flow) return flow[1].split(',').map((s) => unquote(s.trim())).filter(Boolean);
@@ -171,12 +171,11 @@ function readList(text, key) {
   return block ? block[1].split(/\r?\n/).map((l) => unquote(l.replace(/^\s*-\s+/, '').replace(/\s+#.*$/, '').trim())).filter(Boolean) : null;
 }
 export function readConfig(dir) {
-  const cfg = { statuses: [...DEFAULT_STATUSES], projects: [], configured: false };
+  const cfg = { statuses: [...DEFAULT_STATUSES], configured: false };
   let text;
   try { text = fs.readFileSync(path.join(dir, '_config.yml'), 'utf8'); } catch { return cfg; }
   const list = readList(text, 'statuses');
   if (list && list.length) { cfg.statuses = list; cfg.configured = true; }
-  cfg.projects = readList(text, 'projects') ?? [];
   return cfg;
 }
 
@@ -184,9 +183,6 @@ export function readConfig(dir) {
 
 /** Persist the status order in `_config.yml`, replacing an existing `statuses` entry (flow or block) in place and keeping other lines. */
 export function writeStatuses(dir, statuses) { writeList(dir, 'statuses', statuses); }
-
-/** Persist the `projects` list (the switcher's choices) the same way. */
-export function writeProjects(dir, projects) { writeList(dir, 'projects', projects); }
 
 function writeList(dir, key, statuses) {
   if (!Array.isArray(statuses) || !statuses.length || statuses.some((s) => typeof s !== 'string' || !s.trim() || /[\r\n,\[\]"']/.test(s))

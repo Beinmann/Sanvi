@@ -227,17 +227,24 @@ const TABLE_VIEW = false;
 const Q = { text: '', parsed: parseQuery(''), view: 'board', sort: 'id', dir: 'asc' };
 // Current project (067, 071, 072): a pinned `project:` term added to every query. Kept in localStorage and
 // mirrored as `project:<name>` in the URL's q parameter; URLs without it fall back to the stored value.
-// NO_PROJECT pins the empty term `project:` (tickets without a project). The choices are `projects:` in the
-// config plus any project found on tickets (hand edits stay visible).
+// NO_PROJECT pins the empty term `project:` (tickets without a project). The choices are the distinct
+// `project:` values on tickets; a project exists as long as some ticket has it.
 const PROJECT_KEY = 'sanvi.project';
 const NO_PROJECT = '__none__';
 let project = '';
 const storedProject = () => { try { return localStorage.getItem(PROJECT_KEY) || ''; } catch { return ''; } };
 project = storedProject();
-const projectNames = () => {
-  const fromTickets = [...new Set(S.tickets.map((t) => t.project).filter(Boolean))].filter((n) => !(S.cfg.projects ?? []).includes(n)).sort((a, b) => a.localeCompare(b));
-  return [...(S.cfg.projects ?? []), ...fromTickets];
-};
+const projectNames = () => [...new Set(S.tickets.map((t) => t.project).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+// A stored project that no ticket has any more (renamed, removed) would show an empty board: fall back to all.
+// A project typed in the URL is honoured, so shared links keep working.
+let projectFromUrl = false;
+function dropStaleProject() {
+  if (!project || project === NO_PROJECT || projectFromUrl || projectNames().includes(project)) return false;
+  project = '';
+  persistProject();
+  setQuery(Q.text);
+  return true;
+}
 // One project and no explicit choice, and every ticket has it: the switcher is just a label and new tickets go there.
 const soleProject = () => { const n = projectNames(); return n.length === 1 && (project === '' || project === n[0]) && S.tickets.every((t) => t.project) ? n[0] : ''; };
 // The one place that decides what the header shows (and whether P works): 'none' | 'label' | 'dropdown'.
@@ -254,11 +261,13 @@ const projectTerm = () => (project === NO_PROJECT ? 'project:' : project ? `proj
 function setQuery(text) {
   Q.text = text;
   const m = /(?:^|\s)project:([^\s,]*)(?=\s|$)/i.exec(text);
+  projectFromUrl = !!m;
   if (m) { project = m[1] || NO_PROJECT; Q.text = text.replace(m[0], ' ').trim(); persistProject(); }
   Q.parsed = parseQuery([Q.text, projectTerm()].filter(Boolean).join(' '));
 }
 function persistProject() { try { if (project) localStorage.setItem(PROJECT_KEY, project); else localStorage.removeItem(PROJECT_KEY); } catch { /* ignore */ } }
 function setProject(name) {
+  projectFromUrl = false;
   project = name === NO_PROJECT ? NO_PROJECT : String(name ?? '').trim().replace(/[\s,]+/g, '-');
   persistProject();
   if (project && project !== NO_PROJECT) noteRecent(project);
@@ -266,16 +275,6 @@ function setProject(name) {
   paintProject();
   syncHash();
   toast(project === NO_PROJECT ? 'Project: none' : project ? `Project: ${project}` : 'Project: all');
-}
-// Append a project to `projects:` in the config file and make it current.
-async function newProject(input) {
-  const name = String(input ?? '').trim().replace(/[\s,]+/g, '-');
-  if (!name || name === NO_PROJECT || /[\[\]"']/.test(name)) throw new Error('Project names cannot be empty or contain brackets or quotes');
-  if (!projectNames().includes(name)) {
-    await api('PUT', 'config', { projects: [...(S.cfg.projects ?? []), name] });
-    await refreshAll();
-  }
-  setProject(name);
 }
 function paintProject() {
   const sel = $('#proj-sel'), label = $('#proj-label');
@@ -287,7 +286,7 @@ function paintProject() {
   label.textContent = soleProject();
   if (project && project !== NO_PROJECT && !names.includes(project)) names.push(project);
   sel.replaceChildren(el('option', { value: '' }, 'All projects'), ...names.map((n) => el('option', { value: n }, n)),
-    el('option', { value: NO_PROJECT }, 'No project'), el('option', { value: '__new__' }, 'New project…'));
+    el('option', { value: NO_PROJECT }, 'No project'));
   sel.value = project;
   sel.classList.toggle('set', !!project);
 }
@@ -298,6 +297,7 @@ function loadHash() {
   const hq = p.get('q') || '';
   if (!/(?:^|\s)project:/i.test(hq)) project = storedProject();
   setQuery(hq);
+  if (dropStaleProject()) syncHash();
   Q.view = TABLE_VIEW && p.get('view') === 'table' ? 'table' : 'board';
   if (!TABLE_VIEW && p.get('view') === 'table') { // old bookmark: show the board and drop the parameter from the URL
     const h2 = hashForState();
@@ -964,7 +964,7 @@ initKeys({
     toast(`Note saved (${scratch.notes.length} in NOTES.md)`);
     if (location.hash === '#/notes') paintNotes();
   },
-  detail: () => D, projects: () => ({ names: orderedProjects(), recent: recentProjects(), current: project, none: NO_PROJECT, mode: switcherMode() }), setProject, newProject,
+  detail: () => D, projects: () => ({ names: orderedProjects(), recent: recentProjects(), current: project, none: NO_PROJECT, mode: switcherMode() }), setProject,
   addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
     if (!t) throw new Error('ticket not found');
@@ -999,7 +999,7 @@ initKeys({
 });
 $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
 $('#proj-sel').addEventListener('change', (e) => {
-  if (e.target.value === '__new__') { e.target.value = project; document.dispatchEvent(new Event('new-project')); } else setProject(e.target.value);
+  setProject(e.target.value);
 });
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
@@ -1017,6 +1017,7 @@ async function doRefresh() {
     changedOnDisk.add(t.file);
     setTimeout(() => { changedOnDisk.delete(t.file); if (document.querySelector('.board, .tablewrap')) renderBoard(); }, 6000);
   }
+  if (dropStaleProject()) syncHash();
   paintProject();
   const h = location.hash || '#/';
   if (h.startsWith('#/t/')) await refreshDetail();

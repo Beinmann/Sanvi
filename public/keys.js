@@ -452,21 +452,6 @@ export function initKeys(ctx) {
         { label: 'No project', hint: current === ctx.projects().none ? 'current' : '', run: () => ctx.setProject(ctx.projects().none) }],
     };
   }
-  function openNewProject() {
-    const input = el('input', { type: 'text', placeholder: 'New project name', autocomplete: 'off', spellcheck: false, 'aria-label': 'New project name' });
-    const err = el('p', { class: 'hint', role: 'alert' });
-    const submit = async () => {
-      try { await ctx.newProject(input.value); closeOverlay(); } catch (e) { err.textContent = e.message; }
-    };
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
-    const box = el('div', { class: 'dialog form', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'New project' },
-      el('h2', {}, 'New project'),
-      el('p', { class: 'hint' }, 'Added to projects: in the config file and made the current project.'), input, err,
-      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: submit }, 'Add')));
-    openOverlay(box, { focus: input });
-  }
-  document.addEventListener('new-project', () => { if (!overlay) openNewProject(); });
-
   function columnsLevel() {
     return { placeholder: 'Show or hide a column…', rows: () => ctx.columns().map((c) => ({ label: `${ctx.isHidden(c) ? 'Show' : 'Hide'} ${c || '(no status)'}`, hint: ctx.isHidden(c) ? 'hidden' : 'shown', run: () => ctx.toggleColumn(c) })) };
   }
@@ -492,7 +477,6 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Notes', hint: 'g', run: () => { location.hash = '#/notes'; } },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
           ...(ctx.projects().mode === 'dropdown' ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
-          { cmd: true, label: 'New project…', hint: 'projects', run: openNewProject },
           { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
           { cmd: true, label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
           { cmd: true, label: 'Add status…', hint: 'column', run: openAddStatus },

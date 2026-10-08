@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   listTickets, readTicket, listScratch, addScratch, deleteScratch, promoteScratch, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
   ConflictError, NotFoundError, ValidationError,
-  writeStatuses, writeProjects,
+  writeStatuses,
 } from './core.js';
 import { formatNote } from '../public/notes.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
@@ -73,7 +73,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
 
   function configPayload() {
     const cfg = readConfig(dir);
-    return { name: path.basename(path.dirname(dir)), statuses: cfg.statuses, projects: cfg.projects, configured: cfg.configured };
+    return { name: path.basename(path.dirname(dir)), statuses: cfg.statuses, configured: cfg.configured };
   }
 
   function logEdit(before, after) {
@@ -102,10 +102,9 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
     }
     if (parts[0] === 'config' && method === 'GET') return send(res, 200, configPayload());
     if (parts[0] === 'config' && method === 'PUT') {
-      const { statuses, projects } = await readJson(req);
-      if (statuses === undefined && projects === undefined) throw new ValidationError('statuses or projects is required');
-      if (statuses !== undefined) writeStatuses(dir, statuses);
-      if (projects !== undefined) writeProjects(dir, projects);
+      const { statuses } = await readJson(req);
+      if (statuses === undefined) throw new ValidationError('statuses is required');
+      writeStatuses(dir, statuses);
       return send(res, 200, configPayload());
     }
     if (parts[0] === 'events' && method === 'GET') {
