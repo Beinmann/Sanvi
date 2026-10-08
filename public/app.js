@@ -5,6 +5,7 @@ import { serialQueue, coalesce, isTransient, describeFailure } from './queue.js'
 import { planStatusDelete, parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
+import { initChat } from './chat.js';
 
 const $ = (sel) => document.querySelector(sel);
 const view = $('#view');
@@ -922,6 +923,7 @@ async function route() {
     if (h === '#/new') renderNew();
     else if (h === '#/trash') renderTrash();
     else if (h === '#/notes') renderNotes();
+    else if (h === '#/chat') chatPage.render();
     else if (h === '#/idea') location.replace('#/'); // old bookmark: the idea box is an overlay now (i / Ctrl+I)
     else { loadHash(); await refreshAll(); }
   }
@@ -1004,6 +1006,9 @@ $('#proj-sel').addEventListener('change', (e) => {
 });
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
+const chatPage = initChat({ el, show, api, toast, view });
+$('#chat-btn').addEventListener('click', () => { location.hash = '#/chat'; });
+api('GET', 'agent').then((a) => { $('#chat-btn').hidden = !a.enabled; }).catch(() => {});
 $('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 
 const refreshAll = coalesce(doRefresh); // bursts of refreshes (moves, live events) share one request pair
@@ -1032,7 +1037,12 @@ let refreshTimer;
 const es = new EventSource('/api/events');
 es.onopen = () => $('#live').classList.add('on');
 es.onerror = () => $('#live').classList.remove('on');
-es.onmessage = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(refreshAll, 100); };
+es.onmessage = (e) => {
+  let msg = {};
+  try { msg = JSON.parse(e.data); } catch { /* treat as a file change */ }
+  if (msg.type === 'chat') return chatPage.onEvent(msg);
+  clearTimeout(refreshTimer); refreshTimer = setTimeout(refreshAll, 100);
+};
 
 currentHash = location.hash;
 (async () => {

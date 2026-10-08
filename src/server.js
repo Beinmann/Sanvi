@@ -12,6 +12,8 @@ import {
 import { formatNote } from '../public/notes.js';
 import { buildInfo, commitsBehind } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
+import { createChats } from './chat.js';
+import { startRun } from './agent.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // Any top-level file in public/ is served by name, so new frontend modules need no route.
@@ -60,7 +62,7 @@ function readBuffer(req, limit) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun }) {
   const extraHosts = new Set(allowedHosts.map((h) => h.toLowerCase()));
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h);
@@ -69,6 +71,15 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
   const clients = new Set();
   const changelog = createChangeLog(dir, logOpts);
   try { purgeTrash(dir); } catch (e) { console.error(`trash purge failed: ${e.message}`); }
+
+  const broadcast = (obj) => { for (const c of clients) c.write(`data: ${JSON.stringify(obj)}\n\n`); };
+  // Agent chats run `claude` on this machine, so they exist only when the server was started with --agents.
+  const chats = agents ? createChats({
+    cwd: path.dirname(dir),
+    run: agentRun,
+    notify: (id) => broadcast({ type: 'chat', id }),
+    log: (e) => changelog.log({ ticket: '-', ...e }),
+  }) : null;
 
   const summary = ({ body, ...rest }) => rest;
   const build = buildInfo(); // fixed at start: what this process is running
@@ -115,6 +126,20 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
         version: build.version, commit: build.commit, date: build.date, node: process.version,
         dir: path.basename(dir), tickets: listTickets(dir).length, started, behind: commitsBehind(build.full),
       });
+    }
+    if (parts[0] === 'agent') {
+      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats });
+      if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
+      if (parts[1] !== 'chats') return send(res, 404, { error: 'not found' });
+      if (parts.length === 2 && method === 'GET') return send(res, 200, chats.list());
+      if (parts.length === 2 && method === 'POST') return send(res, 201, chats.create());
+      if (parts.length === 3 && method === 'GET') return send(res, 200, chats.get(parts[2]));
+      if (parts.length === 4 && parts[3] === 'messages' && method === 'POST') {
+        const { text } = await readJson(req);
+        return send(res, 202, chats.send(parts[2], text));
+      }
+      if (parts.length === 4 && parts[3] === 'cancel' && method === 'POST') return send(res, 200, chats.cancel(parts[2]));
+      return send(res, 404, { error: 'not found' });
     }
     if (parts[0] === 'events' && method === 'GET') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });

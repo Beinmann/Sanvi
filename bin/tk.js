@@ -31,9 +31,9 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   trash                                   list deleted tickets with days left
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate                                check format; exit 1 on errors
-  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b]
+  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents]
                                           run the web UI in the foreground (hosts *.localhost are always allowed)
-  start [--port 4321] [--host ..] [--allow-host ..]
+  start [--port 4321] [--host ..] [--allow-host ..] [--agents]
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
   ps                                      list running instances; stale entries are cleaned up
@@ -50,6 +50,7 @@ function parseArgs(argv) {
     else if (a === '--scratch') flags.scratch = true;
     else if (a === '-d') flags.dir = argv[++i];
     else if (a === '--auto-port') flags['auto-port'] = true;
+    else if (a === '--agents') flags.agents = true;
     else if (a.startsWith('--')) flags[a.slice(2)] = argv[++i];
     else pos.push(a);
   }
@@ -174,6 +175,7 @@ async function main() {
       fs.mkdirSync(path.dirname(log), { recursive: true });
       const fd = fs.openSync(log, 'a');
       const args = [fileURLToPath(import.meta.url), '--dir', dir, 'serve', '--auto-port'];
+      if (flags.agents) args.push('--agents');
       for (const k of ['port', 'host', 'allow-host']) if (flags[k]) args.push(`--${k}`, flags[k]);
       const child = spawn(process.execPath, args, { detached: true, stdio: ['ignore', fd, fd] });
       child.unref();
@@ -198,7 +200,7 @@ async function main() {
       const existing = findInstance(dir);
       if (existing) throw new ValidationError(`already running for this dir (pid ${existing.pid}): ${existing.url}`);
       const { createTicketServer } = await import('../src/server.js');
-      const app = createTicketServer({ dir, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean) });
+      const app = createTicketServer({ dir, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents });
       const host = flags.host || '127.0.0.1';
       const want = flags.port === undefined ? 4321 : Number(flags.port);
       let addr;

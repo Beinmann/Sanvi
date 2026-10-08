@@ -146,6 +146,10 @@ tk --dir /path/to/tickets serve [--port 4321]
   nothing is written until you choose how to resolve it.
 - Listens on `127.0.0.1` by default and rejects foreign `Host`/`Origin` headers (DNS-rebinding protection). `localhost`, `127.0.0.1` and `*.localhost` are allowed; add others with `--allow-host a,b`. Behind a proxy that reaches the server over a network, also pass `--host 0.0.0.0`; the Host check then still blocks direct IP access.
 
+## Chat with Claude (`--agents`, prototype)
+
+`tk serve --agents` (or `tk start --agents`) adds a **Chat** button that talks to the Claude Code CLI installed on this machine. It runs `claude -p` headless in the parent of the tickets dir, with read tools plus Edit only, using whatever login the CLI already has; Sanvi stores no credentials. Each message is one run, resumed with `--resume`, so the chat keeps its context. Without `--agents` the button is hidden and `/api/agent/*` answers 403, because this runs code on your machine. If `ANTHROPIC_API_KEY` is set in the environment of the server, the CLI uses it and bills at API rates.
+
 ## Change log
 
 Writes made **through the web UI** (create, status change, edit, and rejected
