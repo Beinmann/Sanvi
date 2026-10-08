@@ -52,6 +52,18 @@ statuses: [open, in-progress, testing, blocked, deferred, done]
 Without it those six are used. A ticket with any other status gets its own
 column.
 
+## Subprojects
+
+Keep one tickets dir and one board for a project with several subprojects, and
+use `area:` as the subproject (`area: billing`). The header's project switcher
+(`P`, or "Switch project…" in Ctrl+K) pins `area:<name>` to every search: the
+board shows only that project, and new tickets and quick ideas are filed under
+it (changeable in the dialog; a new name creates the area). The choice is kept
+in the browser (`localStorage`) and mirrored as `area:<name>` in the URL, so
+links work; "All projects" clears it and shows each card's area as a label. The
+switcher stays hidden while no ticket has an area. Use separate dirs only for
+unrelated repos or different status sets.
+
 ## Web UI
 
 ```

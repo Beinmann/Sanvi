@@ -78,6 +78,7 @@ export const HELP = [
     ['?', 'Show / hide this help'],
     ['n', 'New ticket'],
     ['b', 'Go to the board'],
+    ['P', 'Switch the current project (the area new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['/', 'Go to the search box (from any view; goes to the board first)'],
@@ -414,6 +415,17 @@ export function initKeys(ctx) {
     };
   }
 
+  function projectLevel() {
+    const { names, current } = ctx.projects();
+    return {
+      placeholder: 'Switch project, or type a new name…',
+      rows: (q) => [{ label: 'All projects', hint: current === '' ? 'current' : '', run: () => ctx.setProject('') },
+        ...names.map((n) => ({ label: n, hint: n === current ? 'current' : '', run: () => ctx.setProject(n) })),
+        ...(q.trim() && !names.includes(q.trim()) ? [{ label: `New project “${q.trim()}”`, always: true, run: () => ctx.setProject(q.trim()) }] : [])],
+    };
+  }
+  document.addEventListener('new-project', () => { if (!overlay) openPalette('project'); });
+
   function columnsLevel() {
     return { placeholder: 'Show or hide a column…', rows: () => ctx.columns().map((c) => ({ label: `${ctx.isHidden(c) ? 'Show' : 'Hide'} ${c || '(no status)'}`, hint: ctx.isHidden(c) ? 'hidden' : 'shown', run: () => ctx.toggleColumn(c) })) };
   }
@@ -436,6 +448,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
           { cmd: true, label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
+          ...(ctx.projects().active ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
           { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
           { cmd: true, label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
           { cmd: true, label: 'Add status…', hint: 'column', run: openAddStatus },
@@ -453,7 +466,7 @@ export function initKeys(ctx) {
     const t = file && S.tickets.find((x) => x.file === file);
     if (mode === 'status' && !t) { ctx.toast('No ticket selected'); return; }
     expanded = false;
-    const stack = [mode === 'status' ? valueLevel(t, 'status') : rootLevel()];
+    const stack = [mode === 'status' ? valueLevel(t, 'status') : mode === 'project' ? projectLevel() : rootLevel()];
     let shown = [], sel = 0;
     const input = el('input', {
       type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'cmd-list', 'aria-autocomplete': 'list',
@@ -591,6 +604,7 @@ export function initKeys(ctx) {
       case 'n': location.hash = '#/new'; break;
       case 'b': location.hash = '#/'; break;
       case 'i': openIdea(); break;
+      case 'P': if (ctx.projects().active) openPalette('project'); else return; break;
       case 's': openPalette('status'); break;
       case 'j': if (board) moveFocus('next'); else return; break;
       case 'k': if (board) moveFocus('prev'); else return; break;

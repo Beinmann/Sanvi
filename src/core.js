@@ -285,14 +285,14 @@ export function ideaTitle(text) {
   return `${sentence.slice(0, 60).replace(/\s+\S*$/, '')}…`;
 }
 
-export function createIdea(dir, { text, status = IDEA_STATUS } = {}) {
+export function createIdea(dir, { text, status = IDEA_STATUS, area = '' } = {}) {
   if (text != null && typeof text !== 'string') throw new ValidationError('idea text must be a string');
   text = (text || '').trim();
   if (!text) throw new ValidationError('idea text is required');
   const title = ideaTitle(text);
   const date = new Date().toISOString().slice(0, 10);
   const body = `\n# ${title}\n\n## Problem / motivation\n\n${text}\n\n## Acceptance criteria\n\n- [ ] \n\n## Notes\n\n- ${date}: Captured as a quick idea; the title is auto-derived and the text above is unrefined. Needs refinement.\n`;
-  return createTicket(dir, { title, status, body });
+  return createTicket(dir, { title, status, area, body });
 }
 
 // --- trash --------------------------------------------------------------

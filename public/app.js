@@ -128,7 +128,7 @@ function card(t, inText = false) {
   }, '☰'),
   el('div', { class: 'meta' },
     inText && el('span', { class: 'chip', title: 'Matched in the description, not the title' }, 'in text'),
-    t.area && el('span', { class: 'chip' }, t.area),
+    !project && t.area && el('span', { class: 'chip area', title: 'Project' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
 }
@@ -224,12 +224,45 @@ async function doMove(file, status) {
 // The table view is switched off for now (056): the code stays, but no tab leads to it and #/?view=table shows the board.
 const TABLE_VIEW = false;
 const Q = { text: '', parsed: parseQuery(''), view: 'board', sort: 'id', dir: 'asc' };
-function setQuery(text) { Q.text = text; Q.parsed = parseQuery(text); }
+// Current project (067): a pinned `area:` term added to every query. Kept in localStorage and mirrored as
+// `area:<name>` in the URL's q parameter; hand-edited or old URLs without it fall back to the stored value.
+const PROJECT_KEY = 'sanvi.project';
+let project = '';
+try { project = localStorage.getItem(PROJECT_KEY) || ''; } catch { /* storage blocked: the project just is not remembered */ }
+const projectNames = () => [...new Set(S.tickets.map((t) => t.area).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const projectsActive = () => !!project || projectNames().length > 0; // neutral while no ticket has an area
+function setQuery(text) {
+  Q.text = text;
+  const m = /(?:^|\s)area:([^\s,]+)(?=\s|$)/i.exec(text);
+  if (m) { project = m[1]; Q.text = text.replace(m[0], ' ').trim(); persistProject(); }
+  Q.parsed = parseQuery(project ? `${Q.text} area:${project}` : Q.text);
+}
+function persistProject() { try { if (project) localStorage.setItem(PROJECT_KEY, project); else localStorage.removeItem(PROJECT_KEY); } catch { /* ignore */ } }
+function setProject(name) {
+  project = String(name ?? '').trim().replace(/[\s,]+/g, '-');
+  persistProject();
+  setQuery(Q.text);
+  paintProject();
+  syncHash();
+  toast(project ? `Project: ${project}` : 'Project: all');
+}
+function paintProject() {
+  const sel = $('#proj-sel');
+  if (!sel) return;
+  sel.hidden = !projectsActive();
+  const names = projectNames();
+  if (project && !names.includes(project)) names.push(project);
+  sel.replaceChildren(el('option', { value: '' }, 'All projects'), ...names.map((n) => el('option', { value: n }, n)), el('option', { value: '__new__' }, 'New project…'));
+  sel.value = project;
+  sel.classList.toggle('set', !!project);
+}
 function loadHash() {
   const h = location.hash || '#/';
   if (!h.startsWith('#/?') && h !== '#/') return false;
   const p = new URLSearchParams(h.slice(3));
-  setQuery(p.get('q') || '');
+  const hq = p.get('q') || '';
+  if (!/(?:^|\s)area:/i.test(hq)) project = ((() => { try { return localStorage.getItem(PROJECT_KEY); } catch { return ''; } })()) || '';
+  setQuery(hq);
   Q.view = TABLE_VIEW && p.get('view') === 'table' ? 'table' : 'board';
   if (!TABLE_VIEW && p.get('view') === 'table') { // old bookmark: show the board and drop the parameter from the URL
     const h2 = hashForState();
@@ -241,7 +274,8 @@ function loadHash() {
 }
 function hashForState() {
   const p = new URLSearchParams();
-  if (Q.text) p.set('q', Q.text);
+  const q = [Q.text, project && `area:${project}`].filter(Boolean).join(' ');
+  if (q) p.set('q', q);
   if (Q.view === 'table') {
     p.set('view', 'table');
     if (Q.sort !== 'id' || Q.dir !== 'asc') { p.set('sort', Q.sort); p.set('dir', Q.dir); }
@@ -724,7 +758,7 @@ async function refreshDetail() {
 // ------------------------------------------------------------ new ticket
 
 function renderNew() {
-  const f = { title: '', area: '', status: S.cfg.statuses[0] || 'open', priority: '' };
+  const f = { title: '', area: project, status: S.cfg.statuses[0] || 'open', priority: '' };
   show(view, el('form', {
     class: 'newform',
     onsubmit: async (e) => {
@@ -738,7 +772,7 @@ function renderNew() {
   },
   el('h2', {}, 'New ticket'),
   field('Title', el('input', { required: true, oninput: (e) => { f.title = e.target.value; } })),
-  field('Area', el('input', { oninput: (e) => { f.area = e.target.value; } })),
+  field('Area', el('input', { value: f.area, oninput: (e) => { f.area = e.target.value; } })),
   field('Status', select(S.cfg.statuses, f.status, (v) => { f.status = v; })),
   field('Priority', select(['', 'high', 'medium', 'low'], '', (v) => { f.priority = v; })),
   el('div', {}, el('button', { class: 'primary', type: 'submit' }, 'Create'), ' ', el('a', { href: '#/' }, 'Cancel'))));
@@ -819,7 +853,7 @@ initKeys({
   S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, deleteStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
-    done.ticket ??= await api('POST', 'ideas', { text });
+    done.ticket ??= await api('POST', 'ideas', { text, area: project });
     const t = done.ticket;
     await uploadAll(t.file, images, done, `Idea #${t.id} was saved,`);
     if (done.paths?.length && !done.linked) {
@@ -835,7 +869,7 @@ initKeys({
     toast(`Idea captured as #${t.id}`);
     return t;
   },
-  detail: () => D,
+  detail: () => D, projects: () => ({ names: projectNames(), current: project, active: projectsActive() }), setProject,
   addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
     if (!t) throw new Error('ticket not found');
@@ -869,6 +903,9 @@ initKeys({
   setDraftStatus: (v) => { D.draft.status = v; const s = $('#f-status'); if (s) s.value = v; updateState(); toast(`Status set to ${v} (unsaved)`); },
 });
 $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
+$('#proj-sel').addEventListener('change', (e) => {
+  if (e.target.value === '__new__') { e.target.value = project; document.dispatchEvent(new Event('new-project')); } else setProject(e.target.value);
+});
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 
@@ -884,6 +921,7 @@ async function doRefresh() {
     changedOnDisk.add(t.file);
     setTimeout(() => { changedOnDisk.delete(t.file); if (document.querySelector('.board, .tablewrap')) renderBoard(); }, 6000);
   }
+  paintProject();
   const h = location.hash || '#/';
   if (h.startsWith('#/t/')) await refreshDetail();
   else if (h === '#/trash') renderTrash();

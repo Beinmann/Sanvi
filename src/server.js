@@ -114,8 +114,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       return;
     }
     if (parts[0] === 'ideas' && parts.length === 1 && method === 'POST') {
-      const { text } = await readJson(req);
-      const t = createIdea(dir, { text });
+      const { text, area } = await readJson(req);
+      const t = createIdea(dir, { text, area });
       changelog.log({ ticket: t.id, action: 'create', after: t.version, changes: [{ field: 'status', from: null, to: t.status }] });
       return send(res, 201, t);
     }

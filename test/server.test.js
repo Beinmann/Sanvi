@@ -47,6 +47,8 @@ test('list, save, conflict, create', async () => {
     assert.equal(idea.status, 'design');
     assert.equal(idea.title, 'Quick thought about X');
     assert.equal((await j('POST', '/api/ideas', { text: ' ' })).status, 400);
+    r = await j('POST', '/api/ideas', { text: 'Filed under a project', area: 'billing' });
+    assert.equal((await r.json()).area, 'billing');
 
     const cur = await (await j('GET', '/api/tickets/001-a.md')).json();
     r = await j('POST', '/api/tickets/001-a.md/notes', { version: cur.version, text: 'a comment' });
