@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
+  listTickets, readTicket, listScratch, addScratch, deleteScratch, promoteScratch, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
   ConflictError, NotFoundError, ValidationError,
   writeStatuses,
 } from './core.js';
@@ -118,6 +118,24 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       const t = createIdea(dir, { text, area });
       changelog.log({ ticket: t.id, action: 'create', after: t.version, changes: [{ field: 'status', from: null, to: t.status }] });
       return send(res, 201, t);
+    }
+    if (parts[0] === 'scratch') {
+      if (parts.length === 1 && method === 'GET') return send(res, 200, listScratch(dir));
+      if (parts.length === 1 && method === 'POST') {
+        const { text, version } = await readJson(req);
+        return send(res, 201, addScratch(dir, text, version));
+      }
+      const index = Number(parts[1]);
+      if (!Number.isInteger(index) || index < 0) throw new ValidationError('invalid note index');
+      const { version, area } = await readJson(req);
+      if (!version) throw new ValidationError('version is required');
+      if (parts.length === 2 && method === 'DELETE') return send(res, 200, deleteScratch(dir, index, version));
+      if (parts.length === 3 && parts[2] === 'promote' && method === 'POST') {
+        const r = promoteScratch(dir, index, version, { area });
+        changelog.log({ ticket: r.ticket.id, action: 'create', after: r.ticket.version, changes: [{ field: 'status', from: null, to: r.ticket.status }] });
+        return send(res, 200, r);
+      }
+      return send(res, 404, { error: 'not found' });
     }
     if (parts[0] === 'trash') {
       if (parts.length === 1 && method === 'GET') { purgeTrash(dir); return send(res, 200, listTrash(dir)); }

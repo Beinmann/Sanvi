@@ -159,6 +159,7 @@ tk idea "<text>"                         # quick capture, status design
 tk new "<title>" [--area A] [--status S] [--priority P]
 tk status <id|slug> <status>
 tk note <id|slug> "<text>"              # append a timestamped line to the ticket's ## Notes
+tk jot "<text>"                          # same as: tk note --scratch; appends to NOTES.md (no ticket); "tk jot" alone lists
 tk validate          # exit 1 on errors
 tk serve [--port N]   # foreground
 tk start [--port N]   # background; free port if taken; prints URL; no duplicate per dir

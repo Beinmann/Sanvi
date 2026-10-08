@@ -81,6 +81,8 @@ export const HELP = [
     ['P', 'Switch the current project (the area new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
+    ['Ctrl+M / m', 'Quick note: free text saved to NOTES.md next to the tickets, not tied to any ticket (Ctrl+M also while typing; m outside fields)'],
+    ['g', 'Go to the Notes view (search, make a ticket from a note, delete)'],
     ['/', 'Go to the search box (from any view; goes to the board first)'],
     ['Ctrl+/ or Ctrl+E', 'Same, also while typing; an unsaved edit asks before it is left'],
     ['Esc', 'Close overlay, leave a field, go back to the board, then clear the card selection'],
@@ -250,6 +252,26 @@ export function initKeys(ctx) {
       el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
     openOverlay(box, { focus: ta });
   }
+
+  // Quick note: a line in NOTES.md, independent of any ticket. Without a version the server just appends.
+  function openScratch() {
+    const ta = el('textarea', { rows: 5, placeholder: 'A reminder, a link, a thought. Ctrl+Enter saves, Esc cancels.', 'aria-label': 'Quick note' });
+    const err = el('p', { class: 'hint', role: 'alert' });
+    const save = async () => {
+      if (!ta.value.trim()) return;
+      try { await ctx.addScratch(ta.value); closeOverlay(); } catch (e) { err.textContent = e.message; }
+    };
+    ta.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+    });
+    const box = el('div', { class: 'dialog form', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quick note dialog' },
+      el('h2', {}, 'Quick note'),
+      el('p', { class: 'hint' }, 'Saved with a timestamp to NOTES.md in the tickets folder. Not a ticket; find it again under Notes.'),
+      ta, err,
+      el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save note'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
+    openOverlay(box, { focus: ta });
+  }
+  document.addEventListener('open-scratch', () => { if (!overlay) openScratch(); });
 
   // Quick comment: appended as a timestamped line to the ticket's Notes (server side).
   function openNote(file) {
@@ -447,6 +469,8 @@ export function initKeys(ctx) {
         rows.push({ heading: 'Commands' },
           { cmd: true, label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
           { cmd: true, label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
+          { cmd: true, label: 'Quick note…', hint: 'm / Ctrl+M', run: openScratch },
+          { cmd: true, label: 'Notes', hint: 'g', run: () => { location.hash = '#/notes'; } },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
           ...(ctx.projects().active ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
           { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
@@ -547,6 +571,13 @@ export function initKeys(ctx) {
       openIdea();
       return;
     }
+    if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'm') { // works while typing, too
+      e.preventDefault();
+      if (overlay?.node.querySelector('textarea[aria-label="Quick note"]')) return;
+      if (overlay) closeOverlay();
+      openScratch();
+      return;
+    }
     if (e.key === 'Escape') {
       if (!overlay && ctx.pick?.() && !isTyping(e.target)) { e.preventDefault(); ctx.setPick(null); return; }
       if (overlay) { e.preventDefault(); closeOverlay(); return; }
@@ -604,6 +635,8 @@ export function initKeys(ctx) {
       case 'n': location.hash = '#/new'; break;
       case 'b': location.hash = '#/'; break;
       case 'i': openIdea(); break;
+      case 'm': openScratch(); break;
+      case 'g': location.hash = '#/notes'; break;
       case 'P': if (ctx.projects().active) openPalette('project'); else return; break;
       case 's': openPalette('status'); break;
       case 'j': if (board) moveFocus('next'); else return; break;
