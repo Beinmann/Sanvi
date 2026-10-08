@@ -100,6 +100,7 @@ export const HELP = [
     ['Drag a column header', 'Reorder the status columns (saved in _config.yml)'],
   ]],
   ['Ticket', [
+    ['j / k', 'Scroll down / up (outside fields)'],
     ['c / Ctrl+Shift+Enter', 'Add a timestamped comment to this ticket (c outside fields, Ctrl+Shift+Enter also while typing; unsaved edits are kept)'],
     ['e / p', 'Edit / preview'],
     ['s', 'Set status (unsaved until you save)'],
@@ -654,8 +655,8 @@ export function initKeys(ctx) {
       case 'g': location.hash = '#/notes'; break;
       case 'P': if (ctx.projects().names.length > 1 || ctx.projects().current) openPalette('project'); else return; break;
       case 's': openPalette('status'); break;
-      case 'j': if (board) moveFocus('next'); else return; break;
-      case 'k': if (board) moveFocus('prev'); else return; break;
+      case 'j': if (board) moveFocus('next'); else if (hashRoute() === 'detail') scrollBy({ top: 60, behavior: 'instant' }); else return; break;
+      case 'k': if (board) moveFocus('prev'); else if (hashRoute() === 'detail') scrollBy({ top: -60, behavior: 'instant' }); else return; break;
       case 'h': if (board) moveFocus('left'); else return; break;
       case 'l': if (board) moveFocus('right'); else return; break;
       case ' ': { // pick the selected card up (not when a button or link has the focus: Space is theirs)

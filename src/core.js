@@ -257,6 +257,22 @@ function maxId(dir) {
   return Math.max(0, ...listTickets(dir).map((t) => Number(t.id)), ...listTrash(dir).map((t) => Number(t.id)));
 }
 
+// Claim the next free id atomically: `<dir>/.ids/<NNN>` is created with `wx`, so two processes can never get the
+// same number even when their file names differ. Markers are never removed, so an id is not reused after a hard delete.
+export const IDS_DIR = '.ids';
+function claimId(dir) {
+  fs.mkdirSync(path.join(dir, IDS_DIR), { recursive: true });
+  for (let n = maxId(dir) + 1; n < 1_000_000; n++) {
+    try { fs.writeFileSync(path.join(dir, IDS_DIR, pad(n)), '', { flag: 'wx' }); } catch (e) {
+      if (e.code === 'EEXIST') continue;
+      throw e;
+    }
+    // a hand-made file may have appeared since maxId was read; the marker stays so the number is skipped for good
+    if (!listTickets(dir).some((t) => Number(t.id) === n)) return pad(n);
+  }
+  throw new Error('could not allocate a ticket id');
+}
+
 export function createTicket(dir, { title, area = '', project = '', status, priority = '', body: customBody } = {}) {
   title = (title || '').trim();
   if (!title) throw new ValidationError('title is required');
@@ -269,16 +285,9 @@ export function createTicket(dir, { title, area = '', project = '', status, prio
   front = setFrontField(front, 'project', project || null);
   front = setFrontField(front, 'priority', priority || null);
   const body = customBody ?? `\n# ${title}\n\n## Problem / motivation\n\n\n\n## Acceptance criteria\n\n- [ ] \n`;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const file = `${pad(maxId(dir) + 1 + attempt)}-${slug}.md`;
-    try {
-      fs.writeFileSync(path.join(dir, file), buildRaw(front, body), { flag: 'wx' });
-      return readTicket(dir, file);
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-    }
-  }
-  throw new Error('could not allocate a ticket id');
+  const file = `${claimId(dir)}-${slug}.md`;
+  fs.writeFileSync(path.join(dir, file), buildRaw(front, body), { flag: 'wx' });
+  return readTicket(dir, file);
 }
 
 // Quick capture: one or a few sentences, no title. The title is a placeholder
@@ -445,7 +454,7 @@ export function restoreTicket(dir, key) {
   const taken = listTickets(dir).some((t) => Number(t.id) === Number(item.id)) || fs.existsSync(path.join(dir, file));
   let raw = fs.readFileSync(path.join(src, item.file), 'utf8');
   if (taken) {
-    id = pad(maxId(dir) + 1);
+    id = claimId(dir);
     file = item.file.replace(/^\d+/, id);
     raw = raw.split(`${ASSET_DIR}/${item.id}-`).join(`${ASSET_DIR}/${id}-`);
   }

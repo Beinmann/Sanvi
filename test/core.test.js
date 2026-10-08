@@ -266,3 +266,26 @@ test('project field and projects config list', () => {
   assert.deepEqual(cfg.statuses, ['open', 'done']);
   assert.throws(() => writeProjects(dir, ['a', 'a']));
 });
+
+test('parallel processes never get the same ticket id', async () => {
+  const { spawn } = await import('node:child_process');
+  const dir = tmp();
+  const core = new URL('../src/core.js', import.meta.url).href;
+  const run = (i) => new Promise((resolve, reject) => {
+    const c = spawn(process.execPath, ['-e', `import('${core}').then((m) => console.log(m.createTicket(${JSON.stringify(dir)}, { title: 'Ticket ' + process.argv[1] }).id))`, String(i)]);
+    let out = '';
+    c.stdout.on('data', (d) => { out += d; });
+    c.on('exit', (code) => (code === 0 ? resolve(out.trim()) : reject(new Error(`exit ${code}`))));
+  });
+  const ids = await Promise.all(Array.from({ length: 8 }, (_, i) => run(i)));
+  assert.equal(new Set(ids).size, 8, ids.join(','));
+  assert.deepEqual(validate(dir).filter((p) => /duplicate/.test(p.message)), []);
+  fs.rmSync(path.join(dir, '001-sample-ticket.md'));
+  assert.equal(Number(createTicket(dir, { title: 'After hard delete' }).id), 10); // markers keep ids from being reused
+});
+
+test('validate still reports hand-made duplicate ids', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, '001-other.md'), SAMPLE);
+  assert.ok(validate(dir).some((p) => /duplicate id/.test(p.message)));
+});
