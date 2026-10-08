@@ -522,13 +522,20 @@ function hiddenIdNotice() {
     el('button', { type: 'button', onclick: () => toggleColumn(t.status) }, 'Show column'))));
 }
 
+// Tickets of one status within the current project (not the search text): what the hidden strip, its peek list
+// and the keyboard fallback count, so they agree with the board.
+const scopedTickets = (status) => {
+  const p = parseQuery(projectTerm());
+  return S.tickets.filter((t) => t.status === status && matchTicket(t, p));
+};
+
 function hiddenStrip() {
   const list = columns().filter((c) => hidden.has(c));
   if (!list.length) return null;
   const filtering = !!Q.text.trim();
   const numbered = columns().filter(Boolean);
   return el('div', { class: 'hiddenstrip' }, 'Hidden: ', list.map((status) => {
-    const all = S.tickets.filter((t) => t.status === status);
+    const all = scopedTickets(status);
     const hits = filtering ? all.filter((t) => matchTicket(t, Q.parsed)).length : 0;
     const n = numbered.indexOf(status) + 1; // same numbering as the column badges
     const main = el('button', {
@@ -583,8 +590,8 @@ function closePeek({ refocus = false } = {}) {
   if (refocus && stripSel !== was) [...view.querySelectorAll('.stripentry')].find((x) => x.querySelector('button[data-status]')?.dataset.status === was)?.querySelector('.peekbtn')?.focus({ preventScroll: true });
 }
 function peekPopover(status) {
-  const items = S.tickets.filter((t) => t.status === status && matchTicket(t, Q.parsed)).sort(byBoardOrder);
-  const total = S.tickets.filter((t) => t.status === status).length;
+  const items = scopedTickets(status).filter((t) => matchTicket(t, Q.parsed)).sort(byBoardOrder);
+  const total = scopedTickets(status).length;
   return el('div', {
     class: 'peekpop', role: 'menu', 'aria-label': `Tickets in ${status || '(no status)'}`,
     onkeydown: (e) => {
@@ -933,7 +940,7 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 initKeys({
-  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, deleteStatus, toggleColumn, isHidden,
+  S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), hiddenCount: (status) => scopedTickets(status).length, selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, deleteStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
     done.ticket ??= await api('POST', 'ideas', { text, project: newProjectValue() });

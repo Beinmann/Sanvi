@@ -143,6 +143,10 @@ export function initKeys(ctx) {
     }
     const cur = selectedFile();
     const file = navigate(cols, cur, ctx.lastSelected?.(), dir);
+    if (!file && dir === 'next' && !cols.some((c) => c.length) && hiddenList.length) { // no cards at all: j falls back to the hidden strip
+      ctx.selectStrip(hiddenList.find((s) => ctx.hiddenCount(s) > 0) ?? hiddenList[0]);
+      return;
+    }
     if (dir === 'prev' && cur && file === cur && hiddenList.length) { ctx.selectStrip(hiddenList[0]); return; } // top of the column: up to the strip
     if (!file) return;
     ctx.select(file);
