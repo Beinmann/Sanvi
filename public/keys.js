@@ -466,14 +466,14 @@ export function initKeys(ctx) {
     };
   }
 
+  // One row per choice: All projects, each project, No project. `prefix` turns them into palette commands (083).
+  function projectRows(prefix = '') {
+    const { names, current, recent, none } = ctx.projects();
+    const row = (label, value, hint) => ({ label: `${prefix}${label}`, hint: value === current ? 'current' : hint, ...(prefix ? { cmd: true } : {}), run: () => ctx.setProject(value) });
+    return [row('All projects', '', ''), ...names.map((n) => row(n, n, recent.includes(n) ? 'recent' : '')), row('No project', none, '')];
+  }
   function projectLevel() {
-    const { names, current, recent } = ctx.projects();
-    return {
-      placeholder: 'Switch project…',
-      rows: () => [{ label: 'All projects', hint: current === '' ? 'current' : '', run: () => ctx.setProject('') },
-        ...names.map((n) => ({ label: n, hint: n === current ? 'current' : recent.includes(n) ? 'recent' : '', run: () => ctx.setProject(n) })),
-        { label: 'No project', hint: current === ctx.projects().none ? 'current' : '', run: () => ctx.setProject(ctx.projects().none) }],
-    };
+    return { placeholder: 'Switch project…', rows: () => projectRows() };
   }
   function columnsLevel() {
     return { placeholder: 'Show or hide a column…', rows: () => ctx.columns().map((c) => ({ label: `${ctx.isHidden(c) ? 'Show' : 'Hide'} ${c || '(no status)'}`, hint: ctx.isHidden(c) ? 'hidden' : 'shown', run: () => ctx.toggleColumn(c) })) };
@@ -507,6 +507,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Columns…', hint: 'show / hide', push: columnsLevel },
           { cmd: true, label: 'About Sanvi', hint: 'version', run: openAbout },
           { cmd: true, label: 'Show keyboard shortcuts', hint: '?', run: openHelp });
+        if (q.trim() && ctx.projects().mode === 'dropdown') rows.push(...projectRows('Switch to project: ')); // only while typing, so the default list stays short
         if (q.trim()) rows.push(...ticketRows(S.tickets.filter((x) => matches(`#${x.id} ${x.title}`, q)), expanded, () => { expanded = true; }));
         return rows;
       },
