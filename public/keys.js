@@ -79,7 +79,6 @@ export const HELP = [
     ['n', 'New ticket'],
     ['b', 'Go to the board'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
-    ['Alt+1 … 9', 'Jump to a recently used project (most recent first; shown in the P list)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['Ctrl+M / m', 'Quick note: free text saved to NOTES.md next to the tickets, not tied to any ticket (Ctrl+M also while typing; m outside fields)'],
@@ -449,7 +448,7 @@ export function initKeys(ctx) {
     return {
       placeholder: 'Switch project…',
       rows: () => [{ label: 'All projects', hint: current === '' ? 'current' : '', run: () => ctx.setProject('') },
-        ...names.map((n) => ({ label: n, hint: n === current ? 'current' : recent.includes(n) ? `Alt+${recent.indexOf(n) + 1}` : '', run: () => ctx.setProject(n) })),
+        ...names.map((n) => ({ label: n, hint: n === current ? 'current' : recent.includes(n) ? 'recent' : '', run: () => ctx.setProject(n) })),
         { label: 'No project', hint: current === ctx.projects().none ? 'current' : '', run: () => ctx.setProject(ctx.projects().none) }],
     };
   }
@@ -570,6 +569,25 @@ export function initKeys(ctx) {
     }
   }
 
+  // j/k on the ticket page: a tap nudges, holding scrolls at a steady speed per frame (key repeat alone is
+  // jagged: a pause, then big steps). Stops on key release, focus loss or when the key's context goes away.
+  let hold = null; // { key, dir, raf, t }
+  function scrollHold(dir, e) {
+    if (e.repeat || hold) return;
+    hold = { key: e.key, dir, raf: 0, t: performance.now() };
+    scrollBy({ top: dir * 24, behavior: 'instant' });
+    const step = (now) => {
+      if (!hold) return;
+      scrollBy({ top: dir * 0.8 * Math.min(now - hold.t, 50), behavior: 'instant' }); // ~800 px/s
+      hold.t = now;
+      hold.raf = requestAnimationFrame(step);
+    };
+    hold.raf = requestAnimationFrame(step);
+  }
+  const stopHold = () => { if (hold) { cancelAnimationFrame(hold.raf); hold = null; } };
+  document.addEventListener('keyup', (e) => { if (hold && e.key === hold.key) stopHold(); });
+  window.addEventListener('blur', stopHold);
+
   // ---- global keys
   document.addEventListener('keydown', (e) => {
     if (e.isComposing || e.defaultPrevented) return;
@@ -584,11 +602,6 @@ export function initKeys(ctx) {
       e.preventDefault();
       if (overlay) closeOverlay();
       focusSearch();
-      return;
-    }
-    if (e.altKey && !mod && !e.shiftKey && /^Digit[1-9]$/.test(e.code) && !overlay) { // Alt+1..9: the recent projects (069)
-      const name = ctx.projects().recent[Number(e.code.slice(5)) - 1];
-      if (name) { e.preventDefault(); ctx.setProject(name); }
       return;
     }
     if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'i') { // works while typing, too
@@ -665,8 +678,8 @@ export function initKeys(ctx) {
       case 'g': location.hash = '#/notes'; break;
       case 'P': if (ctx.projects().mode === 'dropdown') openPalette('project'); else return; break;
       case 's': openPalette('status'); break;
-      case 'j': if (board) moveFocus('next'); else if (hashRoute() === 'detail') scrollBy({ top: 60, behavior: 'instant' }); else return; break;
-      case 'k': if (board) moveFocus('prev'); else if (hashRoute() === 'detail') scrollBy({ top: -60, behavior: 'instant' }); else return; break;
+      case 'j': if (board) moveFocus('next'); else if (hashRoute() === 'detail') scrollHold(1, e); else return; break;
+      case 'k': if (board) moveFocus('prev'); else if (hashRoute() === 'detail') scrollHold(-1, e); else return; break;
       case 'h': if (board) moveFocus('left'); else return; break;
       case 'l': if (board) moveFocus('right'); else return; break;
       case ' ': { // pick the selected card up (not when a button or link has the focus: Space is theirs)

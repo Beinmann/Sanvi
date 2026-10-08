@@ -65,7 +65,7 @@ shows only that project, and new tickets and quick ideas are filed under it
 "New project…" appends a name to `projects:` in `_config.yml`. The choices are
 that list plus any project found on tickets, plus "All projects" and "No
 project" (tickets without one). With no projects the switcher is hidden; with
-exactly one (and every ticket has it) it is a plain label. Alt+1..9 jump to the most recently used projects, which are also listed first. The choice is kept in the browser
+exactly one (and every ticket has it) it is a plain label. The most recently used projects are listed first. The choice is kept in the browser
 (`localStorage`) and mirrored as `project:<name>` in the URL; with "All
 projects" each card shows its project as a label. `tk list --project P` and
 `tk new --project P` work too.
