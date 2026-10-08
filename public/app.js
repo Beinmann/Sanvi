@@ -130,7 +130,7 @@ function card(t, inText = false) {
   }, '☰'),
   el('div', { class: 'meta' },
     inText && el('span', { class: 'chip', title: 'Matched in the description, not the title' }, 'in text'),
-    !project && t.project && el('span', { class: 'chip project', title: 'Project' }, t.project),
+    !project && t.project && el('span', { class: 'chip proj', title: 'Project' }, t.project),
     t.area && el('span', { class: 'chip' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
     agentOn && chatPage.refining(t.file) && el('span', { class: 'chip refining', title: 'Claude is refining this ticket' }, 'refining…'),
