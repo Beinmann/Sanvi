@@ -15,6 +15,7 @@ import { createChangeLog, summarizeBody } from './changelog.js';
 import { createChats } from './chat.js';
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
+import { refinePrompt, refineRunOpts } from './refine.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // Any top-level file in public/ is served by name, so new frontend modules need no route.
@@ -63,7 +64,7 @@ function readBuffer(req, limit) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile }) {
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false }) {
   const extraHosts = new Set(allowedHosts.map((h) => h.toLowerCase()));
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h);
@@ -82,6 +83,14 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     notify: (id) => broadcast({ type: 'chat', id }),
     log: (e) => changelog.log({ ticket: '-', ...e }),
   }) : null;
+
+  // Refine runs as its own chat, queued if the agent slots are busy; the user can open it from the chat list.
+  function startRefine(file) {
+    const t = readTicket(dir, file);
+    const chat = chats.create({ project: t.project, kind: 'refine', title: `Refine #${t.id}: ${t.title}`.slice(0, 80), runOpts: refineRunOpts({ ticketsDir: dir, file }) });
+    chats.send(chat.id, `Refine ticket #${t.id} (${file}): rewrite it into problem, acceptance criteria and approach.`, { prompt: refinePrompt({ ticketsDir: dir, file }), queue: true });
+    return chat;
+  }
 
   const summary = ({ body, ...rest }) => rest;
   const build = buildInfo(); // fixed at start: what this process is running
@@ -130,8 +139,9 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       });
     }
     if (parts[0] === 'agent') {
-      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, ...(chats && { defaultDir: chats.defaultDir, dirs: chats.dirs() }) });
+      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir, dirs: chats.dirs() }) });
       if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
+      if (parts[1] === 'refine' && parts.length === 2 && method === 'POST') return send(res, 201, startRefine((await readJson(req)).file));
       if (parts[1] === 'dirs' && parts.length === 2 && method === 'PUT') {
         const { project, dir } = await readJson(req);
         return send(res, 200, chats.setProjectDir(project, dir));
@@ -160,6 +170,9 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       const { text, area, project } = await readJson(req);
       const t = createIdea(dir, { text, area, project });
       changelog.log({ ticket: t.id, action: 'create', after: t.version, changes: [{ field: 'status', from: null, to: t.status }] });
+      if (autoRefine && chats) {
+        try { startRefine(t.file); } catch (e) { console.error(`auto-refine of #${t.id} failed to start: ${e.message}`); }
+      }
       return send(res, 201, t);
     }
     if (parts[0] === 'scratch') {

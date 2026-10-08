@@ -150,6 +150,8 @@ tk --dir /path/to/tickets serve [--port 4321]
 
 `tk serve --agents` (or `tk start --agents`) adds a **Chat** button that talks to the Claude Code CLI installed on this machine. It runs `claude -p` headless in the parent of the tickets dir, with read tools plus Edit only, using whatever login the CLI already has; Sanvi stores no credentials. Each message is one run, resumed with `--resume`, so the chat keeps its context. Without `--agents` the button is hidden and `/api/agent/*` answers 403, because this runs code on your machine. If `ANTHROPIC_API_KEY` is set in the environment of the server, the CLI uses it and bills at API rates.
 
+Each chat has a directory (📁; locked after its first message, remembered per project). `--agents --auto-refine` starts a "Refine #N" chat for every new idea: the agent may read the repo and edit only that ticket file, rewrites it per `tickets/README.md` and sets it to `open`, or leaves it in `design` with open questions in a Note. The cost shown is the CLI's estimate at API prices.
+
 ## Change log
 
 Writes made **through the web UI** (create, status change, edit, and rejected

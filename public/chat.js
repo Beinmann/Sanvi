@@ -16,9 +16,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
-  const mark = (s) => (s === 'running' ? '… ' : s === 'failed' ? '! ' : '');
+  const mark = (c) => (c.state === 'running' ? '… ' : c.state === 'queued' ? '⏳ ' : c.state === 'failed' ? '! ' : c.kind === 'refine' ? '✓ ' : '');
   const paintButton = () => {
-    const n = chats.filter((c) => c.state === 'running').length;
+    const n = chats.filter((c) => c.state === 'running' || c.state === 'queued').length;
     button.textContent = n ? `Chat (${n}…)` : 'Chat';
   };
 
@@ -94,7 +94,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
 
   function paint() {
     if (!chat) return;
-    const running = chat.state === 'running';
+    const running = chat.state === 'running' || chat.state === 'queued';
     const keep = panel.querySelector('textarea');
     const typed = keep ? keep.value : drafts[chat.id] ?? '';
     const hadFocus = keep && document.activeElement === keep;
@@ -107,7 +107,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     });
     input.value = typed;
     const select = el('select', { 'aria-label': 'Chat', onchange: (e) => openChat(e.target.value).catch((err) => toast(err.message)) },
-      chats.map((c) => el('option', { value: c.id, selected: c.id === chat.id }, `${mark(c.state)}${c.title}`)));
+      chats.map((c) => el('option', { value: c.id, selected: c.id === chat.id }, `${mark(c)}${c.title}`)));
     const log = el('div', { class: 'chatlog' },
       chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, 'Claude runs on this machine with read access to the project and permission to edit files there.'));
     panel.classList.toggle('wide', wide);
@@ -118,7 +118,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
         el('button', { type: 'button', title: 'Delete this chat', disabled: running, onclick: remove }, '🗑'),
         el('button', { type: 'button', title: wide ? 'Smaller' : 'Larger', onclick: () => { wide = !wide; store.set('wide', wide ? '1' : '0'); paint(); } }, wide ? '▢' : '⤢'),
         el('button', { type: 'button', title: 'Close (Esc)', onclick: () => toggle(false) }, '×')),
-      el('div', { class: 'chatmeta muted', title: chat.cwd }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.costUsd ? `$${chat.costUsd.toFixed(3)} so far` : 'ready'}`),
+      el('div', { class: 'chatmeta muted', title: `${chat.cwd}\nThe cost is the Claude CLI's own estimate at API prices. On a subscription login it is not charged to you; it counts against your plan limits. With ANTHROPIC_API_KEY set it is real spend.` }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.state === 'queued' ? 'waiting for a free slot…' : chat.costUsd ? `≈ $${chat.costUsd.toFixed(3)} at API rates` : 'ready'}`),
       log,
       chat.error ? el('div', { class: 'banner err' }, chat.error) : null,
       el('div', { class: 'chatinput' }, input,

@@ -31,9 +31,9 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   trash                                   list deleted tickets with days left
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate                                check format; exit 1 on errors
-  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents]
+  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine]]
                                           run the web UI in the foreground (hosts *.localhost are always allowed)
-  start [--port 4321] [--host ..] [--allow-host ..] [--agents]
+  start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine]]
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
   ps                                      list running instances; stale entries are cleaned up
@@ -51,6 +51,7 @@ function parseArgs(argv) {
     else if (a === '-d') flags.dir = argv[++i];
     else if (a === '--auto-port') flags['auto-port'] = true;
     else if (a === '--agents') flags.agents = true;
+    else if (a === '--auto-refine') flags['auto-refine'] = true;
     else if (a.startsWith('--')) flags[a.slice(2)] = argv[++i];
     else pos.push(a);
   }
@@ -176,6 +177,7 @@ async function main() {
       const fd = fs.openSync(log, 'a');
       const args = [fileURLToPath(import.meta.url), '--dir', dir, 'serve', '--auto-port'];
       if (flags.agents) args.push('--agents');
+      if (flags['auto-refine']) args.push('--auto-refine');
       for (const k of ['port', 'host', 'allow-host']) if (flags[k]) args.push(`--${k}`, flags[k]);
       const child = spawn(process.execPath, args, { detached: true, stdio: ['ignore', fd, fd] });
       child.unref();
@@ -199,8 +201,9 @@ async function main() {
     case 'serve': {
       const existing = findInstance(dir);
       if (existing) throw new ValidationError(`already running for this dir (pid ${existing.pid}): ${existing.url}`);
+      if (flags['auto-refine'] && !flags.agents) throw new ValidationError('--auto-refine needs --agents');
       const { createTicketServer } = await import('../src/server.js');
-      const app = createTicketServer({ dir, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents });
+      const app = createTicketServer({ dir, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents, autoRefine: !!flags['auto-refine'] });
       const host = flags.host || '127.0.0.1';
       const want = flags.port === undefined ? 4321 : Number(flags.port);
       let addr;

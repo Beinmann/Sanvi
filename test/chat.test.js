@@ -158,3 +158,38 @@ test('chat directory: default, per project, explicit, validated, locked after th
   chats.setProjectDir('web', '');
   assert.equal(chats.create({ project: 'web' }).cwd, base);
 });
+
+test('refine: scoped permissions, queued when slots are busy, runs later, shown in the list', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-ref-'));
+  fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: design\n---\n# A\n');
+  const f = fakeRunner();
+  const app = createTicketServer({ dir, agents: true, autoRefine: true, agentRun: f.run, chatsFile: null });
+  const { port } = await app.listen(0);
+  const j = (m, p, b) => fetch(`http://127.0.0.1:${port}${p}`, { method: m, headers: { 'content-type': 'application/json' }, body: JSON.stringify(b ?? {}) });
+  try {
+    for (const text of ['one', 'two', 'three']) assert.equal((await j('POST', '/api/ideas', { text })).status, 201);
+    assert.equal(f.calls.length, 2); // max 2 at once, the third waits
+    const o = f.calls[0].opts;
+    assert.equal(o.permissionMode, 'default');
+    assert.ok(o.allowedTools.some((t) => t.startsWith('Edit(//') && t.endsWith('.md)'))); // // = absolute path in a permission rule
+    assert.match(o.prompt, /Edit only .*\.md/);
+    let list = await (await fetch(`http://127.0.0.1:${port}/api/agent/chats`)).json();
+    assert.deepEqual(list.map((c) => c.state).sort(), ['queued', 'running', 'running']);
+    assert.ok(list.every((c) => c.kind === 'refine'));
+    f.calls[0].end(); await tick(); await tick();
+    assert.equal(f.calls.length, 3); // the queued one started
+    list = await (await fetch(`http://127.0.0.1:${port}/api/agent/chats`)).json();
+    assert.equal(list.filter((c) => c.state === 'queued').length, 0);
+  } finally { await app.close(); }
+});
+
+test('refine is not started by ideas unless auto-refine is on', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-ref2-'));
+  const f = fakeRunner();
+  const app = createTicketServer({ dir, agents: true, agentRun: f.run, chatsFile: null });
+  const { port } = await app.listen(0);
+  try {
+    await fetch(`http://127.0.0.1:${port}/api/ideas`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'x' }) });
+    assert.equal(f.calls.length, 0);
+  } finally { await app.close(); }
+});

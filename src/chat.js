@@ -23,6 +23,7 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
   const chats = new Map();
   let dirs = {}; // project name -> directory its chats start in
   let running = 0;
+  const pending = []; // ids of chats waiting for a free slot
 
   const persisted = ({ active, ...c }) => c;
   function save() {
@@ -37,7 +38,7 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     dirs = Array.isArray(saved) ? {} : saved.dirs || {};
     for (const c of Array.isArray(saved) ? saved : saved.chats) {
-      if (c.state === 'running') { // the run died with the previous server
+      if (c.state === 'running' || c.state === 'queued') { // the run died with the previous server
         c.state = 'failed'; c.error = 'interrupted by a server restart';
         c.messages.at(-1).text ||= '(interrupted)';
       }
@@ -57,31 +58,40 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
   const dirFor = (project) => (project && dirs[project]) || cwd;
 
   // `dir` is explicit; otherwise the project's remembered directory; otherwise the default.
-  function create({ dir, project } = {}) {
-    const c = { id: crypto.randomUUID(), title: 'New chat', cwd: dir ? resolveDir(dir) : dirFor(project), state: 'idle', error: null, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
+  function create({ dir, project, title = 'New chat', kind = 'chat', runOpts } = {}) {
+    const c = { id: crypto.randomUUID(), title, kind, runOpts, cwd: dir ? resolveDir(dir) : dirFor(project), state: 'idle', error: null, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
     chats.set(c.id, c);
     touch(c.id);
     return view(c);
   }
 
-  function send(id, text) {
+  // `text` is what the chat shows; `prompt` (default: the same) is what the agent gets.
+  // `queue: true` waits for a free slot instead of failing when too many runs are active.
+  function send(id, text, { prompt, queue = false } = {}) {
     const c = get(id);
     text = String(text || '').trim();
     if (!text) throw new ValidationError('message is empty');
-    if (c.state === 'running') throw new ValidationError('this chat is still answering');
-    if (running >= maxRuns) throw new ValidationError(`too many agent runs at once (max ${maxRuns})`);
+    if (c.state === 'running' || c.state === 'queued') throw new ValidationError('this chat is still answering');
+    if (running >= maxRuns && !queue) throw new ValidationError(`too many agent runs at once (max ${maxRuns})`);
 
-    if (!c.messages.length) c.title = text.replace(/\s+/g, ' ').slice(0, 60);
+    if (!c.messages.length && c.title === 'New chat') c.title = text.replace(/\s+/g, ' ').slice(0, 60);
     c.messages.push({ role: 'user', text });
-    const reply = { role: 'assistant', text: '', tools: [] };
-    c.messages.push(reply);
-    c.state = 'running';
+    c.messages.push({ role: 'assistant', text: '', tools: [] });
     c.error = null;
+    c.prompt = prompt || text;
+    if (running >= maxRuns) { c.state = 'queued'; pending.push(c.id); touch(c.id); return view(c); }
+    launch(c);
+    return view(c);
+  }
+
+  function launch(c) {
+    const reply = c.messages.at(-1);
+    c.state = 'running';
     running++;
     const started = Date.now();
     log({ chat: c.id, action: 'agent-start' });
 
-    const r = run({ prompt: text, cwd: c.cwd, resume: c.sessionId });
+    const r = run({ prompt: c.prompt, cwd: c.cwd, resume: c.sessionId, ...c.runOpts });
     c.active = r;
     r.onEvent((ev) => {
       if (ev.type !== 'assistant' || !Array.isArray(ev.message?.content)) return;
@@ -100,9 +110,9 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
       else { c.state = d.cancelled ? 'idle' : 'failed'; c.error = d.error; if (d.cancelled) reply.text += '\n\n(cancelled)'; }
       log({ chat: c.id, action: d.ok ? 'agent-finish' : d.cancelled ? 'agent-cancel' : 'agent-fail', seconds: Math.round((Date.now() - started) / 1000), costUsd: d.costUsd });
       touch(c.id);
+      while (running < maxRuns && pending.length) { const next = chats.get(pending.shift()); if (next?.state === 'queued') launch(next); }
     });
     touch(c.id);
-    return view(c);
   }
 
   // Claude keeps sessions per directory, so a chat can only change directory before its first message.
@@ -124,13 +134,14 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
 
   function cancel(id) {
     const c = get(id);
+    if (c.state === 'queued') { pending.splice(pending.indexOf(id), 1); c.state = 'idle'; c.messages.at(-1).text = '(cancelled)'; touch(id); }
     c.active?.cancel();
     return view(c);
   }
 
   function remove(id) {
     const c = get(id);
-    if (c.state === 'running') throw new ValidationError('cancel the running answer first');
+    if (c.state === 'running' || c.state === 'queued') throw new ValidationError('cancel the running answer first');
     chats.delete(id);
     save(); notify(id);
   }
@@ -140,6 +151,6 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
     defaultDir: cwd,
     dirs: () => ({ ...dirs }),
     get: (id) => view(get(id)),
-    list: () => [...chats.values()].map(({ id, title, state, created }) => ({ id, title, state, created })).sort((a, b) => b.created.localeCompare(a.created)),
+    list: () => [...chats.values()].map(({ id, title, state, created, kind }) => ({ id, title, state, created, kind: kind || 'chat' })).sort((a, b) => b.created.localeCompare(a.created)),
   };
 }
