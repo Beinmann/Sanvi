@@ -25,7 +25,7 @@ export function initChat({ el, show, api, toast, button }) {
 
   async function openChat(id) {
     if (chat) drafts[chat.id] = panel.querySelector('textarea')?.value ?? drafts[chat.id] ?? '';
-    chat = id ? await api('GET', `agent/chats/${id}`) : await api('POST', 'agent/chats');
+    chat = id ? await api('GET', `agent/chats/${id}`) : await api('POST', 'agent/chats', {});
     store.set('current', chat.id);
     await refreshList();
     paint();
@@ -73,7 +73,7 @@ export function initChat({ el, show, api, toast, button }) {
 
   async function remove() {
     if (!confirm(`Delete the chat "${chat.title}"?`)) return;
-    try { await api('DELETE', `agent/chats/${chat.id}`); } catch (e) { toast(`Not deleted: ${e.message}`); return; }
+    try { await api('DELETE', `agent/chats/${chat.id}`, {}); } catch (e) { toast(`Not deleted: ${e.message}`); return; }
     delete drafts[chat.id];
     chat = null;
     await refreshList();
@@ -110,7 +110,7 @@ export function initChat({ el, show, api, toast, button }) {
       chat.error ? el('div', { class: 'banner err' }, chat.error) : null,
       el('div', { class: 'chatinput' }, input,
         running
-          ? el('button', { type: 'button', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`).catch((e) => toast(e.message)) }, 'Cancel')
+          ? el('button', { type: 'button', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`, {}).catch((e) => toast(e.message)) }, 'Cancel')
           : el('button', { type: 'button', class: 'primary', onclick: () => submit(input) }, 'Send')));
     log.scrollTop = log.scrollHeight;
     if (hadFocus || (!keep && !running)) input.focus();
