@@ -15,6 +15,7 @@ export function stateDir() {
 const instDir = () => path.join(stateDir(), 'instances');
 const keyOf = (dir) => crypto.createHash('sha1').update(path.resolve(dir)).digest('hex').slice(0, 12);
 const entryPath = (dir) => path.join(instDir(), `${keyOf(dir)}.json`);
+export const chatsPath = (dir) => path.join(stateDir(), 'chats', `${keyOf(dir)}.json`);
 export const logPath = (dir) => path.join(stateDir(), 'logs', `${keyOf(dir)}.log`);
 
 export function isTkProcess(pid) {

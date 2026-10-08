@@ -1,27 +1,58 @@
-// Chat with the agent (stage 1: one page, one chat at a time). Only active when the server runs with --agents.
+// Chat with the agent: a floating panel (expandable) with a list of chats. Only active when the server runs with --agents.
 import { renderMarkdown } from './md.js';
 
-export function initChat({ el, show, api, toast, view }) {
-  let chat = null; // the open chat, as last fetched
-  let draft = '';
+const store = {
+  get: (k) => { try { return localStorage.getItem(`sanvi.chat.${k}`); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(`sanvi.chat.${k}`, v); } catch { /* private window: just not remembered */ } },
+};
 
-  async function open(id) {
+export function initChat({ el, show, api, toast, button }) {
+  let chats = [];     // list entries: { id, title, state }
+  let chat = null;    // the open chat, as last fetched
+  let drafts = {};    // unsent text per chat id
+  let isOpen = false;
+  let wide = store.get('wide') === '1';
+  const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
+  document.body.append(panel);
+
+  const mark = (s) => (s === 'running' ? '… ' : s === 'failed' ? '! ' : '');
+  const paintButton = () => {
+    const n = chats.filter((c) => c.state === 'running').length;
+    button.textContent = n ? `Chat (${n}…)` : 'Chat';
+  };
+
+  async function refreshList() { chats = await api('GET', 'agent/chats'); paintButton(); }
+
+  async function openChat(id) {
+    if (chat) drafts[chat.id] = panel.querySelector('textarea')?.value ?? drafts[chat.id] ?? '';
     chat = id ? await api('GET', `agent/chats/${id}`) : await api('POST', 'agent/chats');
+    store.set('current', chat.id);
+    await refreshList();
     paint();
   }
 
-  async function render() {
+  async function toggle(force) {
+    isOpen = force ?? !isOpen;
+    panel.hidden = !isOpen;
+    if (!isOpen) return;
     try {
-      if (!chat) {
-        const list = await api('GET', 'agent/chats');
-        await open(list.length ? list[list.length - 1].id : null);
-      } else paint();
+      await refreshList();
+      const want = store.get('current');
+      if (!chat) await openChat(chats.find((c) => c.id === want)?.id ?? chats[0]?.id ?? null);
+      else paint();
     } catch (e) { toast(`Chat failed: ${e.message}`); }
   }
 
   async function onEvent(msg) {
-    if (location.hash !== '#/chat' || !chat || msg.id !== chat.id) return;
-    try { chat = await api('GET', `agent/chats/${chat.id}`); paint(); } catch { /* next event retries */ }
+    try {
+      await refreshList();
+      if (!isOpen) return;
+      if (chat && msg.id === chat.id) {
+        if (!chats.some((c) => c.id === chat.id)) { chat = null; return openChat(chats[0]?.id ?? null); } // deleted elsewhere
+        chat = await api('GET', `agent/chats/${chat.id}`);
+      }
+      paint();
+    } catch { /* the next event retries */ }
   }
 
   function bubble(m) {
@@ -34,36 +65,57 @@ export function initChat({ el, show, api, toast, view }) {
       m.tools?.length ? el('div', { class: 'tools' }, `used: ${m.tools.join(', ')}`) : null);
   }
 
-  async function submit() {
-    const text = draft.trim();
+  async function submit(input) {
+    const text = input.value.trim();
     if (!text || chat.state === 'running') return;
-    try { chat = await api('POST', `agent/chats/${chat.id}/messages`, { text }); draft = ''; paint(); } catch (e) { toast(`Not sent: ${e.message}`); }
+    try { chat = await api('POST', `agent/chats/${chat.id}/messages`, { text }); drafts[chat.id] = ''; await refreshList(); paint(); } catch (e) { toast(`Not sent: ${e.message}`); }
+  }
+
+  async function remove() {
+    if (!confirm(`Delete the chat "${chat.title}"?`)) return;
+    try { await api('DELETE', `agent/chats/${chat.id}`); } catch (e) { toast(`Not deleted: ${e.message}`); return; }
+    delete drafts[chat.id];
+    chat = null;
+    await refreshList();
+    await openChat(chats[0]?.id ?? null);
   }
 
   function paint() {
+    if (!chat) return;
     const running = chat.state === 'running';
+    const keep = panel.querySelector('textarea');
+    const typed = keep ? keep.value : drafts[chat.id] ?? '';
+    const hadFocus = keep && document.activeElement === keep;
     const input = el('textarea', {
       rows: 3, placeholder: 'Message Claude (Ctrl+Enter to send)', 'aria-label': 'Message',
-      oninput: (e) => { draft = e.target.value; },
-      onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } },
+      onkeydown: (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(input); }
+        else if (e.key === 'Escape') { e.stopPropagation(); toggle(false); }
+      },
     });
-    input.value = draft;
+    input.value = typed;
+    const select = el('select', { 'aria-label': 'Chat', onchange: (e) => openChat(e.target.value).catch((err) => toast(err.message)) },
+      chats.map((c) => el('option', { value: c.id, selected: c.id === chat.id }, `${mark(c.state)}${c.title}`)));
     const log = el('div', { class: 'chatlog' },
-      chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, `Runs in ${chat.cwd}. Claude can read files and edit them there, nothing else.`));
-    show(view, el('div', { class: 'chat' },
-      el('div', { class: 'chathead' },
-        el('h2', {}, chat.title),
-        el('span', { class: 'muted' }, running ? 'answering…' : chat.costUsd ? `cost so far $${chat.costUsd.toFixed(3)}` : ''),
-        el('button', { type: 'button', onclick: async () => { chat = null; draft = ''; await open(null); } }, 'New chat')),
+      chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, 'Claude runs on this machine with read access to the project and permission to edit files there.'));
+    panel.classList.toggle('wide', wide);
+    show(panel,
+      el('div', { class: 'chathead' }, select,
+        el('button', { type: 'button', title: 'New chat', onclick: () => openChat(null).catch((e) => toast(e.message)) }, '+'),
+        el('button', { type: 'button', title: 'Delete this chat', disabled: running, onclick: remove }, '🗑'),
+        el('button', { type: 'button', title: wide ? 'Smaller' : 'Larger', onclick: () => { wide = !wide; store.set('wide', wide ? '1' : '0'); paint(); } }, wide ? '▢' : '⤢'),
+        el('button', { type: 'button', title: 'Close (Esc)', onclick: () => toggle(false) }, '×')),
+      el('div', { class: 'chatmeta muted' }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.costUsd ? `$${chat.costUsd.toFixed(3)} so far` : 'ready'}`),
       log,
       chat.error ? el('div', { class: 'banner err' }, chat.error) : null,
       el('div', { class: 'chatinput' }, input,
         running
           ? el('button', { type: 'button', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`).catch((e) => toast(e.message)) }, 'Cancel')
-          : el('button', { type: 'button', class: 'primary', onclick: submit }, 'Send'))));
+          : el('button', { type: 'button', class: 'primary', onclick: () => submit(input) }, 'Send')));
     log.scrollTop = log.scrollHeight;
-    if (!running) input.focus();
+    if (hadFocus || (!keep && !running)) input.focus();
   }
 
-  return { render, onEvent };
+  button.addEventListener('click', () => toggle());
+  return { toggle, onEvent, start: () => refreshList().catch(() => {}) };
 }

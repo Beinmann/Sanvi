@@ -92,7 +92,7 @@ console.log(JSON.stringify({ type: 'result', is_error: false, result: 'fin', tot
 test('agent routes are refused unless the server was started with agents', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-agent-'));
   const off = createTicketServer({ dir });
-  const on = createTicketServer({ dir, agents: true, agentRun: fakeRunner().run });
+  const on = createTicketServer({ dir, agents: true, agentRun: fakeRunner().run, chatsFile: null });
   try {
     for (const [app, expect] of [[off, 403], [on, 201]]) {
       const { port } = await app.listen(0);
@@ -104,4 +104,26 @@ test('agent routes are refused unless the server was started with agents', async
       assert.equal(cross.status, 403);
     }
   } finally { await off.close(); await on.close(); }
+});
+
+test('chats survive a restart; a run that was in flight is marked interrupted; delete works', async () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-chats-')), 'sub', 'chats.json');
+  const f = fakeRunner();
+  const one = createChats({ cwd: '/w', file, run: f.run });
+  const a = one.create();
+  one.send(a.id, 'first question');
+  f.calls[0].end(); await tick();
+  const b = one.create();
+  one.send(b.id, 'still running');
+
+  const two = createChats({ cwd: '/w', file, run: f.run });
+  assert.equal(two.list().length, 2);
+  assert.equal(two.get(a.id).messages[0].text, 'first question');
+  assert.equal(two.get(b.id).state, 'failed');
+  assert.match(two.get(b.id).error, /restart/);
+  two.send(a.id, 'continues');
+  assert.equal(f.calls.at(-1).opts.resume, 's1');
+  assert.throws(() => two.remove(a.id), /cancel/);
+  two.remove(b.id);
+  assert.equal(createChats({ cwd: '/w', file, run: f.run }).list().length, 1);
 });

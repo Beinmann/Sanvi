@@ -14,6 +14,7 @@ import { buildInfo, commitsBehind } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 import { createChats } from './chat.js';
 import { startRun } from './agent.js';
+import { chatsPath } from './instances.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // Any top-level file in public/ is served by name, so new frontend modules need no route.
@@ -62,7 +63,7 @@ function readBuffer(req, limit) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun }) {
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile }) {
   const extraHosts = new Set(allowedHosts.map((h) => h.toLowerCase()));
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h);
@@ -76,6 +77,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   // Agent chats run `claude` on this machine, so they exist only when the server was started with --agents.
   const chats = agents ? createChats({
     cwd: path.dirname(dir),
+    file: chatsFile === undefined ? chatsPath(dir) : chatsFile,
     run: agentRun,
     notify: (id) => broadcast({ type: 'chat', id }),
     log: (e) => changelog.log({ ticket: '-', ...e }),
@@ -134,6 +136,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts.length === 2 && method === 'GET') return send(res, 200, chats.list());
       if (parts.length === 2 && method === 'POST') return send(res, 201, chats.create());
       if (parts.length === 3 && method === 'GET') return send(res, 200, chats.get(parts[2]));
+      if (parts.length === 3 && method === 'DELETE') { chats.remove(parts[2]); return send(res, 200, { ok: true }); }
       if (parts.length === 4 && parts[3] === 'messages' && method === 'POST') {
         const { text } = await readJson(req);
         return send(res, 202, chats.send(parts[2], text));

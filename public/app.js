@@ -923,7 +923,6 @@ async function route() {
     if (h === '#/new') renderNew();
     else if (h === '#/trash') renderTrash();
     else if (h === '#/notes') renderNotes();
-    else if (h === '#/chat') chatPage.render();
     else if (h === '#/idea') location.replace('#/'); // old bookmark: the idea box is an overlay now (i / Ctrl+I)
     else { loadHash(); await refreshAll(); }
   }
@@ -1006,9 +1005,8 @@ $('#proj-sel').addEventListener('change', (e) => {
 });
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
-const chatPage = initChat({ el, show, api, toast, view });
-$('#chat-btn').addEventListener('click', () => { location.hash = '#/chat'; });
-api('GET', 'agent').then((a) => { $('#chat-btn').hidden = !a.enabled; }).catch(() => {});
+const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn') });
+api('GET', 'agent').then((a) => { $('#chat-btn').hidden = !a.enabled; if (a.enabled) chatPage.start(); }).catch(() => {});
 $('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 
 const refreshAll = coalesce(doRefresh); // bursts of refreshes (moves, live events) share one request pair

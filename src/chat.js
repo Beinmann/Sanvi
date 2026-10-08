@@ -1,12 +1,35 @@
 // Chats with an agent: one record per chat, one agent run per message (the agent's own session keeps the context).
-// Held in memory; `notify(chatId)` tells the server to push a live update.
+// Kept in memory and saved to `file` (outside any repo) so chats survive a restart; `notify(chatId)` pushes a live update.
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { startRun as defaultRun } from './agent.js';
 import { ValidationError, NotFoundError } from './core.js';
 
-export function createChats({ cwd, notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
+export function createChats({ cwd, file, notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
   const chats = new Map();
   let running = 0;
+
+  const persisted = ({ active, ...c }) => c;
+  function save() {
+    if (!file) return;
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(`${file}.tmp`, JSON.stringify([...chats.values()].map(persisted)));
+      fs.renameSync(`${file}.tmp`, file);
+    } catch (e) { console.error(`could not save chats: ${e.message}`); }
+  }
+  try {
+    for (const c of JSON.parse(fs.readFileSync(file, 'utf8'))) {
+      if (c.state === 'running') { // the run died with the previous server
+        c.state = 'failed'; c.error = 'interrupted by a server restart';
+        c.messages.at(-1).text ||= '(interrupted)';
+      }
+      chats.set(c.id, { ...c, active: null });
+    }
+  } catch { /* no saved chats yet, or unreadable: start empty */ }
+
+  const touch = (id) => { save(); notify(id); };
 
   const get = (id) => {
     const c = chats.get(id);
@@ -18,7 +41,7 @@ export function createChats({ cwd, notify = () => {}, run = defaultRun, maxRuns 
   function create() {
     const c = { id: crypto.randomUUID(), title: 'New chat', cwd, state: 'idle', error: null, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
     chats.set(c.id, c);
-    notify(c.id);
+    touch(c.id);
     return view(c);
   }
 
@@ -47,7 +70,7 @@ export function createChats({ cwd, notify = () => {}, run = defaultRun, maxRuns 
         if (part.type === 'text') reply.text += (reply.text ? '\n\n' : '') + part.text;
         else if (part.type === 'tool_use') reply.tools.push(part.name);
       }
-      notify(c.id);
+      touch(c.id);
     });
     r.done.then((d) => {
       running--;
@@ -57,9 +80,9 @@ export function createChats({ cwd, notify = () => {}, run = defaultRun, maxRuns 
       if (d.ok) { c.state = 'idle'; if (!reply.text) reply.text = d.text; }
       else { c.state = d.cancelled ? 'idle' : 'failed'; c.error = d.error; if (d.cancelled) reply.text += '\n\n(cancelled)'; }
       log({ chat: c.id, action: d.ok ? 'agent-finish' : d.cancelled ? 'agent-cancel' : 'agent-fail', seconds: Math.round((Date.now() - started) / 1000), costUsd: d.costUsd });
-      notify(c.id);
+      touch(c.id);
     });
-    notify(c.id);
+    touch(c.id);
     return view(c);
   }
 
@@ -69,9 +92,16 @@ export function createChats({ cwd, notify = () => {}, run = defaultRun, maxRuns 
     return view(c);
   }
 
+  function remove(id) {
+    const c = get(id);
+    if (c.state === 'running') throw new ValidationError('cancel the running answer first');
+    chats.delete(id);
+    save(); notify(id);
+  }
+
   return {
-    create, send, cancel,
+    create, send, cancel, remove,
     get: (id) => view(get(id)),
-    list: () => [...chats.values()].map(({ id, title, state, created }) => ({ id, title, state, created })),
+    list: () => [...chats.values()].map(({ id, title, state, created }) => ({ id, title, state, created })).sort((a, b) => b.created.localeCompare(a.created)),
   };
 }
