@@ -142,7 +142,7 @@ export function initKeys(ctx) {
     }
     const cur = selectedFile();
     const file = navigate(cols, cur, ctx.lastSelected?.(), dir);
-    if (!file && dir === 'next' && !cols.some((c) => c.length) && hiddenList.length) { // no cards at all: j falls back to the hidden strip
+    if (!file && !cols.some((c) => c.length) && hiddenList.length) { // no cards at all: any move key falls back to the hidden strip
       ctx.selectStrip(hiddenList.find((s) => ctx.hiddenCount(s) > 0) ?? hiddenList[0]);
       return;
     }
@@ -207,6 +207,24 @@ export function initKeys(ctx) {
 
   function closeOverlay() { overlay?.close(); }
 
+  // About (081): build and server info, from GET /api/about.
+  async function openAbout() {
+    let a;
+    try { a = await ctx.about(); } catch (e) { ctx.toast(`About failed: ${e.message}`); return; }
+    const row = (k, v) => [el('dt', {}, k), el('dd', {}, v)];
+    const box = el('div', { class: 'dialog form about', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'About Sanvi' },
+      el('h2', {}, 'About Sanvi'),
+      el('dl', {},
+        row('Version', a.version || 'unknown'),
+        row('Commit', a.commit ? `${a.commit} (${a.date})` : 'not a git checkout'),
+        row('Node', a.node),
+        row('Tickets directory', `${a.dir} (${a.tickets} tickets)`),
+        row('Server started', new Date(a.started).toLocaleString())),
+      a.behind > 0 && el('p', { class: 'hint', role: 'status' }, `Server is running older code than the checkout: restart to pick up ${a.behind} newer commit${a.behind > 1 ? 's' : ''}.`),
+      el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: closeOverlay }, 'Close')));
+    openOverlay(box);
+  }
+
   function openHelp() {
     const box = el('div', { class: 'dialog help', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keyboard shortcuts', tabindex: '-1' },
       el('h2', {}, 'Keyboard shortcuts'),
@@ -242,18 +260,23 @@ export function initKeys(ctx) {
     const pics = imageBox(ta);
     const done = {}; // survives a failed save, so a retry does not create the idea twice
     const err = el('p', { class: 'hint', role: 'alert' });
+    // Which project the idea goes to (079): defaults like a new ticket; changing it does not switch the view.
+    const { names, fresh } = ctx.projects();
+    const sel = names.length ? el('select', { 'aria-label': 'Project', id: 'idea-project' },
+      el('option', { value: '' }, 'No project'), ...(fresh && !names.includes(fresh) ? [fresh, ...names] : names).map((n) => el('option', { value: n }, n))) : null;
+    if (sel) sel.value = fresh;
     const save = async () => {
       const text = ta.value.trim();
       if (!text) return;
-      try { await ctx.saveIdea(text, pics.images, done); pics.release(); closeOverlay(); } catch (e) { err.textContent = e.message; ctx.toast(e.message); }
+      try { await ctx.saveIdea(text, pics.images, done, sel ? sel.value : fresh); pics.release(); closeOverlay(); } catch (e) { err.textContent = e.message; ctx.toast(e.message); }
     };
-    ta.addEventListener('keydown', (e) => {
+    for (const f of [ta, sel]) f?.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
     });
     const box = el('div', { class: 'dialog form', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quick idea' },
       el('h2', {}, 'Quick idea'),
       el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Paste or drop images to attach them. Ctrl+Enter saves, Esc cancels.'),
-      ta, pics.node, err,
+      ta, sel && el('label', { class: 'projpick' }, 'Project ', sel), pics.node, err,
       el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
     openOverlay(box, { focus: ta });
   }
@@ -482,6 +505,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Add status…', hint: 'column', run: openAddStatus },
           { cmd: true, label: 'Delete status…', hint: 'column', push: deleteStatusLevel },
           { cmd: true, label: 'Columns…', hint: 'show / hide', push: columnsLevel },
+          { cmd: true, label: 'About Sanvi', hint: 'version', run: openAbout },
           { cmd: true, label: 'Show keyboard shortcuts', hint: '?', run: openHelp });
         if (q.trim()) rows.push(...ticketRows(S.tickets.filter((x) => matches(`#${x.id} ${x.title}`, q)), expanded, () => { expanded = true; }));
         return rows;

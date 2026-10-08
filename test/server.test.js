@@ -210,3 +210,16 @@ test('serves the svg icon', async () => {
     assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
   } finally { await app.close(); }
 });
+
+test('about: version, node, directory name and ticket count, no absolute path', async () => {
+  const { app, dir, j } = await setup();
+  try {
+    const a = await (await j('GET', '/api/about')).json();
+    assert.match(a.version, /^\d+\.\d+\.\d+/);
+    assert.equal(a.node, process.version);
+    assert.equal(a.dir, path.basename(dir));
+    assert.equal(a.tickets, 1);
+    assert.equal(typeof a.behind, 'number');
+    assert.ok(!JSON.stringify(a).includes(path.dirname(dir)));
+  } finally { await app.close(); }
+});

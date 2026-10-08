@@ -942,8 +942,8 @@ document.addEventListener('keydown', (e) => {
 initKeys({
   S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), hiddenCount: (status) => scopedTickets(status).length, selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, deleteStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
-  saveIdea: async (text, images = [], done = {}) => {
-    done.ticket ??= await api('POST', 'ideas', { text, project: newProjectValue() });
+  saveIdea: async (text, images = [], done = {}, ideaProject = newProjectValue()) => {
+    done.ticket ??= await api('POST', 'ideas', { text, project: ideaProject });
     const t = done.ticket;
     await uploadAll(t.file, images, done, `Idea #${t.id} was saved,`);
     if (done.paths?.length && !done.linked) {
@@ -964,7 +964,8 @@ initKeys({
     toast(`Note saved (${scratch.notes.length} in NOTES.md)`);
     if (location.hash === '#/notes') paintNotes();
   },
-  detail: () => D, projects: () => ({ names: orderedProjects(), recent: recentProjects(), current: project, none: NO_PROJECT, mode: switcherMode() }), setProject,
+  about: () => api('GET', 'about'),
+  detail: () => D, projects: () => ({ names: orderedProjects(), recent: recentProjects(), current: project, none: NO_PROJECT, mode: switcherMode(), fresh: newProjectValue() }), setProject,
   addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
     if (!t) throw new Error('ticket not found');

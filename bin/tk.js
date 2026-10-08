@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { versionLine } from '../src/about.js';
 import {
   register, unregister, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
@@ -15,7 +16,7 @@ import {
 
 const HELP = `Sanvi (tk) — helper for Markdown tickets (optional; editing the files by hand is fine)
 
-usage: tk [--dir <tickets dir>] <command>
+usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and commit)
 
   list [--status S] [--area A] [--project P] [--json]   list tickets
   show <id|slug> [--json]                 print a ticket
@@ -69,6 +70,7 @@ function findDir(flag) {
 const brief = (t) => `${t.id}  ${(t.status || '-').padEnd(12)} ${(t.area || '').padEnd(14)} ${t.title}`;
 
 async function main() {
+  if (process.argv.slice(2).some((a) => a === '--version' || a === '-v')) return console.log(versionLine());
   const { flags, pos } = parseArgs(process.argv.slice(2));
   const [cmd, ...rest] = pos;
   if (!cmd || cmd === 'help' || flags.help) return console.log(HELP);

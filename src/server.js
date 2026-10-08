@@ -10,6 +10,7 @@ import {
   writeStatuses,
 } from './core.js';
 import { formatNote } from '../public/notes.js';
+import { buildInfo, commitsBehind } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -70,6 +71,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
   try { purgeTrash(dir); } catch (e) { console.error(`trash purge failed: ${e.message}`); }
 
   const summary = ({ body, ...rest }) => rest;
+  const build = buildInfo(); // fixed at start: what this process is running
+  const started = new Date().toISOString();
 
   function configPayload() {
     const cfg = readConfig(dir);
@@ -106,6 +109,12 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       if (statuses === undefined) throw new ValidationError('statuses is required');
       writeStatuses(dir, statuses);
       return send(res, 200, configPayload());
+    }
+    if (parts[0] === 'about' && parts.length === 1 && method === 'GET') {
+      return send(res, 200, {
+        version: build.version, commit: build.commit, date: build.date, node: process.version,
+        dir: path.basename(dir), tickets: listTickets(dir).length, started, behind: commitsBehind(build.full),
+      });
     }
     if (parts[0] === 'events' && method === 'GET') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
