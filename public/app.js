@@ -238,8 +238,17 @@ const projectNames = () => {
   const fromTickets = [...new Set(S.tickets.map((t) => t.project).filter(Boolean))].filter((n) => !(S.cfg.projects ?? []).includes(n)).sort((a, b) => a.localeCompare(b));
   return [...(S.cfg.projects ?? []), ...fromTickets];
 };
-// One project and no explicit choice: the switcher is just a label and new tickets go there.
-const soleProject = () => { const n = projectNames(); return n.length === 1 && (project === '' || project === n[0]) ? n[0] : ''; };
+// One project and no explicit choice, and every ticket has it: the switcher is just a label and new tickets go there.
+const soleProject = () => { const n = projectNames(); return n.length === 1 && (project === '' || project === n[0]) && S.tickets.every((t) => t.project) ? n[0] : ''; };
+// The one place that decides what the header shows (and whether P works): 'none' | 'label' | 'dropdown'.
+const switcherMode = () => (soleProject() ? 'label' : projectNames().length > 0 || project ? 'dropdown' : 'none');
+// Recently used projects (069): remembered in the browser, newest first, at most 9 (Alt+1..9).
+const RECENT_KEY = 'sanvi.recentProjects';
+let recent = [];
+try { recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').filter((x) => typeof x === 'string'); } catch { /* ignore */ }
+const noteRecent = (n) => { recent = [n, ...recent.filter((x) => x !== n)].slice(0, 9); try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch { /* ignore */ } };
+const recentProjects = () => recent.filter((n) => projectNames().includes(n));
+const orderedProjects = () => { const r = recentProjects(); return [...r, ...projectNames().filter((n) => !r.includes(n))]; };
 const newProjectValue = () => soleProject() || (project === NO_PROJECT ? '' : project);
 const projectTerm = () => (project === NO_PROJECT ? 'project:' : project ? `project:${project}` : '');
 function setQuery(text) {
@@ -252,6 +261,7 @@ function persistProject() { try { if (project) localStorage.setItem(PROJECT_KEY,
 function setProject(name) {
   project = name === NO_PROJECT ? NO_PROJECT : String(name ?? '').trim().replace(/[\s,]+/g, '-');
   persistProject();
+  if (project && project !== NO_PROJECT) noteRecent(project);
   setQuery(Q.text);
   paintProject();
   syncHash();
@@ -270,11 +280,11 @@ async function newProject(input) {
 function paintProject() {
   const sel = $('#proj-sel'), label = $('#proj-label');
   if (!sel) return;
-  const names = projectNames();
-  const sole = soleProject();
-  sel.hidden = !(names.length > 0 || project) || !!sole;
-  label.hidden = !sole;
-  label.textContent = sole;
+  const names = orderedProjects();
+  const mode = switcherMode();
+  sel.hidden = mode !== 'dropdown';
+  label.hidden = mode !== 'label';
+  label.textContent = soleProject();
   if (project && project !== NO_PROJECT && !names.includes(project)) names.push(project);
   sel.replaceChildren(el('option', { value: '' }, 'All projects'), ...names.map((n) => el('option', { value: n }, n)),
     el('option', { value: NO_PROJECT }, 'No project'), el('option', { value: '__new__' }, 'New project…'));
@@ -947,7 +957,7 @@ initKeys({
     toast(`Note saved (${scratch.notes.length} in NOTES.md)`);
     if (location.hash === '#/notes') paintNotes();
   },
-  detail: () => D, projects: () => ({ names: projectNames(), current: project, none: NO_PROJECT }), setProject, newProject,
+  detail: () => D, projects: () => ({ names: orderedProjects(), recent: recentProjects(), current: project, none: NO_PROJECT, mode: switcherMode() }), setProject, newProject,
   addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
     if (!t) throw new Error('ticket not found');

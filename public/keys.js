@@ -79,6 +79,7 @@ export const HELP = [
     ['n', 'New ticket'],
     ['b', 'Go to the board'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
+    ['Alt+1 … 9', 'Jump to a recently used project (most recent first; shown in the P list)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['Ctrl+M / m', 'Quick note: free text saved to NOTES.md next to the tickets, not tied to any ticket (Ctrl+M also while typing; m outside fields)'],
@@ -440,11 +441,11 @@ export function initKeys(ctx) {
   }
 
   function projectLevel() {
-    const { names, current } = ctx.projects();
+    const { names, current, recent } = ctx.projects();
     return {
       placeholder: 'Switch project…',
       rows: () => [{ label: 'All projects', hint: current === '' ? 'current' : '', run: () => ctx.setProject('') },
-        ...names.map((n) => ({ label: n, hint: n === current ? 'current' : '', run: () => ctx.setProject(n) })),
+        ...names.map((n) => ({ label: n, hint: n === current ? 'current' : recent.includes(n) ? `Alt+${recent.indexOf(n) + 1}` : '', run: () => ctx.setProject(n) })),
         { label: 'No project', hint: current === ctx.projects().none ? 'current' : '', run: () => ctx.setProject(ctx.projects().none) }],
     };
   }
@@ -487,7 +488,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Quick note…', hint: 'm / Ctrl+M', run: openScratch },
           { cmd: true, label: 'Notes', hint: 'g', run: () => { location.hash = '#/notes'; } },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
-          ...(ctx.projects().names.length > 1 || ctx.projects().current ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
+          ...(ctx.projects().mode === 'dropdown' ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
           { cmd: true, label: 'New project…', hint: 'projects', run: openNewProject },
           { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
           { cmd: true, label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
@@ -581,6 +582,11 @@ export function initKeys(ctx) {
       focusSearch();
       return;
     }
+    if (e.altKey && !mod && !e.shiftKey && /^Digit[1-9]$/.test(e.code) && !overlay) { // Alt+1..9: the recent projects (069)
+      const name = ctx.projects().recent[Number(e.code.slice(5)) - 1];
+      if (name) { e.preventDefault(); ctx.setProject(name); }
+      return;
+    }
     if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'i') { // works while typing, too
       e.preventDefault();
       if (overlay?.node.querySelector('textarea[aria-label="Quick idea"]')) return;
@@ -653,7 +659,7 @@ export function initKeys(ctx) {
       case 'i': openIdea(); break;
       case 'm': openScratch(); break;
       case 'g': location.hash = '#/notes'; break;
-      case 'P': if (ctx.projects().names.length > 1 || ctx.projects().current) openPalette('project'); else return; break;
+      case 'P': if (ctx.projects().mode === 'dropdown') openPalette('project'); else return; break;
       case 's': openPalette('status'); break;
       case 'j': if (board) moveFocus('next'); else if (hashRoute() === 'detail') scrollBy({ top: 60, behavior: 'instant' }); else return; break;
       case 'k': if (board) moveFocus('prev'); else if (hashRoute() === 'detail') scrollBy({ top: -60, behavior: 'instant' }); else return; break;
