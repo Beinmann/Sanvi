@@ -9,7 +9,7 @@ import {
   register, unregister, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
 import {
-  listTickets, findTicket, saveTicket, createTicket, createIdea, addNote, deleteTicket, listTrash, restoreTicket, purgeTrash, validate, readConfig,
+  listTickets, findTicket, saveTicket, addScratch, listScratch, createTicket, createIdea, addNote, deleteTicket, listTrash, restoreTicket, purgeTrash, validate, readConfig,
   ConflictError, NotFoundError, ValidationError,
 } from '../src/core.js';
 
@@ -21,6 +21,8 @@ usage: tk [--dir <tickets dir>] <command>
   show <id|slug> [--json]                 print a ticket
   idea "<text>"                           quick capture: status design, title derived from the text
   note <id|slug> "<text>"                 append a timestamped line to the ticket's ## Notes
+  note --scratch "<text>"  (or: jot)      append to NOTES.md, the scratchpad not tied to any ticket
+  jot                                     with no text: list the scratch notes
   new "<title>" [--area A] [--project P] [--status S] [--priority P]
                                           create the next ticket from the standard template
   status <id|slug> <status>               change status in the frontmatter only
@@ -44,6 +46,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--json') flags.json = true;
     else if (a === '--all') flags.all = true;
+    else if (a === '--scratch') flags.scratch = true;
     else if (a === '-d') flags.dir = argv[++i];
     else if (a === '--auto-port') flags['auto-port'] = true;
     else if (a.startsWith('--')) flags[a.slice(2)] = argv[++i];
@@ -94,7 +97,19 @@ async function main() {
       out(t, path.join(dir, t.file));
       break;
     }
+    case 'jot':
     case 'note': {
+      if (cmd === 'jot' || flags.scratch) {
+        if (!rest.length) {
+          if (cmd !== 'jot') throw new ValidationError('usage: tk note --scratch "<text>"');
+          const { notes } = listScratch(dir);
+          out(notes, notes.length ? notes.map((n) => `${n.stamp || '-'}  ${n.text.split('\n')[0]}${n.promoted ? `  → #${n.promoted}` : ''}`).join('\n') : 'no notes');
+          break;
+        }
+        const { notes } = addScratch(dir, rest.join(' '));
+        out(notes.at(-1), `noted (${notes.length} in NOTES.md)`);
+        break;
+      }
       if (!rest[0] || !rest[1]) throw new ValidationError('usage: tk note <id|slug> "<text>"');
       const f = findTicket(dir, rest[0]);
       const t = addNote(dir, f.file, rest.slice(1).join(' '), f.version);

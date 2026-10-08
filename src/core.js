@@ -303,6 +303,95 @@ export function createIdea(dir, { text, status = IDEA_STATUS, area = '', project
   return createTicket(dir, { title, status, area, project, body });
 }
 
+// --- scratch notes -------------------------------------------------------
+// `<dir>/NOTES.md`: notes that belong to no ticket. Top-level `- ` items (continuation lines indented), newest
+// last in the file. Anything else in the file (headings, prose) is left alone, so hand edits are fine.
+export const SCRATCH_FILE = 'NOTES.md';
+const PROMOTED_RE = /\s*→\s*#(\d+)\s*$/;
+
+export function parseScratch(raw) {
+  const lines = raw.split(/\r?\n/);
+  const notes = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^[-*] /.test(lines[i])) continue;
+    let end = i + 1;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (/^\s+\S/.test(lines[j])) end = j + 1;
+      else if (lines[j].trim() === '') continue; // blank: part of the item only if indented text follows
+      else break;
+    }
+    const first = lines[i].slice(2);
+    const promoted = PROMOTED_RE.exec(first);
+    const m = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?:\s*/.exec(first);
+    const head = (promoted ? first.slice(0, promoted.index) : first).slice(m ? m[0].length : 0);
+    const text = [head, ...lines.slice(i + 1, end).map((l) => l.replace(/^ {1,2}/, ''))].join('\n').trim();
+    notes.push({ index: notes.length, stamp: m ? `${m[1]}${m[2] ? ` ${m[2]}` : ''}` : '', text, promoted: promoted ? promoted[1] : '', start: i, end });
+    i = end - 1;
+  }
+  return notes;
+}
+
+function readScratchRaw(dir) {
+  try { return fs.readFileSync(path.join(dir, SCRATCH_FILE), 'utf8'); } catch (e) { if (e.code === 'ENOENT') return ''; throw e; }
+}
+
+const publicNote = ({ start, end, ...n }) => n;
+
+export function listScratch(dir) {
+  const raw = readScratchRaw(dir);
+  return { version: hash(raw), notes: parseScratch(raw).map(publicNote) };
+}
+
+// `version` (the hash from listScratch) is checked when given; appends without one just go to the end.
+function writeScratch(dir, version, edit) {
+  const raw = readScratchRaw(dir);
+  if (version && version !== hash(raw)) throw new ConflictError(listScratch(dir));
+  const next = edit(raw);
+  if (next !== raw) atomicWrite(path.join(dir, SCRATCH_FILE), next);
+  return listScratch(dir);
+}
+
+export function addScratch(dir, text, version, now = new Date()) {
+  if (typeof text !== 'string' || !text.trim()) throw new ValidationError('note text is required');
+  const item = formatNote(text, now);
+  return writeScratch(dir, version, (raw) => {
+    const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+    const body = raw.replace(/\s+$/, '');
+    const last = body.split(/\r?\n/).pop();
+    const sep = !body ? '' : /^([-*] |\s)/.test(last) ? eol : eol + eol;
+    return `${body || '# Notes' + eol}${body ? '' : eol}${sep}${item.replace(/\n/g, eol)}${eol}`;
+  });
+}
+
+function noteAt(raw, index) {
+  const n = parseScratch(raw)[index];
+  if (!n) throw new NotFoundError(`no such note: ${index}`);
+  return n;
+}
+
+export function deleteScratch(dir, index, version) {
+  return writeScratch(dir, version || 'required', (raw) => {
+    const n = noteAt(raw, index);
+    const lines = raw.split(/(?<=\n)/);
+    lines.splice(n.start, n.end - n.start);
+    return lines.join('');
+  });
+}
+
+// Turns a note into an idea ticket and marks the note `→ #NNN`. Returns { notes, ticket }.
+export function promoteScratch(dir, index, version, { project = '' } = {}) {
+  let ticket = null;
+  const list = writeScratch(dir, version || 'required', (raw) => {
+    const n = noteAt(raw, index);
+    if (n.promoted) throw new ValidationError(`note already promoted to #${n.promoted}`);
+    ticket = createIdea(dir, { text: n.text, project });
+    const lines = raw.split(/(?<=\n)/);
+    lines[n.start] = lines[n.start].replace(/(\r?\n)?$/, ` → #${ticket.id}$1`);
+    return lines.join('');
+  });
+  return { ...list, ticket };
+}
+
 // --- trash --------------------------------------------------------------
 // Deleting moves the ticket (and its images) to `<dir>/.trash/<deletion ms>/`; nothing is destroyed until
 // the retention period passes or the user deletes it for good. `listTickets` only reads `<dir>` itself.
@@ -450,7 +539,7 @@ export function validate(dir) {
     }
   }
   for (const name of fs.readdirSync(dir)) {
-    if (name.endsWith('.md') && !isTicketFile(name) && !/^(_|README)/.test(name)) {
+    if (name.endsWith('.md') && !isTicketFile(name) && !/^(_|README|NOTES\.md$)/.test(name)) {
       add(name, 'warn', 'markdown file does not look like <id>-<slug>.md; ignored');
     }
   }

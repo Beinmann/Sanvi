@@ -840,6 +840,51 @@ async function renderTrash() {
     ) : el('p', {}, 'The trash is empty.')));
 }
 
+// ------------------------------------------------------------ scratch notes
+
+// NOTES.md: notes that belong to no ticket. `scratch` is the last listing; its version guards delete/promote.
+let scratch = { version: '', notes: [] };
+let notesQuery = '';
+
+async function renderNotes() {
+  try { scratch = await api('GET', 'scratch'); } catch (e) { toast(`Notes failed: ${e.message}`); return; }
+  paintNotes();
+}
+
+function paintNotes() {
+  const act = async (fn, msg) => {
+    try { scratch = await fn(); toast(msg); } catch (e) {
+      toast(e.status === 409 ? 'Notes changed on disk; reloaded, try again.' : `Failed: ${e.message}`);
+      if (e.status === 409) scratch = e.data.current;
+    }
+    await refreshAll();
+    if (location.hash === '#/notes') paintNotes();
+  };
+  const q = notesQuery.trim().toLowerCase();
+  const shown = [...scratch.notes].reverse().filter((n) => !q || `${n.stamp} ${n.text}`.toLowerCase().includes(q));
+  const search = el('input', { type: 'search', placeholder: 'Search notes', 'aria-label': 'Search notes', value: notesQuery,
+    oninput: (e) => { notesQuery = e.target.value; paintNotes(); } });
+  const cards = compact(shown.length ? shown.map((n) => {
+    const body = el('div', { class: 'md' });
+    body.innerHTML = renderMarkdown(n.text);
+    return el('article', { class: `note${n.promoted ? ' promoted' : ''}`, 'data-index': n.index },
+      el('div', { class: 'stamp' }, n.stamp || 'undated'),
+      body,
+      el('div', { class: 'buttons' },
+        n.promoted
+          ? (() => { const t = S.tickets.find((x) => Number(x.id) === Number(n.promoted)); return el('a', { href: t ? `#/t/${encodeURIComponent(t.file)}` : '#/' }, `→ #${n.promoted}`); })()
+          : el('button', { type: 'button', onclick: () => act(async () => { const r = await api('POST', `scratch/${n.index}/promote`, { version: scratch.version, project: newProjectValue() }); return r; }, 'Made an idea ticket from the note') }, 'Make ticket'),
+        ' ',
+        el('button', { type: 'button', onclick: () => { if (confirm('Delete this note? This cannot be undone.')) act(() => api('DELETE', `scratch/${n.index}`, { version: scratch.version }), 'Note deleted'); } }, 'Delete')));
+  }) : el('p', {}, scratch.notes.length ? 'No note matches.' : 'No notes yet. Press m (or Ctrl+M) to jot one down.'));
+  const list = el('div', { class: 'notes' }, cards);
+  const hadFocus = document.activeElement?.getAttribute?.('aria-label') === 'Search notes';
+  show(view, el('div', { class: 'detail' }, el('a', { href: '#/' }, '← Board'), el('h1', {}, 'Notes'),
+    el('p', { class: 'hint' }, 'Quick notes saved in NOTES.md next to the tickets, newest first. Edit the file by hand if you like. m / Ctrl+M adds one.'),
+    search, list));
+  if (hadFocus) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
+}
+
 // --------------------------------------------------------------- routing
 
 let pendingTab = null;
@@ -859,6 +904,7 @@ async function route() {
     pendingFocus = S.lastFile ?? null;
     if (h === '#/new') renderNew();
     else if (h === '#/trash') renderTrash();
+    else if (h === '#/notes') renderNotes();
     else if (h === '#/idea') location.replace('#/'); // old bookmark: the idea box is an overlay now (i / Ctrl+I)
     else { loadHash(); await refreshAll(); }
   }
@@ -895,6 +941,11 @@ initKeys({
     done.linked = true;
     toast(`Idea captured as #${t.id}`);
     return t;
+  },
+  addScratch: async (text) => {
+    scratch = await api('POST', 'scratch', { text });
+    toast(`Note saved (${scratch.notes.length} in NOTES.md)`);
+    if (location.hash === '#/notes') paintNotes();
   },
   detail: () => D, projects: () => ({ names: projectNames(), current: project, none: NO_PROJECT }), setProject, newProject,
   addNote: async (file, text, images = [], done = {}) => {
@@ -934,6 +985,7 @@ $('#proj-sel').addEventListener('change', (e) => {
   if (e.target.value === '__new__') { e.target.value = project; document.dispatchEvent(new Event('new-project')); } else setProject(e.target.value);
 });
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
+$('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
 $('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 
 const refreshAll = coalesce(doRefresh); // bursts of refreshes (moves, live events) share one request pair
@@ -952,6 +1004,7 @@ async function doRefresh() {
   const h = location.hash || '#/';
   if (h.startsWith('#/t/')) await refreshDetail();
   else if (h === '#/trash') renderTrash();
+  else if (h === '#/notes') renderNotes();
   else if (h === '#/' || h === '' || h.startsWith('#/?')) renderBoard();
 }
 
