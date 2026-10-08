@@ -112,6 +112,7 @@ export function toTicket(file, raw, mtimeMs = 0) {
     hasFrontmatter: front !== null,
     status: fields.status || '',
     area: fields.area || '',
+    project: fields.project || '',
     priority: fields.priority || '',
     fields,
     body,
@@ -162,33 +163,39 @@ export function findTicket(dir, ref) {
   return hit;
 }
 
-// Minimal reader for `_config.yml`: only `statuses`, as a flow or block list.
+// Minimal reader for `_config.yml`: `statuses` and `projects`, each as a flow or block list.
+function readList(text, key) {
+  const flow = new RegExp(`^${key}:\\s*\\[(.*)\\]\\s*$`, 'm').exec(text);
+  if (flow) return flow[1].split(',').map((s) => unquote(s.trim())).filter(Boolean);
+  const block = new RegExp(`^${key}:\\s*\\r?\\n((?:[ \\t]*-[ \\t]+.+\\r?\\n?)+)`, 'm').exec(text);
+  return block ? block[1].split(/\r?\n/).map((l) => unquote(l.replace(/^\s*-\s+/, '').replace(/\s+#.*$/, '').trim())).filter(Boolean) : null;
+}
 export function readConfig(dir) {
-  const cfg = { statuses: [...DEFAULT_STATUSES], configured: false };
+  const cfg = { statuses: [...DEFAULT_STATUSES], projects: [], configured: false };
   let text;
   try { text = fs.readFileSync(path.join(dir, '_config.yml'), 'utf8'); } catch { return cfg; }
-  const flow = /^statuses:\s*\[(.*)\]\s*$/m.exec(text);
-  let list = null;
-  if (flow) list = flow[1].split(',').map((s) => unquote(s.trim())).filter(Boolean);
-  else {
-    const block = /^statuses:\s*\r?\n((?:[ \t]*-[ \t]+.+\r?\n?)+)/m.exec(text);
-    if (block) list = block[1].split(/\r?\n/).map((l) => unquote(l.replace(/^\s*-\s+/, '').replace(/\s+#.*$/, '').trim())).filter(Boolean);
-  }
+  const list = readList(text, 'statuses');
   if (list && list.length) { cfg.statuses = list; cfg.configured = true; }
+  cfg.projects = readList(text, 'projects') ?? [];
   return cfg;
 }
 
 // --- writing ----------------------------------------------------------
 
 /** Persist the status order in `_config.yml`, replacing an existing `statuses` entry (flow or block) in place and keeping other lines. */
-export function writeStatuses(dir, statuses) {
+export function writeStatuses(dir, statuses) { writeList(dir, 'statuses', statuses); }
+
+/** Persist the `projects` list (the switcher's choices) the same way. */
+export function writeProjects(dir, projects) { writeList(dir, 'projects', projects); }
+
+function writeList(dir, key, statuses) {
   if (!Array.isArray(statuses) || !statuses.length || statuses.some((s) => typeof s !== 'string' || !s.trim() || /[\r\n,\[\]"']/.test(s))
-    || new Set(statuses).size !== statuses.length) throw new ValidationError('statuses must be a list of distinct, non-empty names without commas, brackets or quotes');
+    || new Set(statuses).size !== statuses.length) throw new ValidationError(`${key} must be a list of distinct, non-empty names without commas, brackets or quotes`);
   const file = path.join(dir, '_config.yml');
   let text = '';
   try { text = fs.readFileSync(file, 'utf8'); } catch { /* new file */ }
-  const line = `statuses: [${statuses.join(', ')}]\n`;
-  const re = /^statuses:[ \t]*(?:\[.*\][ \t]*\r?\n?|\r?\n(?:[ \t]*-[ \t]+.+\r?\n?)+)/m;
+  const line = `${key}: [${statuses.join(', ')}]\n`;
+  const re = new RegExp(`^${key}:[ \\t]*(?:\\[.*\\][ \\t]*\\r?\\n?|\\r?\\n(?:[ \\t]*-[ \\t]+.+\\r?\\n?)+)`, 'm');
   if (re.test(text)) text = text.replace(re, () => line);
   else text = `${line}${text}`;
   atomicWrite(file, text);
@@ -250,15 +257,16 @@ function maxId(dir) {
   return Math.max(0, ...listTickets(dir).map((t) => Number(t.id)), ...listTrash(dir).map((t) => Number(t.id)));
 }
 
-export function createTicket(dir, { title, area = '', status, priority = '', body: customBody } = {}) {
+export function createTicket(dir, { title, area = '', project = '', status, priority = '', body: customBody } = {}) {
   title = (title || '').trim();
   if (!title) throw new ValidationError('title is required');
-  checkFields({ area, priority, ...(status ? { status } : {}), title });
+  checkFields({ area, project, priority, ...(status ? { status } : {}), title });
   status = status || readConfig(dir).statuses[0] || 'open';
   const slug = slugify(title);
   let front = '';
   front = setFrontField(front, 'status', status);
   front = setFrontField(front, 'area', area || null);
+  front = setFrontField(front, 'project', project || null);
   front = setFrontField(front, 'priority', priority || null);
   const body = customBody ?? `\n# ${title}\n\n## Problem / motivation\n\n\n\n## Acceptance criteria\n\n- [ ] \n`;
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -285,14 +293,14 @@ export function ideaTitle(text) {
   return `${sentence.slice(0, 60).replace(/\s+\S*$/, '')}…`;
 }
 
-export function createIdea(dir, { text, status = IDEA_STATUS, area = '' } = {}) {
+export function createIdea(dir, { text, status = IDEA_STATUS, area = '', project = '' } = {}) {
   if (text != null && typeof text !== 'string') throw new ValidationError('idea text must be a string');
   text = (text || '').trim();
   if (!text) throw new ValidationError('idea text is required');
   const title = ideaTitle(text);
   const date = new Date().toISOString().slice(0, 10);
   const body = `\n# ${title}\n\n## Problem / motivation\n\n${text}\n\n## Acceptance criteria\n\n- [ ] \n\n## Notes\n\n- ${date}: Captured as a quick idea; the title is auto-derived and the text above is unrefined. Needs refinement.\n`;
-  return createTicket(dir, { title, status, area, body });
+  return createTicket(dir, { title, status, area, project, body });
 }
 
 // --- trash --------------------------------------------------------------

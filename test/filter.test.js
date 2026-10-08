@@ -33,6 +33,8 @@ test('filters combine with AND, including text', () => {
 });
 
 test('empty value means unset', () => {
+  assert.ok(m(T({ project: 'billing' }), 'project:billing,web'));
+  assert.ok(m(T(), 'project:') && !m(T({ project: 'x' }), 'project:'));
   assert.ok(m(T({ area: '' }), 'area:'));
   assert.ok(!m(T(), 'area:'));
   assert.ok(m(T(), '-area:'));

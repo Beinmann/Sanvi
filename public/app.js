@@ -128,7 +128,8 @@ function card(t, inText = false) {
   }, '☰'),
   el('div', { class: 'meta' },
     inText && el('span', { class: 'chip', title: 'Matched in the description, not the title' }, 'in text'),
-    !project && t.area && el('span', { class: 'chip area', title: 'Project' }, t.area),
+    !project && t.project && el('span', { class: 'chip project', title: 'Project' }, t.project),
+    t.area && el('span', { class: 'chip' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
 }
@@ -224,35 +225,59 @@ async function doMove(file, status) {
 // The table view is switched off for now (056): the code stays, but no tab leads to it and #/?view=table shows the board.
 const TABLE_VIEW = false;
 const Q = { text: '', parsed: parseQuery(''), view: 'board', sort: 'id', dir: 'asc' };
-// Current project (067): a pinned `area:` term added to every query. Kept in localStorage and mirrored as
-// `area:<name>` in the URL's q parameter; hand-edited or old URLs without it fall back to the stored value.
+// Current project (067, 071, 072): a pinned `project:` term added to every query. Kept in localStorage and
+// mirrored as `project:<name>` in the URL's q parameter; URLs without it fall back to the stored value.
+// NO_PROJECT pins the empty term `project:` (tickets without a project). The choices are `projects:` in the
+// config plus any project found on tickets (hand edits stay visible).
 const PROJECT_KEY = 'sanvi.project';
+const NO_PROJECT = '__none__';
 let project = '';
-try { project = localStorage.getItem(PROJECT_KEY) || ''; } catch { /* storage blocked: the project just is not remembered */ }
-const projectNames = () => [...new Set(S.tickets.map((t) => t.area).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-const projectsActive = () => !!project || projectNames().length > 0; // neutral while no ticket has an area
+const storedProject = () => { try { return localStorage.getItem(PROJECT_KEY) || ''; } catch { return ''; } };
+project = storedProject();
+const projectNames = () => {
+  const fromTickets = [...new Set(S.tickets.map((t) => t.project).filter(Boolean))].filter((n) => !(S.cfg.projects ?? []).includes(n)).sort((a, b) => a.localeCompare(b));
+  return [...(S.cfg.projects ?? []), ...fromTickets];
+};
+// One project and no explicit choice: the switcher is just a label and new tickets go there.
+const soleProject = () => { const n = projectNames(); return n.length === 1 && (project === '' || project === n[0]) ? n[0] : ''; };
+const newProjectValue = () => soleProject() || (project === NO_PROJECT ? '' : project);
+const projectTerm = () => (project === NO_PROJECT ? 'project:' : project ? `project:${project}` : '');
 function setQuery(text) {
   Q.text = text;
-  const m = /(?:^|\s)area:([^\s,]+)(?=\s|$)/i.exec(text);
-  if (m) { project = m[1]; Q.text = text.replace(m[0], ' ').trim(); persistProject(); }
-  Q.parsed = parseQuery(project ? `${Q.text} area:${project}` : Q.text);
+  const m = /(?:^|\s)project:([^\s,]*)(?=\s|$)/i.exec(text);
+  if (m) { project = m[1] || NO_PROJECT; Q.text = text.replace(m[0], ' ').trim(); persistProject(); }
+  Q.parsed = parseQuery([Q.text, projectTerm()].filter(Boolean).join(' '));
 }
 function persistProject() { try { if (project) localStorage.setItem(PROJECT_KEY, project); else localStorage.removeItem(PROJECT_KEY); } catch { /* ignore */ } }
 function setProject(name) {
-  project = String(name ?? '').trim().replace(/[\s,]+/g, '-');
+  project = name === NO_PROJECT ? NO_PROJECT : String(name ?? '').trim().replace(/[\s,]+/g, '-');
   persistProject();
   setQuery(Q.text);
   paintProject();
   syncHash();
-  toast(project ? `Project: ${project}` : 'Project: all');
+  toast(project === NO_PROJECT ? 'Project: none' : project ? `Project: ${project}` : 'Project: all');
+}
+// Append a project to `projects:` in the config file and make it current.
+async function newProject(input) {
+  const name = String(input ?? '').trim().replace(/[\s,]+/g, '-');
+  if (!name || name === NO_PROJECT || /[\[\]"']/.test(name)) throw new Error('Project names cannot be empty or contain brackets or quotes');
+  if (!projectNames().includes(name)) {
+    await api('PUT', 'config', { projects: [...(S.cfg.projects ?? []), name] });
+    await refreshAll();
+  }
+  setProject(name);
 }
 function paintProject() {
-  const sel = $('#proj-sel');
+  const sel = $('#proj-sel'), label = $('#proj-label');
   if (!sel) return;
-  sel.hidden = !projectsActive();
   const names = projectNames();
-  if (project && !names.includes(project)) names.push(project);
-  sel.replaceChildren(el('option', { value: '' }, 'All projects'), ...names.map((n) => el('option', { value: n }, n)), el('option', { value: '__new__' }, 'New project…'));
+  const sole = soleProject();
+  sel.hidden = !(names.length > 0 || project) || !!sole;
+  label.hidden = !sole;
+  label.textContent = sole;
+  if (project && project !== NO_PROJECT && !names.includes(project)) names.push(project);
+  sel.replaceChildren(el('option', { value: '' }, 'All projects'), ...names.map((n) => el('option', { value: n }, n)),
+    el('option', { value: NO_PROJECT }, 'No project'), el('option', { value: '__new__' }, 'New project…'));
   sel.value = project;
   sel.classList.toggle('set', !!project);
 }
@@ -261,7 +286,7 @@ function loadHash() {
   if (!h.startsWith('#/?') && h !== '#/') return false;
   const p = new URLSearchParams(h.slice(3));
   const hq = p.get('q') || '';
-  if (!/(?:^|\s)area:/i.test(hq)) project = ((() => { try { return localStorage.getItem(PROJECT_KEY); } catch { return ''; } })()) || '';
+  if (!/(?:^|\s)project:/i.test(hq)) project = storedProject();
   setQuery(hq);
   Q.view = TABLE_VIEW && p.get('view') === 'table' ? 'table' : 'board';
   if (!TABLE_VIEW && p.get('view') === 'table') { // old bookmark: show the board and drop the parameter from the URL
@@ -274,7 +299,7 @@ function loadHash() {
 }
 function hashForState() {
   const p = new URLSearchParams();
-  const q = [Q.text, project && `area:${project}`].filter(Boolean).join(' ');
+  const q = [Q.text, projectTerm()].filter(Boolean).join(' ');
   if (q) p.set('q', q);
   if (Q.view === 'table') {
     p.set('view', 'table');
@@ -414,8 +439,8 @@ function tableView() {
 
 // --------------------------------------------------------------- detail
 
-const copyDraft = (t) => ({ status: t.status, area: t.area, priority: t.priority, body: t.body });
-const isDirty = () => !!D && !D.gone && ['status', 'area', 'priority', 'body'].some((k) => D.draft[k] !== D.loaded[k]);
+const copyDraft = (t) => ({ status: t.status, area: t.area, project: t.project, priority: t.priority, body: t.body });
+const isDirty = () => !!D && !D.gone && ['status', 'area', 'project', 'priority', 'body'].some((k) => D.draft[k] !== D.loaded[k]);
 const titleOfDraft = () => /^#\s+(.+?)\s*#*\s*$/m.exec(D.draft.body)?.[1] || D.loaded.title;
 
 function updateState() {
@@ -446,7 +471,7 @@ async function save() {
   if (!D || !isDirty()) return true;
   const sent = { ...D.draft };
   const fields = {};
-  for (const k of ['status', 'area', 'priority']) if (sent[k] !== D.loaded[k]) fields[k] = sent[k];
+  for (const k of ['status', 'area', 'project', 'priority']) if (sent[k] !== D.loaded[k]) fields[k] = sent[k];
   try {
     const t = await api('PUT', `tickets/${encodeURIComponent(D.file)}`, {
       version: D.loaded.version, fields, ...(sent.body !== D.loaded.body ? { body: sent.body } : {}),
@@ -713,6 +738,7 @@ function renderDetail({ fresh = false, edit = false } = {}) {
     el('div', { class: 'bar' },
       field('Status', select(S.cfg.statuses, d.status, (v) => { d.status = v; updateState(); }, 'f-status')),
       field('Area', el('input', { value: d.area, oninput: (e) => { d.area = e.target.value; updateState(); } })),
+      field('Project', el('input', { value: d.project, oninput: (e) => { d.project = e.target.value; updateState(); } })),
       field('Priority', select(['', 'high', 'medium', 'low'], d.priority, (v) => { d.priority = v; updateState(); })),
       el('span', { class: 'spacer' }),
       el('span', { id: 'state', class: 'state' }),
@@ -758,7 +784,7 @@ async function refreshDetail() {
 // ------------------------------------------------------------ new ticket
 
 function renderNew() {
-  const f = { title: '', area: project, status: S.cfg.statuses[0] || 'open', priority: '' };
+  const f = { title: '', area: '', project: newProjectValue(), status: S.cfg.statuses[0] || 'open', priority: '' };
   show(view, el('form', {
     class: 'newform',
     onsubmit: async (e) => {
@@ -772,7 +798,8 @@ function renderNew() {
   },
   el('h2', {}, 'New ticket'),
   field('Title', el('input', { required: true, oninput: (e) => { f.title = e.target.value; } })),
-  field('Area', el('input', { value: f.area, oninput: (e) => { f.area = e.target.value; } })),
+  field('Area', el('input', { oninput: (e) => { f.area = e.target.value; } })),
+  field('Project', el('input', { value: f.project, oninput: (e) => { f.project = e.target.value; } })),
   field('Status', select(S.cfg.statuses, f.status, (v) => { f.status = v; })),
   field('Priority', select(['', 'high', 'medium', 'low'], '', (v) => { f.priority = v; })),
   el('div', {}, el('button', { class: 'primary', type: 'submit' }, 'Create'), ' ', el('a', { href: '#/' }, 'Cancel'))));
@@ -853,7 +880,7 @@ initKeys({
   S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, deleteStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}) => {
-    done.ticket ??= await api('POST', 'ideas', { text, area: project });
+    done.ticket ??= await api('POST', 'ideas', { text, project: newProjectValue() });
     const t = done.ticket;
     await uploadAll(t.file, images, done, `Idea #${t.id} was saved,`);
     if (done.paths?.length && !done.linked) {
@@ -869,7 +896,7 @@ initKeys({
     toast(`Idea captured as #${t.id}`);
     return t;
   },
-  detail: () => D, projects: () => ({ names: projectNames(), current: project, active: projectsActive() }), setProject,
+  detail: () => D, projects: () => ({ names: projectNames(), current: project, none: NO_PROJECT }), setProject, newProject,
   addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
     if (!t) throw new Error('ticket not found');

@@ -3,12 +3,12 @@
 // Unknown keys and malformed tokens are treated as text, never as errors.
 // Filters on different keys, and every text word, combine with AND; values
 // within one filter are OR (include) or NOR (exclude). Matching is
-// case-insensitive; `area:` and `priority:` accept the empty value (`area:`)
+// case-insensitive; `area:`, `project:` and `priority:` accept the empty value (`area:`)
 // to mean "not set". `title:text` limits a word to the title; a number word
 // (`12`, `#12`) also finds ticket 12 by id (`#12` only by id). `scoreTicket`
 // ranks title matches above body-only ones.
 
-export const FIELDS = ['status', 'area', 'priority'];
+export const FIELDS = ['status', 'area', 'project', 'priority'];
 
 export function parseQuery(query) {
   const words = [];
@@ -66,7 +66,7 @@ export function matchTicket(ticket, parsed) {
   return true;
 }
 
-export const SORT_KEYS = ['id', 'title', 'status', 'area', 'priority', 'progress'];
+export const SORT_KEYS = ['id', 'title', 'status', 'area', 'project', 'priority', 'progress'];
 const PRIO_RANK = { high: 0, medium: 1, '': 2, low: 3 };
 
 /**
@@ -81,6 +81,7 @@ export function sortTickets(tickets, key, dir = 'asc', statusOrder = []) {
     title: (t) => String(t.title ?? '').toLowerCase(),
     status: (t) => { const i = statusOrder.indexOf(t.status); return i < 0 ? statusOrder.length : i; },
     area: (t) => String(t.area ?? '').toLowerCase(),
+    project: (t) => String(t.project ?? '').toLowerCase(),
     priority: (t) => PRIO_RANK[t.priority ?? ''] ?? 2,
     progress: (t) => (t.progress?.total ? t.progress.done / t.progress.total : -1),
   }[key];

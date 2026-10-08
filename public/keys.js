@@ -78,7 +78,7 @@ export const HELP = [
     ['?', 'Show / hide this help'],
     ['n', 'New ticket'],
     ['b', 'Go to the board'],
-    ['P', 'Switch the current project (the area new tickets are filed under)'],
+    ['P', 'Switch the current project (the project new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['/', 'Go to the search box (from any view; goes to the board first)'],
@@ -355,13 +355,13 @@ export function initKeys(ctx) {
 
   function valueLevel(t, field) {
     const cur = fieldOf(t, field);
-    if (field === 'area') {
-      const areas = [...new Set(S.tickets.map((x) => x.area).filter(Boolean))].sort();
+    if (field === 'area' || field === 'project') {
+      const areas = field === 'project' ? ctx.projects().names : [...new Set(S.tickets.map((x) => x.area).filter(Boolean))].sort();
       return {
-        placeholder: `Area for #${t.id}: type a name or pick one…`,
-        rows: (q) => [...areas.map((a) => ({ label: a, hint: a === cur ? 'current' : '', run: () => ctx.setField(t.file, 'area', a) })),
-          { label: '(none)', hint: cur === '' ? 'current' : '', run: () => ctx.setField(t.file, 'area', '') },
-          ...(q.trim() && !areas.includes(q.trim()) ? [{ label: `Set area to “${q.trim()}”`, always: true, run: () => ctx.setField(t.file, 'area', q.trim()) }] : [])],
+        placeholder: `${field === 'area' ? 'Area' : 'Project'} for #${t.id}: type a name or pick one…`,
+        rows: (q) => [...areas.map((a) => ({ label: a, hint: a === cur ? 'current' : '', run: () => ctx.setField(t.file, field, a) })),
+          { label: '(none)', hint: cur === '' ? 'current' : '', run: () => ctx.setField(t.file, field, '') },
+          ...(q.trim() && !areas.includes(q.trim()) ? [{ label: `Set ${field} to “${q.trim()}”`, always: true, run: () => ctx.setField(t.file, field, q.trim()) }] : [])],
       };
     }
     const values = field === 'status' ? ctx.columns().filter(Boolean) : ['high', 'medium', 'low', ''];
@@ -380,6 +380,7 @@ export function initKeys(ctx) {
         { label: 'Open', hint: 'Enter', run: () => { location.hash = `#/t/${encodeURIComponent(t.file)}`; } },
         { label: 'Change status…', hint: hint('status'), push: () => valueLevel(t, 'status') },
         { label: 'Change priority…', hint: hint('priority'), push: () => valueLevel(t, 'priority') },
+        { label: 'Change project…', hint: hint('project'), push: () => valueLevel(t, 'project') },
         { label: 'Change area…', hint: hint('area'), push: () => valueLevel(t, 'area') },
         { label: 'Add comment', hint: 'c', run: () => openNote(t.file) },
         { label: 'Delete…', hint: 'd', run: () => openConfirmDelete(t.file) },
@@ -418,13 +419,26 @@ export function initKeys(ctx) {
   function projectLevel() {
     const { names, current } = ctx.projects();
     return {
-      placeholder: 'Switch project, or type a new name…',
-      rows: (q) => [{ label: 'All projects', hint: current === '' ? 'current' : '', run: () => ctx.setProject('') },
+      placeholder: 'Switch project…',
+      rows: () => [{ label: 'All projects', hint: current === '' ? 'current' : '', run: () => ctx.setProject('') },
         ...names.map((n) => ({ label: n, hint: n === current ? 'current' : '', run: () => ctx.setProject(n) })),
-        ...(q.trim() && !names.includes(q.trim()) ? [{ label: `New project “${q.trim()}”`, always: true, run: () => ctx.setProject(q.trim()) }] : [])],
+        { label: 'No project', hint: current === ctx.projects().none ? 'current' : '', run: () => ctx.setProject(ctx.projects().none) }],
     };
   }
-  document.addEventListener('new-project', () => { if (!overlay) openPalette('project'); });
+  function openNewProject() {
+    const input = el('input', { type: 'text', placeholder: 'New project name', autocomplete: 'off', spellcheck: false, 'aria-label': 'New project name' });
+    const err = el('p', { class: 'hint', role: 'alert' });
+    const submit = async () => {
+      try { await ctx.newProject(input.value); closeOverlay(); } catch (e) { err.textContent = e.message; }
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+    const box = el('div', { class: 'dialog form', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'New project' },
+      el('h2', {}, 'New project'),
+      el('p', { class: 'hint' }, 'Added to projects: in the config file and made the current project.'), input, err,
+      el('div', {}, el('button', { class: 'primary', type: 'button', onclick: submit }, 'Add')));
+    openOverlay(box, { focus: input });
+  }
+  document.addEventListener('new-project', () => { if (!overlay) openNewProject(); });
 
   function columnsLevel() {
     return { placeholder: 'Show or hide a column…', rows: () => ctx.columns().map((c) => ({ label: `${ctx.isHidden(c) ? 'Show' : 'Hide'} ${c || '(no status)'}`, hint: ctx.isHidden(c) ? 'hidden' : 'shown', run: () => ctx.toggleColumn(c) })) };
@@ -448,7 +462,8 @@ export function initKeys(ctx) {
           { cmd: true, label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
           { cmd: true, label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
-          ...(ctx.projects().active ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
+          ...(ctx.projects().names.length > 1 || ctx.projects().current ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
+          { cmd: true, label: 'New project…', hint: 'projects', run: openNewProject },
           { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
           { cmd: true, label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
           { cmd: true, label: 'Add status…', hint: 'column', run: openAddStatus },
@@ -604,7 +619,7 @@ export function initKeys(ctx) {
       case 'n': location.hash = '#/new'; break;
       case 'b': location.hash = '#/'; break;
       case 'i': openIdea(); break;
-      case 'P': if (ctx.projects().active) openPalette('project'); else return; break;
+      case 'P': if (ctx.projects().names.length > 1 || ctx.projects().current) openPalette('project'); else return; break;
       case 's': openPalette('status'); break;
       case 'j': if (board) moveFocus('next'); else return; break;
       case 'k': if (board) moveFocus('prev'); else return; break;

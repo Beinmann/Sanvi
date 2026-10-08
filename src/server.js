@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   listTickets, readTicket, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
   ConflictError, NotFoundError, ValidationError,
-  writeStatuses,
+  writeStatuses, writeProjects,
 } from './core.js';
 import { formatNote } from '../public/notes.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
@@ -73,12 +73,12 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
 
   function configPayload() {
     const cfg = readConfig(dir);
-    return { name: path.basename(path.dirname(dir)), statuses: cfg.statuses, configured: cfg.configured };
+    return { name: path.basename(path.dirname(dir)), statuses: cfg.statuses, projects: cfg.projects, configured: cfg.configured };
   }
 
   function logEdit(before, after) {
     const changes = [];
-    for (const f of ['status', 'area', 'priority']) {
+    for (const f of ['status', 'area', 'project', 'priority']) {
       if ((before[f] || '') !== (after[f] || '')) changes.push({ field: f, from: before[f] || null, to: after[f] || null });
     }
     const bodyChanged = before.body !== after.body;
@@ -102,8 +102,10 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
     }
     if (parts[0] === 'config' && method === 'GET') return send(res, 200, configPayload());
     if (parts[0] === 'config' && method === 'PUT') {
-      const { statuses } = await readJson(req);
-      writeStatuses(dir, statuses);
+      const { statuses, projects } = await readJson(req);
+      if (statuses === undefined && projects === undefined) throw new ValidationError('statuses or projects is required');
+      if (statuses !== undefined) writeStatuses(dir, statuses);
+      if (projects !== undefined) writeProjects(dir, projects);
       return send(res, 200, configPayload());
     }
     if (parts[0] === 'events' && method === 'GET') {
@@ -114,8 +116,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
       return;
     }
     if (parts[0] === 'ideas' && parts.length === 1 && method === 'POST') {
-      const { text, area } = await readJson(req);
-      const t = createIdea(dir, { text, area });
+      const { text, area, project } = await readJson(req);
+      const t = createIdea(dir, { text, area, project });
       changelog.log({ ticket: t.id, action: 'create', after: t.version, changes: [{ field: 'status', from: null, to: t.status }] });
       return send(res, 201, t);
     }
@@ -150,10 +152,10 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts }) {
     }
     if (parts.length === 1 && method === 'GET') return send(res, 200, url.searchParams.get('bodies') === '1' ? listTickets(dir) : listTickets(dir).map(summary));
     if (parts.length === 1 && method === 'POST') {
-      const { title, area, status, priority } = await readJson(req);
-      const t = createTicket(dir, { title, area, status, priority });
+      const { title, area, project, status, priority } = await readJson(req);
+      const t = createTicket(dir, { title, area, project, status, priority });
       changelog.log({ ticket: t.id, action: 'create', after: t.version,
-        changes: ['status', 'area', 'priority'].filter((f) => t[f]).map((f) => ({ field: f, from: null, to: t[f] })) });
+        changes: ['status', 'area', 'project', 'priority'].filter((f) => t[f]).map((f) => ({ field: f, from: null, to: t[f] })) });
       return send(res, 201, t);
     }
     if (parts.length === 2 && method === 'GET') return send(res, 200, readTicket(dir, decodeURIComponent(parts[1])));

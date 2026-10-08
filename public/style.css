@@ -20,6 +20,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(
 header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
 .brand { font-weight: 700; color: var(--text); text-decoration: none; }
 .brand span { font-weight: 400; color: var(--muted); margin-left: 6px; }
+#proj-label { font-weight: 600; color: var(--accent); }
 #proj-sel { max-width: 180px; } #proj-sel.set { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 #live { color: var(--muted); font-size: 11px; margin-left: auto; }
 #live.on { color: var(--ok); }

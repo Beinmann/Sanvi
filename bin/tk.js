@@ -17,11 +17,11 @@ const HELP = `Sanvi (tk) — helper for Markdown tickets (optional; editing the 
 
 usage: tk [--dir <tickets dir>] <command>
 
-  list [--status S] [--area A] [--json]   list tickets
+  list [--status S] [--area A] [--project P] [--json]   list tickets
   show <id|slug> [--json]                 print a ticket
   idea "<text>"                           quick capture: status design, title derived from the text
   note <id|slug> "<text>"                 append a timestamped line to the ticket's ## Notes
-  new "<title>" [--area A] [--status S] [--priority P]
+  new "<title>" [--area A] [--project P] [--status S] [--priority P]
                                           create the next ticket from the standard template
   status <id|slug> <status>               change status in the frontmatter only
   rm <id|slug>                            move a ticket (and its images) to the trash (kept 30 days)
@@ -78,6 +78,7 @@ async function main() {
       let all = listTickets(dir);
       if (flags.status) all = all.filter((t) => t.status === flags.status);
       if (flags.area) all = all.filter((t) => t.area === flags.area);
+      if (flags.project) all = all.filter((t) => t.project === flags.project);
       out(all.map(({ body, ...t }) => t), all.map(brief).join('\n'));
       break;
     }
@@ -125,7 +126,7 @@ async function main() {
     }
     case 'new': {
       if (!rest[0]) throw new ValidationError('usage: tk new "<title>"');
-      const t = createTicket(dir, { title: rest.join(' '), area: flags.area, status: flags.status, priority: flags.priority });
+      const t = createTicket(dir, { title: rest.join(' '), area: flags.area, project: flags.project, status: flags.status, priority: flags.priority });
       out(t, path.join(dir, t.file));
       break;
     }

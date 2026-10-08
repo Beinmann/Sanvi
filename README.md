@@ -52,17 +52,27 @@ statuses: [open, in-progress, testing, blocked, deferred, done]
 Without it those six are used. A ticket with any other status gets its own
 column.
 
-## Subprojects
+## Projects and areas
 
-Keep one tickets dir and one board for a project with several subprojects, and
-use `area:` as the subproject (`area: billing`). The header's project switcher
-(`P`, or "Switch project…" in Ctrl+K) pins `area:<name>` to every search: the
-board shows only that project, and new tickets and quick ideas are filed under
-it (changeable in the dialog; a new name creates the area). The choice is kept
-in the browser (`localStorage`) and mirrored as `area:<name>` in the URL, so
-links work; "All projects" clears it and shows each card's area as a label. The
-switcher stays hidden while no ticket has an area. Use separate dirs only for
-unrelated repos or different status sets.
+Two optional fields with different meanings: `project:` is which product or
+subproject a ticket belongs to (`project: billing`), `area:` is which part of it
+(`area: ui`). One tickets dir and one board can hold several projects; use
+separate dirs only for unrelated repos or different status sets.
+
+The header's project switcher pins `project:<name>` to every search: the board
+shows only that project, and new tickets and quick ideas are filed under it
+(changeable in the dialog). `P`, or "Switch project…" in Ctrl+K, opens the list;
+"New project…" appends a name to `projects:` in `_config.yml`. The choices are
+that list plus any project found on tickets, plus "All projects" and "No
+project" (tickets without one). With no projects the switcher is hidden; with
+exactly one it is a plain label. The choice is kept in the browser
+(`localStorage`) and mirrored as `project:<name>` in the URL; with "All
+projects" each card shows its project as a label. `tk list --project P` and
+`tk new --project P` work too.
+
+```yaml
+projects: [billing, web]
+```
 
 ## Web UI
 

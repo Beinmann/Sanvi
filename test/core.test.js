@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig, writeStatuses,
+  listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig, writeStatuses, writeProjects,
   ConflictError, ValidationError, slugify, createIdea, ideaTitle, addNote,
   deleteTicket, listTrash, restoreTicket, purgeTrash, purgeTrashItem, saveAsset,
 } from '../src/core.js';
@@ -249,4 +249,20 @@ test('trash: delete, list, restore, id reuse, retention, images', () => {
     purgeTrashItem(dir, fresh.key);
     assert.equal(listTrash(dir).length, 0);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('project field and projects config list', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-proj-'));
+  const t = createTicket(dir, { title: 'In a project', project: 'billing' });
+  assert.equal(t.project, 'billing');
+  assert.equal(saveTicket(dir, t.file, { fields: { project: '' } }, t.version).project, '');
+  assert.deepEqual(readConfig(dir).projects, []);
+  writeProjects(dir, ['a', 'b']);
+  assert.deepEqual(readConfig(dir).projects, ['a', 'b']);
+  writeStatuses(dir, ['open', 'done']);
+  writeProjects(dir, ['a', 'b', 'c']);
+  const cfg = readConfig(dir);
+  assert.deepEqual(cfg.projects, ['a', 'b', 'c']);
+  assert.deepEqual(cfg.statuses, ['open', 'done']);
+  assert.throws(() => writeProjects(dir, ['a', 'a']));
 });
