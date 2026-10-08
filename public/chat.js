@@ -6,10 +6,11 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(`sanvi.chat.${k}`, v); } catch { /* private window: just not remembered */ } },
 };
 
-export function initChat({ el, show, api, toast, button }) {
+export function initChat({ el, show, api, toast, button, project = () => '' }) {
   let chats = [];     // list entries: { id, title, state }
   let chat = null;    // the open chat, as last fetched
   let drafts = {};    // unsent text per chat id
+  let info = { dirs: {} }; // from GET agent: the default directory and the remembered directory per project
   let isOpen = false;
   let wide = store.get('wide') === '1';
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
@@ -25,7 +26,7 @@ export function initChat({ el, show, api, toast, button }) {
 
   async function openChat(id) {
     if (chat) drafts[chat.id] = panel.querySelector('textarea')?.value ?? drafts[chat.id] ?? '';
-    chat = id ? await api('GET', `agent/chats/${id}`) : await api('POST', 'agent/chats', {});
+    chat = id ? await api('GET', `agent/chats/${id}`) : await api('POST', 'agent/chats', { project: project() });
     store.set('current', chat.id);
     await refreshList();
     paint();
@@ -71,6 +72,17 @@ export function initChat({ el, show, api, toast, button }) {
     try { chat = await api('POST', `agent/chats/${chat.id}/messages`, { text }); drafts[chat.id] = ''; await refreshList(); paint(); } catch (e) { toast(`Not sent: ${e.message}`); }
   }
 
+  async function changeDir() {
+    const dir = prompt('Directory this chat runs in (absolute path or ~/...):', chat.cwd);
+    if (dir === null || dir.trim() === chat.cwd) return;
+    try { chat = await api('PUT', `agent/chats/${chat.id}`, { dir }); } catch (e) { toast(`Directory not changed: ${e.message}`); return; }
+    const proj = project();
+    if (proj && info.dirs[proj] !== chat.cwd && confirm(`Start new chats of project "${proj}" in\n${chat.cwd} ?`)) {
+      try { info.dirs = await api('PUT', 'agent/dirs', { project: proj, dir: chat.cwd }); } catch (e) { toast(`Not remembered: ${e.message}`); }
+    }
+    paint();
+  }
+
   async function remove() {
     if (!confirm(`Delete the chat "${chat.title}"?`)) return;
     try { await api('DELETE', `agent/chats/${chat.id}`, {}); } catch (e) { toast(`Not deleted: ${e.message}`); return; }
@@ -102,10 +114,11 @@ export function initChat({ el, show, api, toast, button }) {
     show(panel,
       el('div', { class: 'chathead' }, select,
         el('button', { type: 'button', title: 'New chat', onclick: () => openChat(null).catch((e) => toast(e.message)) }, '+'),
+        el('button', { type: 'button', title: chat.messages.length ? 'The directory is fixed once a chat has started' : 'Change the directory this chat runs in', disabled: !!chat.messages.length, onclick: changeDir }, '📁'),
         el('button', { type: 'button', title: 'Delete this chat', disabled: running, onclick: remove }, '🗑'),
         el('button', { type: 'button', title: wide ? 'Smaller' : 'Larger', onclick: () => { wide = !wide; store.set('wide', wide ? '1' : '0'); paint(); } }, wide ? '▢' : '⤢'),
         el('button', { type: 'button', title: 'Close (Esc)', onclick: () => toggle(false) }, '×')),
-      el('div', { class: 'chatmeta muted' }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.costUsd ? `$${chat.costUsd.toFixed(3)} so far` : 'ready'}`),
+      el('div', { class: 'chatmeta muted', title: chat.cwd }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.costUsd ? `$${chat.costUsd.toFixed(3)} so far` : 'ready'}`),
       log,
       chat.error ? el('div', { class: 'banner err' }, chat.error) : null,
       el('div', { class: 'chatinput' }, input,
@@ -117,5 +130,5 @@ export function initChat({ el, show, api, toast, button }) {
   }
 
   button.addEventListener('click', () => toggle());
-  return { toggle, onEvent, start: () => refreshList().catch(() => {}) };
+  return { toggle, onEvent, start: () => Promise.all([refreshList(), api('GET', 'agent').then((a) => { info = a; })]).catch(() => {}) };
 }

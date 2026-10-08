@@ -1005,7 +1005,7 @@ $('#proj-sel').addEventListener('change', (e) => {
 });
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
-const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn') });
+const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), project: () => (project === NO_PROJECT ? '' : project) });
 api('GET', 'agent').then((a) => { $('#chat-btn').hidden = !a.enabled; if (a.enabled) chatPage.start(); }).catch(() => {});
 $('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 

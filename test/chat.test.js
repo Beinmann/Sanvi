@@ -127,3 +127,34 @@ test('chats survive a restart; a run that was in flight is marked interrupted; d
   two.remove(b.id);
   assert.equal(createChats({ cwd: '/w', file, run: f.run }).list().length, 1);
 });
+
+test('chat directory: default, per project, explicit, validated, locked after the first message', async () => {
+  const mk = (n) => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `tk-${n}-`)));
+  const [base, other, file] = [mk('base'), mk('other'), path.join(mk('st'), 'c.json')];
+  const f = fakeRunner();
+  const chats = createChats({ cwd: base, file, run: f.run });
+
+  assert.equal(chats.create().cwd, base);
+  assert.equal(chats.create({ project: 'nope' }).cwd, base);
+  chats.setProjectDir('web', other);
+  assert.equal(chats.create({ project: 'web' }).cwd, other);
+  assert.equal(chats.create({ project: 'web', dir: base }).cwd, base); // explicit wins
+
+  assert.throws(() => chats.create({ dir: 'relative/path' }), /absolute/);
+  assert.throws(() => chats.create({ dir: path.join(base, 'missing') }), /not a directory/);
+  const link = path.join(mk('lnk'), 'l');
+  fs.symlinkSync(other, link);
+  assert.equal(chats.create({ dir: link }).cwd, other); // resolved through symlinks
+  assert.throws(() => chats.setProjectDir('', other), /required/);
+
+  const c = chats.create();
+  chats.setCwd(c.id, other);
+  chats.send(c.id, 'hi');
+  assert.equal(f.calls.at(-1).opts.cwd, other);
+  assert.throws(() => chats.setCwd(c.id, base), /cannot change/);
+
+  const again = createChats({ cwd: base, file, run: f.run }); // mapping survives a restart
+  assert.equal(again.create({ project: 'web' }).cwd, other);
+  chats.setProjectDir('web', '');
+  assert.equal(chats.create({ project: 'web' }).cwd, base);
+});

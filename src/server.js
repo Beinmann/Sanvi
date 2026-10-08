@@ -130,11 +130,16 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       });
     }
     if (parts[0] === 'agent') {
-      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats });
+      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, ...(chats && { defaultDir: chats.defaultDir, dirs: chats.dirs() }) });
       if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
+      if (parts[1] === 'dirs' && parts.length === 2 && method === 'PUT') {
+        const { project, dir } = await readJson(req);
+        return send(res, 200, chats.setProjectDir(project, dir));
+      }
       if (parts[1] !== 'chats') return send(res, 404, { error: 'not found' });
       if (parts.length === 2 && method === 'GET') return send(res, 200, chats.list());
-      if (parts.length === 2 && method === 'POST') return send(res, 201, chats.create());
+      if (parts.length === 2 && method === 'POST') return send(res, 201, chats.create(await readJson(req)));
+      if (parts.length === 3 && method === 'PUT') return send(res, 200, chats.setCwd(parts[2], (await readJson(req)).dir));
       if (parts.length === 3 && method === 'GET') return send(res, 200, chats.get(parts[2]));
       if (parts.length === 3 && method === 'DELETE') { chats.remove(parts[2]); return send(res, 200, { ok: true }); }
       if (parts.length === 4 && parts[3] === 'messages' && method === 'POST') {

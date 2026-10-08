@@ -2,12 +2,26 @@
 // Kept in memory and saved to `file` (outside any repo) so chats survive a restart; `notify(chatId)` pushes a live update.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { startRun as defaultRun } from './agent.js';
 import { ValidationError, NotFoundError } from './core.js';
 
+// A directory the agent may run in: absolute (or ~/...), existing, resolved through symlinks.
+export function resolveDir(input) {
+  let p = String(input ?? '').trim();
+  if (p === '~' || p.startsWith('~/')) p = path.join(os.homedir(), p.slice(1));
+  if (!path.isAbsolute(p)) throw new ValidationError('directory must be an absolute path (or start with ~/)');
+  try {
+    const real = fs.realpathSync(p);
+    if (!fs.statSync(real).isDirectory()) throw new Error('not a directory');
+    return real;
+  } catch { throw new ValidationError(`not a directory: ${p}`); }
+}
+
 export function createChats({ cwd, file, notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
   const chats = new Map();
+  let dirs = {}; // project name -> directory its chats start in
   let running = 0;
 
   const persisted = ({ active, ...c }) => c;
@@ -15,12 +29,14 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
     if (!file) return;
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(`${file}.tmp`, JSON.stringify([...chats.values()].map(persisted)));
+      fs.writeFileSync(`${file}.tmp`, JSON.stringify({ chats: [...chats.values()].map(persisted), dirs }));
       fs.renameSync(`${file}.tmp`, file);
     } catch (e) { console.error(`could not save chats: ${e.message}`); }
   }
   try {
-    for (const c of JSON.parse(fs.readFileSync(file, 'utf8'))) {
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    dirs = Array.isArray(saved) ? {} : saved.dirs || {};
+    for (const c of Array.isArray(saved) ? saved : saved.chats) {
       if (c.state === 'running') { // the run died with the previous server
         c.state = 'failed'; c.error = 'interrupted by a server restart';
         c.messages.at(-1).text ||= '(interrupted)';
@@ -38,8 +54,11 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
   };
   const view = (c) => ({ id: c.id, title: c.title, cwd: c.cwd, state: c.state, error: c.error, costUsd: c.costUsd, messages: c.messages, created: c.created });
 
-  function create() {
-    const c = { id: crypto.randomUUID(), title: 'New chat', cwd, state: 'idle', error: null, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
+  const dirFor = (project) => (project && dirs[project]) || cwd;
+
+  // `dir` is explicit; otherwise the project's remembered directory; otherwise the default.
+  function create({ dir, project } = {}) {
+    const c = { id: crypto.randomUUID(), title: 'New chat', cwd: dir ? resolveDir(dir) : dirFor(project), state: 'idle', error: null, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
     chats.set(c.id, c);
     touch(c.id);
     return view(c);
@@ -86,6 +105,23 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
     return view(c);
   }
 
+  // Claude keeps sessions per directory, so a chat can only change directory before its first message.
+  function setCwd(id, dir) {
+    const c = get(id);
+    if (c.messages.length) throw new ValidationError('the directory cannot change once the chat has started; open a new chat');
+    c.cwd = resolveDir(dir);
+    touch(c.id);
+    return view(c);
+  }
+
+  function setProjectDir(project, dir) {
+    project = String(project || '').trim();
+    if (!project) throw new ValidationError('project is required');
+    if (dir) dirs[project] = resolveDir(dir); else delete dirs[project];
+    save();
+    return { ...dirs };
+  }
+
   function cancel(id) {
     const c = get(id);
     c.active?.cancel();
@@ -100,7 +136,9 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
   }
 
   return {
-    create, send, cancel, remove,
+    create, send, cancel, remove, setCwd, setProjectDir,
+    defaultDir: cwd,
+    dirs: () => ({ ...dirs }),
     get: (id) => view(get(id)),
     list: () => [...chats.values()].map(({ id, title, state, created }) => ({ id, title, state, created })).sort((a, b) => b.created.localeCompare(a.created)),
   };
