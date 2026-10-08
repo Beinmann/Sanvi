@@ -19,7 +19,7 @@ export function resolveDir(input) {
   } catch { throw new ValidationError(`not a directory: ${p}`); }
 }
 
-export function createChats({ cwd, file, notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
+export function createChats({ cwd, file, check, notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
   const chats = new Map();
   let dirs = {}; // project name -> directory its chats start in
   let running = 0;
@@ -53,13 +53,13 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
     if (!c) throw new NotFoundError(`no such chat: ${id}`);
     return c;
   };
-  const view = (c) => ({ id: c.id, title: c.title, cwd: c.cwd, state: c.state, error: c.error, costUsd: c.costUsd, messages: c.messages, created: c.created });
+  const view = (c) => ({ id: c.id, title: c.title, kind: c.kind || 'chat', outcome: c.outcome || null, warning: c.warning || null, cwd: c.cwd, state: c.state, error: c.error, costUsd: c.costUsd, messages: c.messages, created: c.created });
 
   const dirFor = (project) => (project && dirs[project]) || cwd;
 
   // `dir` is explicit; otherwise the project's remembered directory; otherwise the default.
-  function create({ dir, project, title = 'New chat', kind = 'chat', runOpts } = {}) {
-    const c = { id: crypto.randomUUID(), title, kind, runOpts, cwd: dir ? resolveDir(dir) : dirFor(project), state: 'idle', error: null, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
+  function create({ dir, project, title = 'New chat', kind = 'chat', runOpts, meta, preamble } = {}) {
+    const c = { id: crypto.randomUUID(), title, kind, runOpts, meta, preamble, cwd: dir ? resolveDir(dir) : dirFor(project), state: 'idle', error: null, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
     chats.set(c.id, c);
     touch(c.id);
     return view(c);
@@ -74,11 +74,14 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
     if (c.state === 'running' || c.state === 'queued') throw new ValidationError('this chat is still answering');
     if (running >= maxRuns && !queue) throw new ValidationError(`too many agent runs at once (max ${maxRuns})`);
 
-    if (!c.messages.length && c.title === 'New chat') c.title = text.replace(/\s+/g, ' ').slice(0, 60);
+    const first = !c.messages.length;
+    if (first && (c.title === 'New chat' || c.kind === 'ask')) c.title = `${c.kind === 'ask' ? 'Ask: ' : ''}${text.replace(/\s+/g, ' ').slice(0, 60)}`;
     c.messages.push({ role: 'user', text });
     c.messages.push({ role: 'assistant', text: '', tools: [] });
     c.error = null;
-    c.prompt = prompt || text;
+    c.prompt = prompt || (first && c.preamble ? `${c.preamble}\n\n${text}` : text);
+    c.outcome = null;
+    c.warning = null;
     if (running >= maxRuns) { c.state = 'queued'; pending.push(c.id); touch(c.id); return view(c); }
     launch(c);
     return view(c);
@@ -106,7 +109,13 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
       c.active = null;
       if (d.sessionId) c.sessionId = d.sessionId;
       if (d.costUsd) c.costUsd += d.costUsd;
-      if (d.ok) { c.state = 'idle'; if (!reply.text) reply.text = d.text; }
+      if (d.ok) {
+        c.state = 'idle'; if (!reply.text) reply.text = d.text;
+        const verdict = check?.(c, d) || {};
+        const warnings = [verdict.warning, d.denials ? `${d.denials} tool call${d.denials > 1 ? 's were' : ' was'} refused (a headless run cannot ask for permission)` : null].filter(Boolean);
+        c.outcome = d.denials ? 'problems' : verdict.outcome || 'ok';
+        c.warning = warnings.join('; ') || null;
+      }
       else { c.state = d.cancelled ? 'idle' : 'failed'; c.error = d.error; if (d.cancelled) reply.text += '\n\n(cancelled)'; }
       log({ chat: c.id, action: d.ok ? 'agent-finish' : d.cancelled ? 'agent-cancel' : 'agent-fail', seconds: Math.round((Date.now() - started) / 1000), costUsd: d.costUsd });
       touch(c.id);
@@ -151,6 +160,6 @@ export function createChats({ cwd, file, notify = () => {}, run = defaultRun, ma
     defaultDir: cwd,
     dirs: () => ({ ...dirs }),
     get: (id) => view(get(id)),
-    list: () => [...chats.values()].map(({ id, title, state, created, kind }) => ({ id, title, state, created, kind: kind || 'chat' })).sort((a, b) => b.created.localeCompare(a.created)),
+    list: () => [...chats.values()].map(({ id, title, state, created, kind, outcome, meta }) => ({ id, title, state, created, kind: kind || 'chat', outcome: outcome || null, ticket: meta?.file || null })).sort((a, b) => b.created.localeCompare(a.created)),
   };
 }

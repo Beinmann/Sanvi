@@ -6,7 +6,8 @@ export const DEFAULT_TOOLS = ['Read', 'Grep', 'Glob', 'Edit'];
 
 // startRun({ prompt, cwd, resume?, tools?, maxBudgetUsd? }) -> { cancel(), onEvent(fn), done }
 //   onEvent(fn): fn(event) for each JSON line the CLI prints (stream-json).
-//   done: resolves (never rejects) to { ok, sessionId, text, costUsd, error, cancelled }.
+//   done: resolves (never rejects) to { ok, sessionId, text, costUsd, denials, error, cancelled }.
+//   denials: how many tool calls were refused (a headless run cannot ask for permission).
 //   permissionMode: 'acceptEdits' lets Edit change any file under cwd; 'default' with `allowedTools` (e.g. 'Edit(/abs/file)')
 //   allows only what is listed, everything else is denied because a headless run cannot ask. `addDirs` extends read access.
 export function startRun({ prompt, cwd, resume, tools = DEFAULT_TOOLS, maxBudgetUsd = 2, bin = 'claude', permissionMode = 'acceptEdits', allowedTools, addDirs = [] }) {
@@ -39,7 +40,7 @@ export function startRun({ prompt, cwd, resume, tools = DEFAULT_TOOLS, maxBudget
   };
 
   const done = new Promise((resolve) => {
-    const finish = (extra) => resolve({ ok: false, sessionId, text: '', costUsd: null, error: null, cancelled, ...extra });
+    const finish = (extra) => resolve({ ok: false, sessionId, text: '', costUsd: null, denials: result?.permission_denials?.length || 0, error: null, cancelled, ...extra });
     try {
       child = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) {

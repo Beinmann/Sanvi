@@ -240,3 +240,4 @@ body.has-selection .selhint { display: none; }
 .chatinput { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; } .chatinput textarea { width: 100%; resize: none; padding: 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); }
 .chatpanel .banner { margin: 0; }
 .muted { color: var(--muted); }
+.chip.refining { background: var(--accent-soft); color: var(--accent); }

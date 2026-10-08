@@ -132,6 +132,7 @@ function card(t, inText = false) {
     !project && t.project && el('span', { class: 'chip project', title: 'Project' }, t.project),
     t.area && el('span', { class: 'chip' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
+    agentOn && chatPage.refining(t.file) && el('span', { class: 'chip refining', title: 'Claude is refining this ticket' }, 'refining…'),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
 }
 
@@ -759,6 +760,11 @@ function renderDetail({ fresh = false, edit = false } = {}) {
       field('Project', el('input', { value: d.project, oninput: (e) => { d.project = e.target.value; updateState(); } })),
       field('Priority', select(['', 'high', 'medium', 'low'], d.priority, (v) => { d.priority = v; updateState(); })),
       el('span', { class: 'spacer' }),
+      agentOn && d.status === 'design' && el('button', {
+        type: 'button', id: 'refine-btn', title: 'Let Claude rewrite this ticket (problem, criteria, approach) and move it to open',
+        disabled: chatPage.refining(D.file),
+        onclick: () => refineTicket(D.file),
+      }, chatPage.refining(D.file) ? 'Refining…' : 'Refine with Claude'),
       el('span', { id: 'state', class: 'state' }),
       el('button', { id: 'save', class: 'primary', type: 'button', onclick: save }, 'Save')),
     el('div', { id: 'banner' }),
@@ -966,6 +972,11 @@ initKeys({
     if (location.hash === '#/notes') paintNotes();
   },
   about: () => api('GET', 'about'),
+  agents: () => agentOn,
+  refine: refineTicket,
+  refineAll: () => chatPage.refineAll().catch((e) => toast(`Refine failed: ${e.message}`)),
+  ask: (q) => chatPage.ask(q).catch((e) => toast(`Ask failed: ${e.message}`)),
+  isRefining: (file) => chatPage.refining(file),
   detail: () => D, projects: () => ({ names: orderedProjects(), recent: recentProjects(), current: project, none: NO_PROJECT, mode: switcherMode(), fresh: newProjectValue() }), setProject,
   addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
@@ -1005,8 +1016,25 @@ $('#proj-sel').addEventListener('change', (e) => {
 });
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
+let agentOn = false; // server started with --agents
+async function refineTicket(file) {
+  try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
+}
 const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), project: () => (project === NO_PROJECT ? '' : project) });
-api('GET', 'agent').then((a) => { $('#chat-btn').hidden = !a.enabled; if (a.enabled) chatPage.start(); }).catch(() => {});
+api('GET', 'agent').then((a) => {
+  agentOn = a.enabled;
+  $('#chat-btn').hidden = !a.enabled;
+  if (!a.enabled) return;
+  chatPage.start();
+  let lastKey = '';
+  chatPage.onChange(() => { // repaint the board / detail when the set of tickets being refined changes
+    const key = S.tickets.filter((t) => chatPage.refining(t.file)).map((t) => t.file).join();
+    if (key === lastKey) return;
+    lastKey = key;
+    if (document.querySelector('.board, .tablewrap')) renderBoard();
+    else if (D && !isDirty()) renderDetail();
+  });
+}).catch(() => {});
 $('#idea-btn').addEventListener('click', () => document.dispatchEvent(new Event('open-idea')));
 
 const refreshAll = coalesce(doRefresh); // bursts of refreshes (moves, live events) share one request pair

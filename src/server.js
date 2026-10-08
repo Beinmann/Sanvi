@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  listTickets, readTicket, listScratch, addScratch, deleteScratch, promoteScratch, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
+  IDEA_STATUS, listTickets, readTicket, listScratch, addScratch, deleteScratch, promoteScratch, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
   ConflictError, NotFoundError, ValidationError,
   writeStatuses,
 } from './core.js';
@@ -75,10 +75,22 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   try { purgeTrash(dir); } catch (e) { console.error(`trash purge failed: ${e.message}`); }
 
   const broadcast = (obj) => { for (const c of clients) c.write(`data: ${JSON.stringify(obj)}\n\n`); };
+  // After a refine run: did the ticket change, and is it out of `design`?
+  function checkRefine(c) {
+    if (c.kind !== 'refine') return null;
+    try {
+      const t = readTicket(dir, c.meta.file);
+      if (t.version === c.meta.before) return { outcome: 'problems', warning: 'the ticket was not changed' };
+      if (t.status === IDEA_STATUS) return { outcome: 'questions', warning: 'refined, but the ticket is still in design: open questions are in its Notes' };
+      return { outcome: 'ok' };
+    } catch { return { outcome: 'problems', warning: 'the ticket could not be read afterwards' }; }
+  }
+
   // Agent chats run `claude` on this machine, so they exist only when the server was started with --agents.
   const chats = agents ? createChats({
     cwd: path.dirname(dir),
     file: chatsFile === undefined ? chatsPath(dir) : chatsFile,
+    check: checkRefine,
     run: agentRun,
     notify: (id) => broadcast({ type: 'chat', id }),
     log: (e) => changelog.log({ ticket: '-', ...e }),
@@ -87,9 +99,36 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   // Refine runs as its own chat, queued if the agent slots are busy; the user can open it from the chat list.
   function startRefine(file) {
     const t = readTicket(dir, file);
-    const chat = chats.create({ project: t.project, kind: 'refine', title: `Refine #${t.id}: ${t.title}`.slice(0, 80), runOpts: refineRunOpts({ ticketsDir: dir, file }) });
+    if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} is already being refined`);
+    const chat = chats.create({ project: t.project, kind: 'refine', meta: { file, before: t.version }, title: `Refine #${t.id}: ${t.title}`.slice(0, 80), runOpts: refineRunOpts({ ticketsDir: dir, file }) });
     chats.send(chat.id, `Refine ticket #${t.id} (${file}): rewrite it into problem, acceptance criteria and approach.`, { prompt: refinePrompt({ ticketsDir: dir, file }), queue: true });
     return chat;
+  }
+
+  function startRefineAll() {
+    const started = [];
+    let skipped = 0;
+    for (const t of listTickets(dir)) {
+      if (t.status !== IDEA_STATUS) continue;
+      try { startRefine(t.file); started.push(t.id); } catch { skipped++; }
+    }
+    return { started: started.length, skipped };
+  }
+
+  // A read-only chat about the board: tickets (the working directory) and the change log, no editing, no shell.
+  function startAsk(question) {
+    const logDir = path.join(path.dirname(dir), '.tk');
+    const today = new Date().toISOString().slice(0, 10);
+    // `//x` is an absolute path in a permission rule; reads outside these two directories are refused.
+    const roots = [dir, ...(fs.existsSync(logDir) ? [logDir] : [])];
+    const chat = chats.create({
+      dir, kind: 'ask', title: 'Ask',
+      runOpts: { permissionMode: 'default', tools: ['Read', 'Grep', 'Glob'], allowedTools: roots.flatMap((r) => ['Read', 'Grep', 'Glob'].map((t) => `${t}(/${r}/**)`)), addDirs: roots.slice(1) },
+      preamble: `You answer questions about a ticket board, read-only. Today is ${today}. The tickets are the Markdown files in the current directory; README.md there explains the format (frontmatter with status, area, project, priority; sections; dated Notes). The change log (JSON lines, newest last) is ${path.join(logDir, 'changes.log')} if it exists. Be concise, refer to tickets as #NNN, and say so when the files do not answer the question.\n\nQuestion:`,
+    });
+    if (!String(question || '').trim()) return chat;
+    chats.send(chat.id, question, { queue: true });
+    return chats.get(chat.id);
   }
 
   const summary = ({ body, ...rest }) => rest;
@@ -141,6 +180,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (parts[0] === 'agent') {
       if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir, dirs: chats.dirs() }) });
       if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
+      if (parts[1] === 'refine-all' && parts.length === 2 && method === 'POST') return send(res, 200, startRefineAll());
+      if (parts[1] === 'ask' && parts.length === 2 && method === 'POST') return send(res, 201, startAsk((await readJson(req)).question));
       if (parts[1] === 'refine' && parts.length === 2 && method === 'POST') return send(res, 201, startRefine((await readJson(req)).file));
       if (parts[1] === 'dirs' && parts.length === 2 && method === 'PUT') {
         const { project, dir } = await readJson(req);

@@ -193,3 +193,66 @@ test('refine is not started by ideas unless auto-refine is on', async () => {
     assert.equal(f.calls.length, 0);
   } finally { await app.close(); }
 });
+
+async function refineSetup(files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-out-'));
+  for (const [n, status] of files) fs.writeFileSync(path.join(dir, n), `---\nstatus: ${status}\n---\n# T ${n}\n`);
+  const f = fakeRunner();
+  const app = createTicketServer({ dir, agents: true, agentRun: f.run, chatsFile: null });
+  const { port } = await app.listen(0);
+  const j = (m, p, b) => fetch(`http://127.0.0.1:${port}${p}`, { method: m, headers: { 'content-type': 'application/json' }, body: JSON.stringify(b ?? {}) });
+  const list = async () => (await j('GET', '/api/agent/chats')).json().catch(() => []);
+  return { dir, f, app, j, port, list: async () => (await fetch(`http://127.0.0.1:${port}/api/agent/chats`)).json() };
+}
+
+test('refine outcome: unchanged ticket is a problem, still-design means questions, opened is ok; denials warn', async () => {
+  const s = await refineSetup([['001-a.md', 'design'], ['002-b.md', 'design'], ['003-c.md', 'design']]);
+  try {
+    for (const f of ['001-a.md', '002-b.md', 'x']) if (f !== 'x') assert.equal((await s.j('POST', '/api/agent/refine', { file: f })).status, 201);
+    assert.equal((await s.j('POST', '/api/agent/refine', { file: '001-a.md' })).status, 400); // already being refined
+    assert.equal((await s.j('POST', '/api/agent/refine', { file: 'nope.md' })).status, 404);
+    fs.writeFileSync(path.join(s.dir, '002-b.md'), '---\nstatus: open\n---\n# T refined\n');
+    s.f.calls[0].end(); s.f.calls[1].end({ denials: 2 }); await tick(); await tick();
+    const by = Object.fromEntries((await s.list()).map((c) => [c.ticket, c.outcome]));
+    assert.equal(by['001-a.md'], 'problems');
+    assert.equal(by['002-b.md'], 'problems'); // changed and open, but 2 calls were refused
+    const detail = await (await fetch(`http://127.0.0.1:${s.port}/api/agent/chats/${(await s.list()).find((c) => c.ticket === '002-b.md').id}`)).json();
+    assert.match(detail.warning, /2 tool calls were refused/);
+    fs.writeFileSync(path.join(s.dir, '003-c.md'), '---\nstatus: design\n---\n# T asks\n');
+    assert.equal((await s.j('POST', '/api/agent/refine', { file: '003-c.md' })).status, 201);
+    fs.writeFileSync(path.join(s.dir, '003-c.md'), '---\nstatus: design\n---\n# T asks more\n');
+    s.f.calls[2].end(); await tick();
+    assert.equal((await s.list()).find((c) => c.ticket === '003-c.md').outcome, 'questions');
+    assert.equal((await s.j('POST', '/api/agent/refine', { file: '002-b.md' })).status, 201); // finished, so it may run again
+  } finally { await s.app.close(); }
+});
+
+test('refine-all starts every design ticket not already running', async () => {
+  const s = await refineSetup([['001-a.md', 'design'], ['002-b.md', 'open'], ['003-c.md', 'design']]);
+  try {
+    await s.j('POST', '/api/agent/refine', { file: '001-a.md' });
+    const r = await (await s.j('POST', '/api/agent/refine-all')).json();
+    assert.deepEqual(r, { started: 1, skipped: 1 });
+    assert.deepEqual((await s.list()).map((c) => c.ticket).sort(), ['001-a.md', '003-c.md']);
+  } finally { await s.app.close(); }
+});
+
+test('ask: read-only tools, runs in the tickets dir, preamble only on the first message', async () => {
+  const s = await refineSetup([['001-a.md', 'open']]);
+  try {
+    const chat = await (await s.j('POST', '/api/agent/ask', { question: 'what is open?' })).json();
+    assert.equal(chat.kind, 'ask');
+    assert.equal(chat.title, 'Ask: what is open?');
+    const o = s.f.calls[0].opts;
+    assert.equal(o.cwd, fs.realpathSync(s.dir));
+    assert.deepEqual(o.tools, ['Read', 'Grep', 'Glob']);
+    assert.ok(!o.allowedTools.some((t) => /Edit|Write|Bash/.test(t)));
+    assert.ok(o.allowedTools.every((t) => /^(Read|Grep|Glob)\(\/\/.*\/\*\*\)$/.test(t))); // reads only inside the tickets dir (and the log dir)
+    assert.match(o.prompt, /read-only[\s\S]*what is open\?$/);
+    s.f.calls[0].end(); await tick();
+    await s.j('POST', `/api/agent/chats/${chat.id}/messages`, { text: 'and blocked?' });
+    assert.equal(s.f.calls[1].opts.prompt, 'and blocked?');
+    const empty = await (await s.j('POST', '/api/agent/ask', {})).json(); // no question: an empty ask chat to type into
+    assert.equal(empty.messages.length, 0);
+  } finally { await s.app.close(); }
+});

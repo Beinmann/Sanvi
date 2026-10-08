@@ -16,13 +16,21 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
-  const mark = (c) => (c.state === 'running' ? '… ' : c.state === 'queued' ? '⏳ ' : c.state === 'failed' ? '! ' : c.kind === 'refine' ? '✓ ' : '');
+  const mark = (c) => {
+    if (c.state === 'running') return '… ';
+    if (c.state === 'queued') return '⏳ ';
+    if (c.state === 'failed') return '! ';
+    if (c.kind !== 'refine') return '';
+    return c.outcome === 'problems' ? '⚠ ' : c.outcome === 'questions' ? '? ' : '✓ ';
+  };
+  const changed = [];  // callbacks: the set of tickets being refined may have changed
+  const active = (c) => c.state === 'running' || c.state === 'queued';
   const paintButton = () => {
-    const n = chats.filter((c) => c.state === 'running' || c.state === 'queued').length;
+    const n = chats.filter(active).length;
     button.textContent = n ? `Chat (${n}…)` : 'Chat';
   };
 
-  async function refreshList() { chats = await api('GET', 'agent/chats'); paintButton(); }
+  async function refreshList() { chats = await api('GET', 'agent/chats'); paintButton(); for (const fn of changed) fn(); }
 
   async function openChat(id) {
     if (chat) drafts[chat.id] = panel.querySelector('textarea')?.value ?? drafts[chat.id] ?? '';
@@ -30,6 +38,29 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     store.set('current', chat.id);
     await refreshList();
     paint();
+  }
+
+  // A new read-only "ask about the board" chat, optionally with the first question already sent.
+  async function ask(question) {
+    const c = await api('POST', 'agent/ask', { question: question || '' });
+    if (chat) drafts[chat.id] = panel.querySelector('textarea')?.value ?? drafts[chat.id] ?? '';
+    chat = c;
+    store.set('current', c.id);
+    await toggle(true);
+    await refreshList();
+    paint();
+  }
+
+  async function refine(file) {
+    const c = await api('POST', 'agent/refine', { file });
+    await refreshList();
+    toast(`Refining: ${c.title}`);
+  }
+
+  async function refineAll() {
+    const r = await api('POST', 'agent/refine-all', {});
+    await refreshList();
+    toast(r.started ? `Refining ${r.started} design ticket${r.started > 1 ? 's' : ''}${r.skipped ? ` (${r.skipped} already running)` : ''}` : r.skipped ? 'All design tickets are already being refined' : 'No design tickets to refine');
   }
 
   async function toggle(force) {
@@ -40,7 +71,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       await refreshList();
       const want = store.get('current');
       if (!chat) await openChat(chats.find((c) => c.id === want)?.id ?? chats[0]?.id ?? null);
-      else paint();
+      else { chat = await api('GET', `agent/chats/${chat.id}`); paint(); }
     } catch (e) { toast(`Chat failed: ${e.message}`); }
   }
 
@@ -99,7 +130,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     const typed = keep ? keep.value : drafts[chat.id] ?? '';
     const hadFocus = keep && document.activeElement === keep;
     const input = el('textarea', {
-      rows: 3, placeholder: 'Message Claude (Ctrl+Enter to send)', 'aria-label': 'Message',
+      rows: 3, placeholder: chat.kind === 'ask' ? 'Ask about the board (read-only; Ctrl+Enter to send)' : 'Message Claude (Ctrl+Enter to send)', 'aria-label': 'Message',
       onkeydown: (e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(input); }
         else if (e.key === 'Escape') { e.stopPropagation(); toggle(false); }
@@ -109,10 +140,11 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     const select = el('select', { 'aria-label': 'Chat', onchange: (e) => openChat(e.target.value).catch((err) => toast(err.message)) },
       chats.map((c) => el('option', { value: c.id, selected: c.id === chat.id }, `${mark(c)}${c.title}`)));
     const log = el('div', { class: 'chatlog' },
-      chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, 'Claude runs on this machine with read access to the project and permission to edit files there.'));
+      chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, chat.kind === 'ask' ? 'Ask about tickets and what changed. Claude can only read the tickets and the change log here; it cannot edit anything.' : chat.kind === 'refine' ? 'Refine run: Claude may edit only this ticket.' : 'Claude runs on this machine with read access to the project and permission to edit files there.'));
     panel.classList.toggle('wide', wide);
     show(panel,
       el('div', { class: 'chathead' }, select,
+        el('button', { type: 'button', title: 'New read-only question about the board', onclick: () => ask().catch((e) => toast(e.message)) }, '?'),
         el('button', { type: 'button', title: 'New chat', onclick: () => openChat(null).catch((e) => toast(e.message)) }, '+'),
         el('button', { type: 'button', title: chat.messages.length ? 'The directory is fixed once a chat has started' : 'Change the directory this chat runs in', disabled: !!chat.messages.length, onclick: changeDir }, '📁'),
         el('button', { type: 'button', title: 'Delete this chat', disabled: running, onclick: remove }, '🗑'),
@@ -121,6 +153,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       el('div', { class: 'chatmeta muted', title: `${chat.cwd}\nThe cost is the Claude CLI's own estimate at API prices. On a subscription login it is not charged to you; it counts against your plan limits. With ANTHROPIC_API_KEY set it is real spend.` }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.state === 'queued' ? 'waiting for a free slot…' : chat.costUsd ? `≈ $${chat.costUsd.toFixed(3)} at API rates` : 'ready'}`),
       log,
       chat.error ? el('div', { class: 'banner err' }, chat.error) : null,
+      chat.warning ? el('div', { class: 'banner' }, chat.warning) : null,
       el('div', { class: 'chatinput' }, input,
         running
           ? el('button', { type: 'button', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`, {}).catch((e) => toast(e.message)) }, 'Cancel')
@@ -130,5 +163,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   }
 
   button.addEventListener('click', () => toggle());
-  return { toggle, onEvent, start: () => Promise.all([refreshList(), api('GET', 'agent').then((a) => { info = a; })]).catch(() => {}) };
+  return {
+    toggle, onEvent, ask, refine, refineAll, onChange: (fn) => changed.push(fn),
+    refining: (file) => chats.some((c) => c.ticket === file && active(c)),
+    start: () => Promise.all([refreshList(), api('GET', 'agent').then((a) => { info = a; })]).catch(() => {}),
+  };
 }

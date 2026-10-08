@@ -152,6 +152,8 @@ tk --dir /path/to/tickets serve [--port 4321]
 
 Each chat has a directory (📁; locked after its first message, remembered per project). `--agents --auto-refine` starts a "Refine #N" chat for every new idea: the agent may read the repo and edit only that ticket file, rewrites it per `tickets/README.md` and sets it to `open`, or leaves it in `design` with open questions in a Note. The cost shown is the CLI's estimate at API prices.
 
+Other agent features (all need `--agents`): a "Refine with Claude" button on `design` tickets and the palette command "Refine all design tickets"; "Ask Claude about the board…" (or a palette query ending in `?`) opens a read-only chat that can read only the tickets dir and the change log. After a refine run the chat list shows ✓ (done), ? (refined, questions left in the Notes) or ⚠ (nothing changed, or a tool call was refused).
+
 ## Change log
 
 Writes made **through the web UI** (create, status change, edit, and rejected
