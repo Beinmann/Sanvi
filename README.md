@@ -192,7 +192,7 @@ tk new "<title>" [--area A] [--status S] [--priority P]
 tk status <id|slug> <status>
 tk note <id|slug> "<text>"              # append a timestamped line to the ticket's ## Notes
 tk jot "<text>"                          # same as: tk note --scratch; appends to NOTES.md (no ticket); "tk jot" alone lists
-tk validate          # exit 1 on errors
+tk validate          # exit 1 on errors; closed tickets (`closed_statuses` in _config.yml, default done) skip the missing-section warnings, `--include-closed` shows them
 tk serve [--port N]   # foreground
 tk start [--port N]   # background; free port if taken; prints URL; no duplicate per dir
 tk stop [--all | --port N]   # stop this dir's instance (default), all, or the one on a port

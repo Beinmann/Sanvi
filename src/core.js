@@ -171,11 +171,13 @@ function readList(text, key) {
   return block ? block[1].split(/\r?\n/).map((l) => unquote(l.replace(/^\s*-\s+/, '').replace(/\s+#.*$/, '').trim())).filter(Boolean) : null;
 }
 export function readConfig(dir) {
-  const cfg = { statuses: [...DEFAULT_STATUSES], configured: false };
+  const cfg = { statuses: [...DEFAULT_STATUSES], configured: false, closed: ['done'] };
   let text;
   try { text = fs.readFileSync(path.join(dir, '_config.yml'), 'utf8'); } catch { return cfg; }
   const list = readList(text, 'statuses');
   if (list && list.length) { cfg.statuses = list; cfg.configured = true; }
+  const closed = readList(text, 'closed_statuses');
+  if (closed) cfg.closed = closed;
   return cfg;
 }
 
@@ -519,7 +521,8 @@ export function saveAsset(dir, file, buf, mime) {
 
 // --- validation -------------------------------------------------------
 
-export function validate(dir) {
+/** `includeClosed` also reports the missing-section warnings for closed tickets (`closed_statuses` in `_config.yml`, default `done`). */
+export function validate(dir, { includeClosed = false } = {}) {
   const problems = [];
   const add = (file, level, message) => problems.push({ file, level, message });
   const cfg = readConfig(dir);
@@ -534,8 +537,10 @@ export function validate(dir) {
     else if (!t.status) add(t.file, 'error', 'missing status');
     else if (!cfg.statuses.includes(t.status)) add(t.file, 'warn', `status "${t.status}" is not in ${cfg.statuses.join(' | ')}`);
     if (!t.hasTitle) add(t.file, 'warn', 'no "# title" heading');
-    if (!/^##\s+Problem/im.test(t.body)) add(t.file, 'warn', 'no "Problem / motivation" section');
-    if (!/^##\s+Acceptance criteria/im.test(t.body)) add(t.file, 'warn', 'no "Acceptance criteria" section');
+    if (includeClosed || !cfg.closed.includes(t.status)) {
+      if (!/^##\s+Problem/im.test(t.body)) add(t.file, 'warn', 'no "Problem / motivation" section');
+      if (!/^##\s+Acceptance criteria/im.test(t.body)) add(t.file, 'warn', 'no "Acceptance criteria" section');
+    }
     for (const m of t.body.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)) {
       const u = m[1];
       if (/^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(u)) continue;

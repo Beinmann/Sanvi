@@ -30,7 +30,7 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   rm <id|slug>                            move a ticket (and its images) to the trash (kept 30 days)
   trash                                   list deleted tickets with days left
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
-  validate                                check format; exit 1 on errors
+  validate [--include-closed]             check format; exit 1 on errors (closed tickets skip missing-section warnings)
   serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine]]
                                           run the web UI in the foreground; --agents runs an AI agent (isolated systems only) (hosts *.localhost are always allowed)
   start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine]]
@@ -47,6 +47,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--json') flags.json = true;
     else if (a === '--all') flags.all = true;
+    else if (a === '--include-closed') flags['include-closed'] = true;
     else if (a === '--scratch') flags.scratch = true;
     else if (a === '-d') flags.dir = argv[++i];
     else if (a === '--auto-port') flags['auto-port'] = true;
@@ -160,7 +161,7 @@ async function main() {
     }
     case 'validate': {
       const { projectProblems } = await import('../src/projects.js');
-      const problems = [...validate(dir), ...projectProblems(dir)];
+      const problems = [...validate(dir, { includeClosed: !!flags['include-closed'] }), ...projectProblems(dir)];
       out(problems, problems.length ? problems.map((p) => `${p.level.padEnd(5)} ${p.file}: ${p.message}`).join('\n') : 'ok');
       if (problems.some((p) => p.level === 'error')) process.exitCode = 1;
       break;

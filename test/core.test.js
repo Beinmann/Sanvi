@@ -129,6 +129,16 @@ test('validate flags problems but tolerates unknown statuses', () => {
   assert.ok(!p.some((x) => x.file === '001-sample-ticket.md'));
 });
 
+test('validate skips missing-section warnings for closed tickets unless asked', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, '004-old.md'), '---\nstatus: done\n---\n# T\n');
+  const sections = (p) => p.filter((x) => x.file === '004-old.md' && /section/.test(x.message));
+  assert.equal(sections(validate(dir)).length, 0);
+  assert.equal(sections(validate(dir, { includeClosed: true })).length, 2);
+  fs.writeFileSync(path.join(dir, '_config.yml'), 'closed_statuses: []\n');
+  assert.equal(sections(validate(dir)).length, 2);
+});
+
 test('slugify', () => {
   assert.equal(slugify('  Hello,   World! '), 'hello-world');
   assert.equal(slugify('日本語'), 'ticket');
