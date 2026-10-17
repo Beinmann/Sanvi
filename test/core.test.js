@@ -134,7 +134,9 @@ test('validate skips missing-section warnings for closed tickets unless asked', 
   fs.writeFileSync(path.join(dir, '004-old.md'), '---\nstatus: done\n---\n# T\n');
   const sections = (p) => p.filter((x) => x.file === '004-old.md' && /section/.test(x.message));
   assert.equal(sections(validate(dir)).length, 0);
-  assert.equal(sections(validate(dir, { includeClosed: true })).length, 2);
+  assert.equal(sections(validate(dir, { closedWarnings: true })).length, 2);
+  fs.writeFileSync(path.join(dir, '005-dropped.md'), '---\nstatus: discarded\n---\n# T\n');
+  assert.equal(validate(dir).filter((x) => x.file === '005-dropped.md' && /section/.test(x.message)).length, 0);
   fs.writeFileSync(path.join(dir, '_config.yml'), 'closed_statuses: []\n');
   assert.equal(sections(validate(dir)).length, 2);
 });

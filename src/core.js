@@ -171,7 +171,7 @@ function readList(text, key) {
   return block ? block[1].split(/\r?\n/).map((l) => unquote(l.replace(/^\s*-\s+/, '').replace(/\s+#.*$/, '').trim())).filter(Boolean) : null;
 }
 export function readConfig(dir) {
-  const cfg = { statuses: [...DEFAULT_STATUSES], configured: false, closed: ['done'] };
+  const cfg = { statuses: [...DEFAULT_STATUSES], configured: false, closed: ['done', 'discarded'] };
   let text;
   try { text = fs.readFileSync(path.join(dir, '_config.yml'), 'utf8'); } catch { return cfg; }
   const list = readList(text, 'statuses');
@@ -521,8 +521,8 @@ export function saveAsset(dir, file, buf, mime) {
 
 // --- validation -------------------------------------------------------
 
-/** `includeClosed` also reports the missing-section warnings for closed tickets (`closed_statuses` in `_config.yml`, default `done`). */
-export function validate(dir, { includeClosed = false } = {}) {
+/** `closedWarnings` also reports the missing-section warnings for closed tickets (`closed_statuses` in `_config.yml`, default `done` and `discarded`). */
+export function validate(dir, { closedWarnings = false } = {}) {
   const problems = [];
   const add = (file, level, message) => problems.push({ file, level, message });
   const cfg = readConfig(dir);
@@ -537,7 +537,7 @@ export function validate(dir, { includeClosed = false } = {}) {
     else if (!t.status) add(t.file, 'error', 'missing status');
     else if (!cfg.statuses.includes(t.status)) add(t.file, 'warn', `status "${t.status}" is not in ${cfg.statuses.join(' | ')}`);
     if (!t.hasTitle) add(t.file, 'warn', 'no "# title" heading');
-    if (includeClosed || !cfg.closed.includes(t.status)) {
+    if (closedWarnings || !cfg.closed.includes(t.status)) {
       if (!/^##\s+Problem/im.test(t.body)) add(t.file, 'warn', 'no "Problem / motivation" section');
       if (!/^##\s+Acceptance criteria/im.test(t.body)) add(t.file, 'warn', 'no "Acceptance criteria" section');
     }
