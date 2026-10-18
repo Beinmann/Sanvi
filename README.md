@@ -156,7 +156,7 @@ tk --dir /path/to/tickets serve [--port 4321]
   your text.
 - **Saves are refused if the file changed since you loaded it** (HTTP 409);
   nothing is written until you choose how to resolve it.
-- Listens on `127.0.0.1` by default and rejects foreign `Host`/`Origin` headers (DNS-rebinding protection). `localhost`, `127.0.0.1` and `*.localhost` are allowed; add others with `--allow-host a,b`. Behind a proxy that reaches the server over a network, also pass `--host 0.0.0.0`; the Host check then still blocks direct IP access.
+- Listens on `127.0.0.1` by default and rejects foreign `Host`/`Origin` headers (DNS-rebinding protection). `localhost`, `127.0.0.1` and `*.localhost` are allowed; add others with `--allow-host a,b`. To serve the LAN pass `--host 0.0.0.0` (or one interface's IP): the bound IP, or for `0.0.0.0` every non-loopback interface IP, is allowed in the Host check automatically (other hostnames still need `--allow-host`), and startup prints the `http://<ip>:<port>` URLs plus a warning, since there is no authentication. `--agents` on a non-loopback host is refused unless you add `--allow-agents-on-network`.
 
 ## Chat with Claude (`--agents`, prototype)
 

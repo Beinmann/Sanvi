@@ -33,6 +33,8 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   validate [--closed-warnings]            check format; exit 1 on errors (closed tickets skip missing-section warnings)
   serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine]]
                                           run the web UI in the foreground; --agents runs an AI agent (isolated systems only) (hosts *.localhost are always allowed)
+                                          --host 0.0.0.0 serves the LAN (its IPs are allowed automatically; no auth, so trusted networks only;
+                                          --agents on the network also needs --allow-agents-on-network)
   start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine]]
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
@@ -53,6 +55,7 @@ function parseArgs(argv) {
     else if (a === '--auto-port') flags['auto-port'] = true;
     else if (a === '--agents') flags.agents = true;
     else if (a === '--auto-refine') flags['auto-refine'] = true;
+    else if (a === '--allow-agents-on-network') flags['allow-agents-on-network'] = true;
     else if (a.startsWith('--')) flags[a.slice(2)] = argv[++i];
     else pos.push(a);
   }
@@ -180,6 +183,7 @@ async function main() {
       const args = [fileURLToPath(import.meta.url), '--dir', dir, 'serve', '--auto-port'];
       if (flags.agents) args.push('--agents');
       if (flags['auto-refine']) args.push('--auto-refine');
+      if (flags['allow-agents-on-network']) args.push('--allow-agents-on-network');
       for (const k of ['port', 'host', 'allow-host']) if (flags[k]) args.push(`--${k}`, flags[k]);
       const child = spawn(process.execPath, args, { detached: true, stdio: ['ignore', fd, fd] });
       child.unref();
@@ -204,9 +208,12 @@ async function main() {
       const existing = findInstance(dir);
       if (existing) throw new ValidationError(`already running for this dir (pid ${existing.pid}): ${existing.url}`);
       if (flags['auto-refine'] && !flags.agents) throw new ValidationError('--auto-refine needs --agents');
-      const { createTicketServer } = await import('../src/server.js');
-      const app = createTicketServer({ dir, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents, autoRefine: !!flags['auto-refine'] });
-      const host = flags.host || '127.0.0.1';
+      const { createTicketServer, bindHosts, isLoopback } = await import('../src/server.js');
+      const bindHost = flags.host || '127.0.0.1';
+      const networked = !isLoopback(bindHost);
+      if (networked && flags.agents && !flags['allow-agents-on-network']) throw new ValidationError('--agents with a non-loopback --host lets anyone on the network run the agent; add --allow-agents-on-network to confirm');
+      const app = createTicketServer({ dir, bindHost, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents, autoRefine: !!flags['auto-refine'] });
+      const host = bindHost;
       const want = flags.port === undefined ? 4321 : Number(flags.port);
       let addr;
       try { addr = await app.listen(want, host); } catch (e) {
@@ -221,6 +228,11 @@ async function main() {
       process.on('SIGTERM', bye);
       process.on('exit', () => unregister(dir, process.pid));
       console.log(`serving ${dir}\n${url}`);
+      if (networked) {
+        const lan = bindHosts(host).map((h) => `http://${h}:${addr.port}`);
+        console.log(`WARNING: listening on ${host}; anyone who can reach this port can read and edit the tickets${flags.agents ? ' and run the agent' : ''} (no auth)`);
+        if (lan.length) console.log(`on the network: ${lan.join('  ')}`);
+      }
       break;
     }
     default:

@@ -2,6 +2,7 @@
 // SSE stream that tells browsers when anything in the directory changed.
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -30,6 +31,19 @@ function staticFile(pathname) {
   return type && fs.existsSync(file) ? [file, type] : null;
 }
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+export const isLoopback = (host) => host === 'localhost' || host === '::1' || host.startsWith('127.');
+
+// Host-header values that reach a server bound to `bindHost`: the address itself, or for a wildcard
+// bind (0.0.0.0 / ::) every non-loopback interface address. Loopback binds add nothing.
+export function bindHosts(bindHost) {
+  if (!bindHost || isLoopback(bindHost)) return [];
+  const wild = bindHost === '0.0.0.0' || bindHost === '::';
+  const addrs = wild
+    ? Object.values(os.networkInterfaces()).flat().filter((i) => i && !i.internal).map((i) => i.address)
+    : [bindHost];
+  return addrs.map((a) => (a.includes(':') ? `[${a.toLowerCase()}]` : a.toLowerCase()));
+}
 
 function send(res, status, obj) {
   const body = JSON.stringify(obj);
@@ -65,8 +79,8 @@ function readBuffer(req, limit) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false }) {
-  const extraHosts = new Set(allowedHosts.map((h) => h.toLowerCase()));
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false, bindHost }) {
+  const extraHosts = new Set([...allowedHosts.map((h) => h.toLowerCase()), ...bindHosts(bindHost)]);
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h);
   dir = path.resolve(dir);
