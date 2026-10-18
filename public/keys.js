@@ -151,7 +151,14 @@ export function initKeys(ctx) {
     ctx.select(file);
     scrollToCard(file);
   }
-  const scrollToCard = (file) => [...document.querySelectorAll('.card')].find((c) => c.dataset.file === file)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // The sticky header would cover a card scrolled to the viewport edge (style.css gives .card a scroll-margin-top);
+  // the first card of a column goes to the very top so the column heading and the page above it show too.
+  const scrollToCard = (file) => {
+    const card = [...document.querySelectorAll('.card')].find((c) => c.dataset.file === file);
+    if (!card) return;
+    if (card.closest('.col')?.querySelector('.card') === card) window.scrollTo({ top: 0, left: window.scrollX });
+    card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
   function contextFile() {
     const r = hashRoute();
     if (r === 'detail') return ctx.detail()?.file ?? null;
