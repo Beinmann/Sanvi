@@ -367,7 +367,12 @@ export function initKeys(ctx) {
     closeMenu();
     if (was === file || overlay) return;
     const entry = (label, hint, run) => el('button', { type: 'button', role: 'menuitem', onclick: () => { closeMenu(); run(); } }, label, el('kbd', {}, hint));
-    menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file }, entry('Add comment', 'c', () => openNote(file)), entry('Delete…', 'd', () => openConfirmDelete(file)));
+    const refinable = ctx.agents?.() && S.tickets.find((x) => x.file === file)?.status === 'design';
+    const refining = refinable && ctx.isRefining(file);
+    menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file },
+      entry('Add comment', 'c', () => openNote(file)),
+      ...(refinable ? [entry(refining ? 'Claude is refining this ticket…' : 'Refine with Claude', 'agent', () => { if (!refining) ctx.refine(file); })] : []),
+      entry('Delete…', 'd', () => openConfirmDelete(file)));
     document.body.append(menu);
     const r = anchor.getBoundingClientRect();
     menu.style.left = `${Math.max(4, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 4))}px`;
