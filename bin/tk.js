@@ -75,6 +75,12 @@ function findDir(flag) {
 
 const brief = (t) => `${t.id}  ${(t.status || '-').padEnd(12)} ${(t.area || '').padEnd(14)} ${t.title}`;
 
+// Flag combinations `serve` refuses; `start` runs the same check before detaching so the error shows in the terminal.
+function checkServeFlags(flags, isLoopback) {
+  if (flags['auto-refine'] && !flags.agents) throw new ValidationError('--auto-refine needs --agents');
+  if (flags.agents && !isLoopback(flags.host || '127.0.0.1') && !flags['allow-agents-on-network']) throw new ValidationError('--agents with a non-loopback --host lets anyone on the network run the agent; add --allow-agents-on-network to confirm');
+}
+
 async function main() {
   if (process.argv.slice(2).some((a) => a === '--version' || a === '-v')) return console.log(versionLine());
   const { flags, pos } = parseArgs(process.argv.slice(2));
@@ -177,6 +183,7 @@ async function main() {
     case 'start': {
       const running = findInstance(dir);
       if (running) { console.log(`already running (pid ${running.pid}): ${running.url}\n${dir}`); break; }
+      checkServeFlags(flags, (await import('../src/server.js')).isLoopback); // fail here, not only in the log of the detached child
       const log = logPath(dir);
       fs.mkdirSync(path.dirname(log), { recursive: true });
       const fd = fs.openSync(log, 'a');
@@ -188,7 +195,10 @@ async function main() {
       const child = spawn(process.execPath, args, { detached: true, stdio: ['ignore', fd, fd] });
       child.unref();
       const e = await waitForInstance(dir, child.pid);
-      if (!e) throw new ValidationError(`server did not start; see ${log}`);
+      if (!e) {
+        const tail = fs.readFileSync(log, 'utf8').trim().split('\n').slice(-5).join('\n');
+        throw new ValidationError(`server did not start; see ${log}${tail ? `\n${tail}` : ''}`);
+      }
       console.log(`started (pid ${e.pid}): ${e.url}\n${dir}\nlog: ${log}`);
       break;
     }
@@ -207,11 +217,10 @@ async function main() {
     case 'serve': {
       const existing = findInstance(dir);
       if (existing) throw new ValidationError(`already running for this dir (pid ${existing.pid}): ${existing.url}`);
-      if (flags['auto-refine'] && !flags.agents) throw new ValidationError('--auto-refine needs --agents');
       const { createTicketServer, bindHosts, isLoopback } = await import('../src/server.js');
+      checkServeFlags(flags, isLoopback);
       const bindHost = flags.host || '127.0.0.1';
       const networked = !isLoopback(bindHost);
-      if (networked && flags.agents && !flags['allow-agents-on-network']) throw new ValidationError('--agents with a non-loopback --host lets anyone on the network run the agent; add --allow-agents-on-network to confirm');
       const app = createTicketServer({ dir, bindHost, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents, autoRefine: !!flags['auto-refine'] });
       const host = bindHost;
       const want = flags.port === undefined ? 4321 : Number(flags.port);
