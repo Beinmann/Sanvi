@@ -124,7 +124,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
 
   async function toggle(force) {
     isOpen = force ?? !isOpen;
-    if (!isOpen) full = false;
+    if (!isOpen) { full = false; panel.classList.remove('full'); } // else the stale full-screen class shows on reopen
     panel.hidden = !isOpen;
     if (!isOpen) return;
     try {
