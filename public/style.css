@@ -239,6 +239,8 @@ body.has-selection .selhint { display: none; }
 .msg .who { font-size: 12px; color: var(--muted); font-weight: 600; } .msg .md p:first-child { margin-top: 2px; } .msg .md p:last-child { margin-bottom: 0; }
 .msg .tools { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .chatinput { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; } .chatinput textarea { width: 100%; resize: none; padding: 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); }
+.msg:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chathint { font-size: 11px; line-height: 1.3; }
 .chatpanel .banner { margin: 0; }
 .muted { color: var(--muted); }
 .chip.refining { background: var(--accent-soft); color: var(--accent); }
