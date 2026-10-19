@@ -443,6 +443,7 @@ export function initKeys(ctx) {
       rows: () => [
         { label: 'Open', hint: 'Enter', run: () => { location.hash = `#/t/${encodeURIComponent(t.file)}`; } },
         ...(ctx.agents?.() && t.status === 'design' ? [{ label: ctx.isRefining(t.file) ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', run: () => ctx.refine(t.file) }] : []),
+        ...(ctx.agents?.() ? [{ label: 'Implement with Claude', hint: 'agent', run: () => ctx.implement(t.file) }] : []),
         { label: 'Change status…', hint: hint('status'), push: () => valueLevel(t, 'status') },
         { label: 'Change priority…', hint: hint('priority'), push: () => valueLevel(t, 'priority') },
         { label: 'Change project…', hint: hint('project'), push: () => valueLevel(t, 'project') },
@@ -508,7 +509,13 @@ export function initKeys(ctx) {
         const t = file && S.tickets.find((x) => x.file === file);
         const rows = [];
         if (q.trim().endsWith('?') && ctx.agents?.()) rows.push({ heading: 'Ask' }, { label: `Ask Claude: “${q.trim()}”`, hint: 'read-only', always: true, run: () => ctx.ask(q.trim()) });
-        if (t) rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', cmd: true, push: () => ticketLevel(t) });
+        if (t) {
+          rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', cmd: true, push: () => ticketLevel(t) });
+          if (ctx.agents?.()) {
+            if (t.status === 'design') { const refining = ctx.isRefining(t.file); rows.push({ label: refining ? 'Claude is refining this ticket…' : 'Refine this ticket', hint: 'agent', cmd: true, run: () => { if (!refining) ctx.refine(t.file); } }); }
+            rows.push({ label: 'Implement with Claude', hint: 'agent', cmd: true, run: () => ctx.implement(t.file) });
+          }
+        }
         rows.push({ heading: 'Commands' },
           { cmd: true, label: 'New ticket', hint: 'n', run: () => { location.hash = '#/new'; } },
           { cmd: true, label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
