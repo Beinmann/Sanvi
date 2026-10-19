@@ -138,7 +138,7 @@ tk --dir /path/to/tickets serve [--port 4321]
 - Keyboard (press **?** for the overlay): **Ctrl+K** command menu (jump to a
   ticket, set status, new ticket); on the board `j/k` `h/l` move focus, `/`
   focuses search, `Enter` opens, `s` sets status, `1`-`9` moves the focused card to that column (the numbers show on the headers while a card is focused or dragged), `n`
-  creates, `b` goes to the board; in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
+  creates, `b` goes to the board, `a` opens/closes the Claude chat (with `--agents`); in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
   goes back. Single-key hotkeys are off while typing in a field.
 - Description editor: optional **Vim mode** (checkbox under the editor,
   remembered per browser; off by default). Home-grown subset, no
@@ -160,7 +160,7 @@ tk --dir /path/to/tickets serve [--port 4321]
 
 ## Chat with Claude (`--agents`, prototype)
 
-`tk serve --agents` (or `tk start --agents`) adds a **Chat** button that talks to the Claude Code CLI installed on this machine. It runs `claude -p` headless in the parent of the tickets dir, with read tools plus Edit only, using whatever login the CLI already has; Sanvi stores no credentials. Each message is one run, resumed with `--resume`, so the chat keeps its context. Without `--agents` the button is hidden and `/api/agent/*` answers 403, because this runs code on your machine. If `ANTHROPIC_API_KEY` is set in the environment of the server, the CLI uses it and bills at API rates.
+`tk serve --agents` (or `tk start --agents`) adds a **Chat** button (hotkey `a`) that talks to the Claude Code CLI installed on this machine. It runs `claude -p` headless in the parent of the tickets dir, with read tools plus Edit only, using whatever login the CLI already has; Sanvi stores no credentials. Each message is one run, resumed with `--resume`, so the chat keeps its context. Without `--agents` the button is hidden and `/api/agent/*` answers 403, because this runs code on your machine. If `ANTHROPIC_API_KEY` is set in the environment of the server, the CLI uses it and bills at API rates.
 
 Each chat has a directory: typed into the field above a new chat (no native file dialog, so it works when Sanvi runs in a container or on another host), locked after the first message, and taken from the chat's project by default.
 
