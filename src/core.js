@@ -128,12 +128,12 @@ export function isTicketFile(name) {
   return FILE_RE.test(name);
 }
 
-function resolveFile(dir, file) {
+function resolveFile(dir, file, mustExist = true) {
   if (typeof file !== 'string' || file !== path.basename(file) || !isTicketFile(file)) {
     throw new NotFoundError(`not a ticket file: ${file}`);
   }
   const p = path.join(dir, file);
-  if (!fs.existsSync(p)) throw new NotFoundError(`no such ticket: ${file}`);
+  if (mustExist && !fs.existsSync(p)) throw new NotFoundError(`no such ticket: ${file}`);
   return p;
 }
 
@@ -163,18 +163,30 @@ const SETTLE_GRACE_MS = 3000;
 const lastGood = new Map(); // dir/file -> { ticket, suspectSince }
 const suspect = (t, prev) => !t || t.version === hash('') || (prev && prev.ticket.hasFrontmatter && !t.hasFrontmatter);
 
+// One ticket as the UI should see it: settled re-read, and the last good copy while the file is mid-save. null: really gone.
+function settledTicket(dir, name) {
+  const key = path.join(dir, name);
+  const prev = lastGood.get(key);
+  const t = readSettled(dir, name);
+  if (suspect(t, prev)) {
+    const since = prev?.suspectSince || Date.now();
+    if (prev && Date.now() - since < SETTLE_GRACE_MS) { lastGood.set(key, { ticket: prev.ticket, suspectSince: since }); return prev.ticket; }
+  } else lastGood.set(key, { ticket: t, suspectSince: 0 });
+  return t;
+}
+
+// Same as readTicket, but a ticket caught mid-save (empty, absent, frontmatter-less) is served as its last good copy.
+export function readTicketSettled(dir, file) {
+  resolveFile(dir, file, false);
+  return settledTicket(dir, file) || readTicket(dir, file);
+}
+
 export function listTickets(dir) {
   const out = [];
   const names = fs.readdirSync(dir).filter(isTicketFile);
   const seen = new Set(names);
   for (const name of names) {
-    const key = path.join(dir, name);
-    const prev = lastGood.get(key);
-    const t = readSettled(dir, name);
-    if (suspect(t, prev)) {
-      const since = prev?.suspectSince || Date.now();
-      if (prev && Date.now() - since < SETTLE_GRACE_MS) { lastGood.set(key, { ticket: prev.ticket, suspectSince: since }); out.push(prev.ticket); continue; }
-    } else lastGood.set(key, { ticket: t, suspectSince: 0 });
+    const t = settledTicket(dir, name);
     if (t) out.push(t);
   }
   // listed by the directory a moment ago but gone now: a rename-style save in progress
