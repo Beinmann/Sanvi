@@ -298,3 +298,20 @@ test('validate still reports hand-made duplicate ids', () => {
   fs.writeFileSync(path.join(dir, '001-other.md'), SAMPLE);
   assert.ok(validate(dir).some((p) => /duplicate id/.test(p.message)));
 });
+
+test('ids grow past 999 without migration: allocation, order, lookup, validate', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-'));
+  for (const id of ['998', '999']) fs.writeFileSync(path.join(dir, id + '-t' + id + '.md'), SAMPLE);
+  const a = createTicket(dir, { title: 'Next one' });
+  const b = createIdea(dir, { text: 'A quick idea.' });
+  assert.equal(a.id, '1000');
+  assert.equal(b.id, '1001');
+  assert.deepEqual(listTickets(dir).map((t) => t.id), ['998', '999', '1000', '1001']);
+  assert.equal(findTicket(dir, '1000').id, '1000');
+  assert.equal(findTicket(dir, '999').id, '999');
+  assert.equal(findTicket(dir, '0998').id, '998');
+  const saved = saveTicket(dir, a.file, { fields: { status: 'done' } }, a.version);
+  assert.equal(saved.status, 'done');
+  assert.equal(validate(dir).filter((p) => /id/.test(p.message)).length, 0);
+  assert.ok(fs.existsSync(path.join(dir, '.ids', '1000')));
+});
