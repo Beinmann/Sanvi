@@ -215,6 +215,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (parts[0] === 'agent') {
       if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir }) });
       if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
+      if (parts[1] === 'usage' && parts.length === 2 && method === 'GET') return send(res, 200, chats.usage());
       if (parts[1] === 'refine-all' && parts.length === 2 && method === 'POST') return send(res, 200, startRefineAll());
       if (parts[1] === 'ask' && parts.length === 2 && method === 'POST') return send(res, 201, startAsk((await readJson(req)).question));
       if (parts[1] === 'implement' && parts.length === 2 && method === 'POST') return send(res, 201, startImplement((await readJson(req)).file));

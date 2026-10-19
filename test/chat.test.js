@@ -46,6 +46,17 @@ test('a message starts a run, resumes the session on the next one, and records t
   assert.equal(chats.get(c.id).costUsd, 0.01);
 });
 
+test('usage sums the cost of all chats under the claude provider', async () => {
+  const f = fakeRunner();
+  const chats = createChats({ cwd: '/work', run: f.run });
+  assert.equal(chats.usage().claude.costUsd, 0);
+  const a = chats.create(); const b = chats.create();
+  chats.send(a.id, 'one'); f.calls[0].end(); await tick();
+  chats.send(b.id, 'two'); f.calls[1].end(); await tick();
+  assert.equal(chats.usage().claude.costUsd, 0.02);
+  assert.equal(chats.usage().claude.chats, 2);
+});
+
 test('one run per chat, a global limit, cancel, and failures are shown', async () => {
   const f = fakeRunner();
   const chats = createChats({ cwd: '/w', run: f.run, maxRuns: 2 });
@@ -100,6 +111,9 @@ test('agent routes are refused unless the server was started with agents', async
       assert.equal((await (await fetch(`${base}/api/agent`)).json()).enabled, expect === 201);
       const r = await fetch(`${base}/api/agent/chats`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
       assert.equal(r.status, expect);
+      const usage = await fetch(`${base}/api/agent/usage`);
+      assert.equal(usage.status, expect === 201 ? 200 : 403);
+      if (expect === 201) assert.equal((await usage.json()).claude.costUsd, 0);
       const cross = await fetch(`${base}/api/agent/chats`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://evil.example' }, body: '{}' });
       assert.equal(cross.status, 403);
     }

@@ -160,6 +160,8 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
   return {
     create, send, cancel, remove, setCwd,
     defaultDir: cwd,
+    // Cost recorded by Sanvi per provider; only Claude exists today, another provider adds a key.
+    usage: () => ({ claude: { costUsd: [...chats.values()].reduce((sum, c) => sum + (c.costUsd || 0), 0), chats: chats.size } }),
     get: (id) => view(get(id)),
     list: () => [...chats.values()].map(({ id, title, state, created, kind, outcome, meta, ticketId, project }) => ({ id, title, state, created, kind: kind || 'chat', outcome: outcome || null, ticket: meta?.file || null, ticketId: ticketId || null, project: project || '' })).sort((a, b) => b.created.localeCompare(a.created)),
   };
