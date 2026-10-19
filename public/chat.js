@@ -91,6 +91,12 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     toast(`Refining: ${c.title}`);
   }
 
+  async function implement(file) {
+    const c = await api('POST', 'agent/implement', { file });
+    await refreshList();
+    toast(`Implementing: ${c.title}`);
+  }
+
   async function refineAll() {
     const r = await api('POST', 'agent/refine-all', {});
     await refreshList();
@@ -197,7 +203,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
 
   button.addEventListener('click', () => toggle());
   return {
-    toggle, onEvent, ask, refine, refineAll, onChange: (fn) => changed.push(fn),
+    toggle, onEvent, ask, refine, implement, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && active(c)),
     start: () => refreshList().catch(() => {}),
   };

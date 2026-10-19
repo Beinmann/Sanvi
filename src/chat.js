@@ -19,7 +19,7 @@ export function resolveDir(input) {
   } catch { throw new ValidationError(`not a directory: ${p}`); }
 }
 
-export function createChats({ cwd, file, check, projectInfo = () => ({}), notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
+export function createChats({ cwd, file, check, projectInfo = () => ({}), finalize, notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
   const chats = new Map();
   let running = 0;
   const pending = []; // ids of chats waiting for a free slot
@@ -114,6 +114,11 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), notify
       c.active = null;
       if (d.sessionId) c.sessionId = d.sessionId;
       if (d.costUsd) c.costUsd += d.costUsd;
+      if (d.ok && finalize && c.kind === 'implement') { // post-run work (merge); a failure there fails the chat
+        let v;
+        try { v = finalize(c, d); } catch (e) { v = { ok: false, error: e.message }; }
+        if (!v.ok) { d = { ...d, ok: false, error: v.error }; }
+      }
       if (d.ok) {
         c.state = 'idle'; if (!reply.text) reply.text = d.text;
         const verdict = check?.(c, d) || {};

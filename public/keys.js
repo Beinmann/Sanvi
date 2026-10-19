@@ -372,6 +372,7 @@ export function initKeys(ctx) {
     menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file },
       entry('Add comment', 'c', () => openNote(file)),
       ...(refinable ? [entry(refining ? 'Claude is refining this ticket…' : 'Refine with Claude', 'agent', () => { if (!refining) ctx.refine(file); })] : []),
+      ...(ctx.agents?.() ? [entry('Implement with Claude', 'agent', () => ctx.implement(file))] : []),
       entry('Delete…', 'd', () => openConfirmDelete(file)));
     document.body.append(menu);
     const r = anchor.getBoundingClientRect();

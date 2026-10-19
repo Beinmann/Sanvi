@@ -13,7 +13,8 @@ import {
 import { formatNote } from '../public/notes.js';
 import { buildInfo, commitsBehind } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
-import { createChats } from './chat.js';
+import { createChats, resolveDir } from './chat.js';
+import { implementPrompt, implementRunOpts, createWorktree, mergeWorktree } from './implement.js';
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
@@ -106,6 +107,10 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     cwd: path.dirname(dir),
     file: chatsFile === undefined ? chatsPath(dir) : chatsFile,
     check: checkRefine,
+    finalize: (c) => {
+      const m = mergeWorktree(c.meta.wt);
+      return m.merged ? { ok: true } : { ok: false, error: `${m.error}. Nothing was merged; the worktree is kept at ${c.meta.wt.worktree} (branch ${c.meta.wt.branch})` };
+    },
     projectInfo: (name) => projectInfo(dir, name),
     run: agentRun,
     notify: (id) => broadcast({ type: 'chat', id }),
@@ -129,6 +134,17 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       try { startRefine(t.file); started.push(t.id); } catch { skipped++; }
     }
     return { started: started.length, skipped };
+  }
+
+  // Implement runs in a new worktree of the project's repo and is merged into its current branch when it finishes cleanly.
+  function startImplement(file) {
+    const t = readTicket(dir, file);
+    if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} already has an agent running`);
+    const info = projectInfo(dir, t.project);
+    const wt = createWorktree({ dir: resolveDir(info.dir || path.dirname(dir)), id: t.id });
+    const chat = chats.create({ dir: wt.worktree, project: t.project, kind: 'implement', meta: { file, wt }, title: `Implement #${t.id}: ${t.title}`.slice(0, 80), runOpts: implementRunOpts({ ticketsDir: dir, file }) });
+    chats.send(chat.id, `Implement ticket #${t.id} (${file}) in worktree ${wt.branch}; merged into ${wt.base} when done.`, { prompt: implementPrompt({ ticketsDir: dir, file, project: t.project, instructions: info.instructions }), queue: true });
+    return chat;
   }
 
   // A read-only chat about the board: tickets (the working directory) and the change log, no editing, no shell.
@@ -198,6 +214,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
       if (parts[1] === 'refine-all' && parts.length === 2 && method === 'POST') return send(res, 200, startRefineAll());
       if (parts[1] === 'ask' && parts.length === 2 && method === 'POST') return send(res, 201, startAsk((await readJson(req)).question));
+      if (parts[1] === 'implement' && parts.length === 2 && method === 'POST') return send(res, 201, startImplement((await readJson(req)).file));
       if (parts[1] === 'refine' && parts.length === 2 && method === 'POST') return send(res, 201, startRefine((await readJson(req)).file));
       if (parts[1] !== 'chats') return send(res, 404, { error: 'not found' });
       if (parts.length === 2 && method === 'GET') return send(res, 200, chats.list());
