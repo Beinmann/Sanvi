@@ -81,7 +81,7 @@ function readBuffer(req, limit) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false, bindHost, limitsFetch }) {
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false, bindHost, limitsProbe }) {
   const extraHosts = new Set([...allowedHosts.map((h) => h.toLowerCase()), ...bindHosts(bindHost)]);
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h);
@@ -103,7 +103,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     } catch { return { outcome: 'problems', warning: 'the ticket could not be read afterwards' }; }
   }
 
-  const limits = agents ? createLimits({ fetchFn: limitsFetch }) : null;
+  const limits = agents ? createLimits({ probe: limitsProbe }) : null;
 
   // Agent chats run `claude` on this machine, so they exist only when the server was started with --agents.
   const chats = agents ? createChats({
@@ -115,7 +115,11 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       return m.merged ? { ok: true } : { ok: false, error: `${m.error}. Nothing was merged; the worktree is kept at ${c.meta.wt.worktree} (branch ${c.meta.wt.branch})` };
     },
     projectInfo: (name) => projectInfo(dir, name),
-    run: agentRun,
+    run: (opts) => { // every run reports the plan limits; keep them for the header
+      const r = agentRun(opts);
+      r.onEvent((ev) => limits.record(ev));
+      return r;
+    },
     notify: (id) => broadcast({ type: 'chat', id }),
     log: (e) => changelog.log({ ticket: '-', ...e }),
   }) : null;

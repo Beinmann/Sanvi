@@ -1,41 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { createLimits } from '../src/limits.js';
+import { createLimits, parseRateLimitEvent } from '../src/limits.js';
 
-const home = (token) => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-lim-'));
-  if (token) fs.writeFileSync(path.join(d, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: token } }));
-  return d;
-};
-const ok = (body) => async () => ({ ok: true, status: 200, json: async () => body });
+// Shape printed by `claude -p --output-format stream-json`.
+const event = (five, seven) => ({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: 1792448400, unifiedWindows: { five_hour: { utilization: five, resetsAt: 1792448400 }, seven_day: { utilization: seven, resetsAt: 1792540800 } } } });
 
-test('maps the 5-hour and weekly windows and sends the token only upstream', async () => {
-  let seen;
-  const l = createLimits({ configDir: home('tok'), fetchFn: async (u, o) => { seen = o.headers; return ok({ five_hour: { utilization: 42.5, resets_at: '2030-01-01T00:00:00Z' }, seven_day: { utilization: 10, resets_at: null } })(); } });
-  const { claude } = await l.get();
-  assert.equal(seen.authorization, 'Bearer tok');
-  assert.equal(claude.fiveHour.percent, 42.5);
-  assert.equal(claude.sevenDay.percent, 10);
-  assert.ok(!JSON.stringify(claude).includes('tok"'));
+test('maps the 5-hour and weekly windows of a rate_limit_event to percentages', () => {
+  const w = parseRateLimitEvent(event(0.485, 0.1));
+  assert.equal(Math.round(w.fiveHour.percent * 10) / 10, 48.5);
+  assert.equal(w.sevenDay.percent, 10);
+  assert.equal(w.fiveHour.resetsAt, '2026-10-19T22:20:00.000Z');
+  assert.equal(parseRateLimitEvent({ type: 'assistant' }), null);
+  assert.equal(parseRateLimitEvent({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } }), null);
 });
 
-test('caches until forced; keeps old figures (marked stale) when a refresh fails', async () => {
-  let calls = 0; let fail = false;
-  const l = createLimits({ configDir: home('t'), fetchFn: async () => { calls++; return fail ? { ok: false, status: 500 } : ok({ five_hour: { utilization: 1 } })(); } });
+test('events of agent runs are recorded and served without a probe run', async () => {
+  let probes = 0;
+  const l = createLimits({ probe: async () => { probes++; return parseRateLimitEvent(event(0.2, 0.2)); } });
+  l.record({ type: 'assistant' });
+  l.record(event(0.3, 0.4));
+  const { claude } = await l.get();
+  assert.equal(probes, 0);
+  assert.equal(claude.fiveHour.percent, 30);
+  assert.equal(claude.sevenDay.percent, 40);
+});
+
+test('a probe runs only when there are no figures or on a forced refresh; failed refresh keeps old figures as stale', async () => {
+  let probes = 0; let fail = false;
+  const l = createLimits({ probe: async () => { probes++; if (fail) throw new Error('offline'); return parseRateLimitEvent(event(0.1, 0.1)); } });
   await l.get(); await l.get();
-  assert.equal(calls, 1);
+  assert.equal(probes, 1);
+  await l.get(true);
+  assert.equal(probes, 2);
   fail = true;
   const r = await l.get(true);
-  assert.equal(calls, 2);
-  assert.equal(r.claude.fiveHour.percent, 1);
-  assert.match(r.claude.stale, /500/);
+  assert.equal(r.claude.fiveHour.percent, 10);
+  assert.match(r.claude.stale, /offline/);
 });
 
-test('reports a missing login or failed query as an error instead of throwing', async () => {
-  assert.match((await createLimits({ configDir: home(null) }).get()).claude.error, /login/);
-  const l = createLimits({ configDir: home('t'), fetchFn: async () => { throw new Error('offline'); } });
-  assert.match((await l.get()).claude.error, /offline/);
+test('reports a failed probe as an error instead of throwing', async () => {
+  const l = createLimits({ probe: async () => { throw new Error('"claude" not found'); } });
+  assert.match((await l.get()).claude.error, /not found/);
 });

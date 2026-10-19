@@ -110,7 +110,7 @@ console.log(JSON.stringify({ type: 'result', is_error: false, result: 'fin', tot
 test('agent routes are refused unless the server was started with agents', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-agent-'));
   const off = createTicketServer({ dir });
-  const on = createTicketServer({ dir, agents: true, agentRun: fakeRunner().run, chatsFile: null, limitsFetch: async () => ({ ok: false, status: 503 }) });
+  const on = createTicketServer({ dir, agents: true, agentRun: fakeRunner().run, chatsFile: null, limitsProbe: async () => { throw new Error('offline'); } });
   try {
     for (const [app, expect] of [[off, 403], [on, 201]]) {
       const { port } = await app.listen(0);

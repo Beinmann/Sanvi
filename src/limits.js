@@ -1,43 +1,53 @@
-// Plan limits of the Claude account (5-hour and weekly windows), as the Claude CLI itself reads them.
-// The OAuth token stays on the server; the UI only gets percentages and reset times.
-import fs from 'node:fs';
+// Plan limits of the Claude account (5-hour and weekly windows), as the Claude CLI itself reports them: every
+// headless run emits a `rate_limit_event` with the utilization of both windows. So no token is read and no
+// private endpoint is called: figures are recorded from the agent runs, and a manual refresh makes one tiny run.
 import os from 'node:os';
-import path from 'node:path';
+import { startRun } from './agent.js';
 
-const URL_USAGE = 'https://api.anthropic.com/api/oauth/usage';
 const WINDOWS = [['fiveHour', 'five_hour', '5-hour'], ['sevenDay', 'seven_day', 'Weekly']];
 
-function readToken(configDir) {
-  const file = path.join(configDir || process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), '.credentials.json');
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')).claudeAiOauth?.accessToken || null; } catch { return null; }
+/** Pulls `{ fiveHour: { label, percent, resetsAt }, sevenDay: {...} }` out of a stream event, or null if it has none. */
+export function parseRateLimitEvent(ev) {
+  const info = ev?.type === 'rate_limit_event' ? ev.rate_limit_info : null;
+  if (!info) return null;
+  const windows = { ...info.unifiedWindows };
+  if (info.rateLimitType && typeof info.utilization === 'number' && !windows[info.rateLimitType]) windows[info.rateLimitType] = { utilization: info.utilization, resetsAt: info.resetsAt };
+  const out = {};
+  for (const [key, field, label] of WINDOWS) {
+    const w = windows[field];
+    if (w && typeof w.utilization === 'number') out[key] = { label, percent: w.utilization * 100, resetsAt: typeof w.resetsAt === 'number' ? new Date(w.resetsAt * 1000).toISOString() : null };
+  }
+  return Object.keys(out).length ? out : null;
 }
 
-/** `{ claude: { fiveHour: { percent, resetsAt }, sevenDay: {...} } }` or `{ claude: { error } }`; never throws. */
-export function createLimits({ fetchFn = fetch, configDir, ttlMs = 30_000, now = Date.now } = {}) {
+// The cheapest run that still produces the event: smallest model, no tools, a one-word answer.
+async function defaultProbe(run = startRun) {
+  const r = run({ prompt: 'Reply with ok.', cwd: os.tmpdir(), tools: [], model: 'haiku', maxBudgetUsd: 0.05 });
+  let found = null;
+  r.onEvent((ev) => { found = parseRateLimitEvent(ev) || found; });
+  const d = await r.done;
+  if (found) return found;
+  throw new Error(d.error || 'the Claude CLI reported no limits');
+}
+
+/** `{ claude: { fiveHour, sevenDay, fetchedAt } }` or `{ claude: { error } }`; never throws. */
+export function createLimits({ probe = defaultProbe, now = Date.now } = {}) {
   let cached = null;
-  let at = 0;
-  async function load() {
-    const token = readToken(configDir);
-    if (!token) return { error: 'no Claude login found (run `claude` and log in)' };
-    try {
-      const res = await fetchFn(URL_USAGE, { headers: { authorization: `Bearer ${token}`, 'anthropic-beta': 'oauth-2025-04-20', accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
-      if (!res.ok) return { error: `usage query failed (HTTP ${res.status})` };
-      const body = await res.json();
-      const out = { fetchedAt: new Date(now()).toISOString() };
-      for (const [key, field, label] of WINDOWS) {
-        const w = body[field];
-        if (w && typeof w.utilization === 'number') out[key] = { label, percent: w.utilization, resetsAt: w.resets_at || null };
-      }
-      return Object.keys(out).length > 1 ? out : { error: 'usage response had no limit windows' };
-    } catch (e) { return { error: `usage query failed: ${e.message}` }; }
-  }
   return {
-    /** Cached for `ttlMs` so several tabs do not hammer the API; `force` skips the cache (manual refresh). */
+    /** Called with every event of every agent run; keeps the newest figures for free. */
+    record(ev) {
+      const w = parseRateLimitEvent(ev);
+      if (w) cached = { ...(cached?.error ? null : cached), ...w, stale: undefined, fetchedAt: new Date(now()).toISOString() };
+    },
+    /** Cached figures; a probe run happens only when there are none yet or when `force` is set (manual refresh). */
     async get(force = false) {
-      if (!force && cached && now() - at < ttlMs) return { claude: cached };
-      const fresh = await load();
-      if (fresh.error && cached && !cached.error) return { claude: { ...cached, stale: fresh.error } };
-      cached = fresh; at = now();
+      if (cached && !cached.error && !force) return { claude: cached };
+      try {
+        cached = { ...(await probe()), fetchedAt: new Date(now()).toISOString() };
+      } catch (e) {
+        if (cached && !cached.error) return { claude: { ...cached, stale: e.message } };
+        cached = { error: `could not read the limits from the Claude CLI: ${e.message}` };
+      }
       return { claude: cached };
     },
   };

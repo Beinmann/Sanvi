@@ -4,13 +4,13 @@ import { spawn } from 'node:child_process';
 
 export const DEFAULT_TOOLS = ['Read', 'Grep', 'Glob', 'Edit'];
 
-// startRun({ prompt, cwd, resume?, tools?, maxBudgetUsd? }) -> { cancel(), onEvent(fn), done }
+// startRun({ prompt, cwd, resume?, model?, tools?, maxBudgetUsd? }) -> { cancel(), onEvent(fn), done }
 //   onEvent(fn): fn(event) for each JSON line the CLI prints (stream-json).
 //   done: resolves (never rejects) to { ok, sessionId, text, costUsd, denials, error, cancelled }.
 //   denials: how many tool calls were refused (a headless run cannot ask for permission).
 //   permissionMode: 'auto' lets Claude Code approve ordinary work itself (never 'bypassPermissions'); 'default' with `allowedTools` (e.g. 'Edit(/abs/file)')
 //   allows only what is listed, everything else is denied because a headless run cannot ask. `disallowedTools` always wins over allowed ones. `addDirs` extends read access.
-export function startRun({ prompt, cwd, resume, tools = DEFAULT_TOOLS, maxBudgetUsd = 2, bin = 'claude', permissionMode = 'auto', allowedTools, disallowedTools, addDirs = [] }) {
+export function startRun({ prompt, cwd, resume, model, tools = DEFAULT_TOOLS, maxBudgetUsd = 2, bin = 'claude', permissionMode = 'auto', allowedTools, disallowedTools, addDirs = [] }) {
   const args = [
     '-p', prompt,
     '--output-format', 'stream-json', '--verbose',
@@ -18,6 +18,7 @@ export function startRun({ prompt, cwd, resume, tools = DEFAULT_TOOLS, maxBudget
     '--tools', tools.join(','),
     '--max-budget-usd', String(maxBudgetUsd),
   ];
+  if (model) args.push('--model', model);
   if (resume) args.push('--resume', resume);
   if (allowedTools?.length) args.push('--allowedTools', allowedTools.join(','));
   if (disallowedTools?.length) args.push('--disallowedTools', disallowedTools.join(','));
