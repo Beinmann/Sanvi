@@ -62,7 +62,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const active = (c) => c.state === 'running' || c.state === 'queued';
   const paintButton = () => {
     const n = chats.filter(active).length;
-    button.textContent = n ? `Chat (${n}…)` : 'Chat';
+    button.textContent = n ? `Chat · ${n} running` : 'Chat';
     const cost = usage.claude?.costUsd;
     button.title = `Chat with Claude${cost == null ? '' : `\nClaude usage so far: $${cost.toFixed(2)} (cost recorded by Sanvi)`}`;
   };

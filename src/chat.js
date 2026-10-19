@@ -19,7 +19,7 @@ export function resolveDir(input) {
   } catch { throw new ValidationError(`not a directory: ${p}`); }
 }
 
-export function createChats({ cwd, file, check, projectInfo = () => ({}), finalize, notify = () => {}, run = defaultRun, maxRuns = 2, log = () => {} }) {
+export function createChats({ cwd, file, check, projectInfo = () => ({}), finalize, notify = () => {}, run = defaultRun, maxRuns = Infinity, log = () => {} }) {
   const chats = new Map();
   let running = 0;
   const pending = []; // ids of chats waiting for a free slot
