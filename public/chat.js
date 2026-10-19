@@ -12,13 +12,14 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   let chat = null;    // the open chat, as last fetched
   let drafts = {};    // unsent text per chat id
   let isOpen = false;
+  let quiet = false;  // opened by the hotkey: leave the focus alone so `a` again goes full screen
   let full = false;   // full screen: the keyboard shortcuts work anywhere on the page
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
   // Keyboard navigation (in the panel; when it is full screen, anywhere). Input: Esc (or Ctrl+Up) leaves for the messages. Messages: j/k or Down/Up step,
-  // g/G first/last, i, Enter or Ctrl+Down return to the input, Esc closes. Anywhere in the panel: Alt+Left/Right switch chat.
-  const HINT = 'Esc: input → messages → close · in messages: j/k step, g/G ends, i input · Alt+←/→ chat · Ctrl+Enter send · click Chat again: full screen';
+  // g/G first/last, i, Enter or Ctrl+Down return to the input, Esc closes. Anywhere in the panel: Alt+Left/Right (in the messages also Shift+H/L) switch chat.
+  const HINT = '+ type · Esc: input → messages → close · a: open, again full screen · j/k step, g/G ends, i input · Shift+H/L chat · Ctrl+Enter send';
   const msgs = () => [...panel.querySelectorAll('.chatlog .msg')];
   const focusInput = () => panel.querySelector('textarea')?.focus();
   function focusMsg(to) {
@@ -42,6 +43,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     let handled = true;
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepChat(e.key === 'ArrowLeft' ? -1 : 1);
     else if (e.target.tagName === 'TEXTAREA' && ((e.ctrlKey && e.key === 'ArrowUp') || (e.key === 'Escape' && plain))) handled = focusMsg('last');
+    else if (inLog && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'H' || e.key === 'L')) stepChat(e.key === 'H' ? -1 : 1);
     else if (inLog && plain && (e.key === 'j' || e.key === 'ArrowDown')) { if (!focusMsg(1)) handled = false; }
     else if (inLog && plain && (e.key === 'k' || e.key === 'ArrowUp')) focusMsg(-1);
     else if (inLog && plain && e.key === 'g') focusMsg('first');
@@ -216,13 +218,25 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
           ? el('button', { type: 'button', class: 'danger', title: 'Stop the AI now; the partial answer is kept and the chat can be used again', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`, {}).catch((e) => toast(e.message)) }, '■ Stop')
           : el('button', { type: 'button', class: 'primary', onclick: () => submit(input) }, 'Send')));
     log.scrollTop = log.scrollHeight;
-    if (hadFocus || (!keep && !running)) input.focus();
+    if (hadFocus || (!keep && !running && !quiet)) input.focus();
+  }
+
+  // Hotkey `a`: open without taking focus; again: full screen; in full screen: close.
+  async function hotkey() {
+    if (isOpen) { if (full) await toggle(false); else setFull(true); return; }
+    quiet = true;
+    try { await toggle(true); } finally { quiet = false; }
+  }
+  // Hotkey `+`: open if needed, then focus the message input.
+  async function focusTyping() {
+    if (!isOpen) await toggle(true);
+    focusInput();
   }
 
   // A second click on the button while the panel is open goes full screen; a click in full screen closes it.
   button.addEventListener('click', () => { if (isOpen && !full) setFull(true); else toggle(); });
   return {
-    toggle, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, implement, refineAll, onChange: (fn) => changed.push(fn),
+    toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, implement, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && c.kind === 'refine' && active(c)),
     // The most recent chat linked to a ticket (the list is newest first), or null.
     implementing: (file) => chats.some((c) => c.ticket === file && c.kind === 'implement' && active(c)),

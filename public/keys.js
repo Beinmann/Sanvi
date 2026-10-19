@@ -83,7 +83,8 @@ export const HELP = [
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['Ctrl+M / m', 'Quick note: free text saved to NOTES.md next to the tickets, not tied to any ticket (Ctrl+M also while typing; m outside fields)'],
     ['g', 'Go to the Notes view (search, make a ticket from a note, delete)'],
-    ['a', 'Open / close the Claude chat (only with --agents)'],
+    ['a', 'Claude chat (only with --agents): open without focus; again: full screen; again: close'],
+    ['+', 'Claude chat: open if needed and focus the message input'],
     ['/', 'Go to the search box (from any view; goes to the board first)'],
     ['Ctrl+/ or Ctrl+E', 'Same, also while typing; an unsaved edit asks before it is left'],
     ['Esc', 'Close overlay, leave a field, go back to the board, then clear the card selection'],
@@ -717,7 +718,8 @@ export function initKeys(ctx) {
       case 'i': openIdea(); break;
       case 'm': openScratch(); break;
       case 'g': location.hash = '#/notes'; break;
-      case 'a': if (ctx.agents?.()) $('#chat-btn').click(); else return; break;
+      case 'a': if (ctx.agents?.()) ctx.chatHotkey(); else return; break;
+      case '+': if (ctx.agents?.()) ctx.chatType(); else return; break;
       case 'P': if (ctx.projects().mode === 'dropdown') openPalette('project'); else return; break;
       case 's': openPalette('status'); break;
       case 'j': if (board) moveFocus('next'); else if (hashRoute() === 'detail') scrollHold(1, e); else return; break;
