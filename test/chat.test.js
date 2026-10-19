@@ -255,7 +255,7 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     assert.ok(f.calls[0].opts.addDirs.includes(repo), 'notes repo readable');
     assert.ok(f.calls[0].opts.allowedTools.some((r) => r.startsWith('Write(') && r.includes(repo)), 'notes repo writable');
     assert.ok(dir.startsWith(repo), 'the ticket is under the writable notes repo');
-    assert.deepEqual(f.calls[0].opts.disallowedTools, [`Edit(/${repo}/**)`, `Write(/${repo}/**)`], 'main checkout is off limits');
+    assert.deepEqual(f.calls[0].opts.disallowedTools, [], 'tickets inside the project checkout: no lock-out of the ticket');
     fs.writeFileSync(path.join(wt1, 'new.txt'), 'x\n'); // left uncommitted: the server commits it
     f.calls[0].end(); await tick();
     assert.equal((await chat(c1.id)).state, 'idle');
@@ -293,4 +293,16 @@ test('implement needs a project directory', async () => {
     assert.equal(r.status, 400);
     assert.match((await r.json()).error, /has no directory/);
   } finally { await s.app.close(); }
+});
+
+test('implement permissions: main checkout off limits unless the tickets live inside it', async () => {
+  const { implementRunOpts } = await import('../src/implement.js');
+  const { execFileSync } = await import('node:child_process');
+  const notes = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-notes-')));
+  execFileSync('git', ['init', '-q'], { cwd: notes });
+  fs.mkdirSync(path.join(notes, 'tickets')); fs.mkdirSync(path.join(notes, 'code'));
+  const o = implementRunOpts({ ticketsDir: path.join(notes, 'tickets'), projectDir: path.join(notes, 'code') });
+  assert.ok(o.allowedTools.includes(`Edit(/${notes}/**)`));
+  assert.deepEqual(o.disallowedTools, [`Edit(/${notes}/code/**)`, `Write(/${notes}/code/**)`]);
+  assert.deepEqual(o.addDirs, [notes]);
 });
