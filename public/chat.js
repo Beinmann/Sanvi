@@ -17,9 +17,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
-  // Keyboard navigation (in the panel; while it is open, also anywhere outside input fields, taking precedence over the page hotkeys). Input: Esc (or Ctrl+Up) leaves for the messages. Messages: j/k or Down/Up step,
+  // Keyboard navigation (in the panel; while it is open, also anywhere outside input fields, taking precedence over the page hotkeys). Input: Esc (or Ctrl+Up) leaves for the messages. Messages: j/k scroll (hold to keep scrolling), Down/Up step message by message,
   // g/G first/last, i, Enter or Ctrl+Down return to the input, Esc closes. Anywhere in the panel: Alt+Left/Right (in the messages also plain h/l) switch chat.
-  const HINT = '+ type · Esc: input → messages → close · a: open, again full screen · j/k step, g/G ends, i input · h/l chat · Ctrl+Enter send';
+  const HINT = '+ type · Esc: input → messages → close · a: open, again full screen · j/k scroll, ↑/↓ step, g/G ends, i input · h/l chat · Ctrl+Enter send';
   const msgs = () => [...panel.querySelectorAll('.chatlog .msg')];
   const focusInput = () => panel.querySelector('textarea')?.focus();
   function focusMsg(to) {
@@ -31,6 +31,26 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     all[i].scrollIntoView({ block: 'nearest' });
     return true;
   }
+  // j/k in the messages: like on the ticket page, a tap nudges, holding scrolls at a steady speed per frame
+  let hold = null; // { key, raf, t }
+  function scrollHold(dir, e) {
+    const log = panel.querySelector('.chatlog');
+    if (!log) return false;
+    if (e.repeat || hold) return true;
+    hold = { key: e.key, raf: 0, t: performance.now() };
+    log.scrollBy({ top: dir * 24, behavior: 'instant' });
+    const step = (now) => {
+      if (!hold) return;
+      log.scrollBy({ top: dir * 0.8 * Math.min(now - hold.t, 50), behavior: 'instant' }); // ~800 px/s
+      hold.t = now;
+      hold.raf = requestAnimationFrame(step);
+    };
+    hold.raf = requestAnimationFrame(step);
+    return true;
+  }
+  const stopHold = () => { if (hold) { cancelAnimationFrame(hold.raf); hold = null; } };
+  document.addEventListener('keyup', (e) => { if (hold && e.key === hold.key) stopHold(); });
+  window.addEventListener('blur', stopHold);
   function stepChat(d) {
     const i = chats.findIndex((c) => c.id === chat?.id);
     const next = chats[i + d];
@@ -46,8 +66,10 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepChat(e.key === 'ArrowLeft' ? -1 : 1);
     else if (e.target.tagName === 'TEXTAREA' && ((e.ctrlKey && e.key === 'ArrowUp') || (e.key === 'Escape' && plain))) handled = focusMsg('last');
     else if (inLog && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'h' || e.key === 'l')) stepChat(e.key === 'h' ? -1 : 1);
-    else if (inLog && plain && (e.key === 'j' || e.key === 'ArrowDown')) { if (!focusMsg(1)) handled = false; }
-    else if (inLog && plain && (e.key === 'k' || e.key === 'ArrowUp')) focusMsg(-1);
+    else if (inLog && plain && e.key === 'j') handled = scrollHold(1, e);
+    else if (inLog && plain && e.key === 'k') handled = scrollHold(-1, e);
+    else if (inLog && plain && e.key === 'ArrowDown') { if (!focusMsg(1)) handled = false; }
+    else if (inLog && plain && e.key === 'ArrowUp') focusMsg(-1);
     else if (inLog && plain && e.key === 'g') focusMsg('first');
     else if (inLog && (e.key === 'G' || (e.ctrlKey && e.key === 'End'))) focusMsg('last');
     else if (inLog && ((plain && (e.key === 'i' || e.key === 'Enter')) || (e.ctrlKey && e.key === 'ArrowDown'))) focusInput();
@@ -126,6 +148,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
 
   async function toggle(force) {
     isOpen = force ?? !isOpen;
+    if (!isOpen) stopHold();
     if (!isOpen) { full = false; panel.classList.remove('full'); } // else the stale full-screen class shows on reopen
     panel.hidden = !isOpen;
     if (!isOpen) return;
