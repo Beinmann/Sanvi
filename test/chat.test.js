@@ -271,6 +271,7 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     const c1 = await (await post('001-a.md')).json();
     const wt1 = f.calls[0].opts.cwd;
     assert.match(wt1, /ticket-001$/);
+    assert.match(fs.readFileSync(path.join(dir, '001-a.md'), 'utf8'), /status: in-progress/, 'ticket goes in-progress on play');
     assert.match(f.calls[0].opts.prompt, /status: testing/);
     assert.ok(f.calls[0].opts.addDirs.includes(repo), 'notes repo readable');
     assert.ok(f.calls[0].opts.allowedTools.some((r) => r.startsWith('Write(') && r.includes(repo)), 'notes repo writable');
