@@ -71,8 +71,24 @@ const ownVersions = new Set(); // versions this browser wrote; a refresh seeing 
 // Keyboard pick-up (034): { file, status } = the card and the column it would land in. Nothing is
 // written until the drop; the state lives here so re-renders and live refreshes keep it.
 let pick = null;
-function endHold() { pick = null; document.body.classList.remove('moving'); }
+// Picking up scrolls to the top so the target columns are visible; ending the hold scrolls back to the
+// card. A drop re-renders only after its write, so the reveal stays armed for a moment (`revealUntil`).
+let revealUntil = 0;
+function revealSelected() {
+  const c = selected && [...document.querySelectorAll('.card')].find((x) => x.dataset.file === selected);
+  c?.scrollIntoView({ block: 'nearest' });
+}
+function endHold() {
+  if (pick) { revealUntil = Date.now() + 1500; requestAnimationFrame(revealSelected); }
+  pick = null; document.body.classList.remove('moving');
+}
 function setPick(p) {
+  if (p && !pick) {
+    revealUntil = 0;
+    window.scrollTo(0, 0);
+    for (const c of document.querySelectorAll('.col')) c.scrollTop = 0;
+  }
+  if (!p && pick) { endHold(); renderBoard(); return; }
   pick = p;
   document.body.classList.toggle('moving', !!p); // number badges show only in move mode
   renderBoard();
@@ -426,6 +442,7 @@ function renderBoard() {
   if (peekFile) view.querySelector(`.peekpop a[data-file="${CSS.escape(peekFile)}"]`)?.focus({ preventScroll: true });
   if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
   const focusEl = target && [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target);
+  if (Date.now() < revealUntil) revealSelected();
   if (focusEl && focusFree && !peekFile) { focusEl.focus({ preventScroll: true }); } // never scroll here: a move or live refresh keeps the view; j/k/h/l scroll themselves
 }
 
