@@ -24,11 +24,11 @@ The command is `tk` (alias `sanvi`).
 ```
 git clone https://github.com/Beinmann/Sanvi.git
 cd Sanvi
-npm link                      # optional: puts `tk` and `sanvi` on your PATH
+./install.sh                  # optional: links `tk` and `sanvi` into ~/.local/bin (or `npm link`)
 tk --dir /path/to/tickets serve
 ```
 
-Without `npm link`, run `node bin/tk.js ...` from the checkout instead. Then open
+`./install.sh --prefix DIR` links into `DIR/bin` instead and `./install.sh --uninstall` removes the links. Without either, run `node bin/tk.js ...` from the checkout instead. Then open
 the printed URL (default `http://127.0.0.1:4321`).
 
 The ticket files are the only source of truth. The UI and CLI are views and
