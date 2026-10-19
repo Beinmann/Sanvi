@@ -21,7 +21,7 @@ export function initLimits({ el, api, toast, node }) {
     const parts = ['fiveHour', 'sevenDay'].filter((k) => c[k]).map((k) => {
       const w = c[k];
       const pct = Math.round(w.percent);
-      return el('span', { class: `lim${pct >= 90 ? ' hot' : pct >= 70 ? ' warm' : ''}`, title: `${w.label} limit: ${pct}% used${w.resetsAt ? `, ${resetIn(w.resetsAt)}` : ''}` }, `${k === 'fiveHour' ? '5h' : 'wk'} ${pct}%`);
+      return el('span', { class: `lim${pct >= 90 ? ' hot' : pct >= 70 ? ' warm' : ''}`, title: `${w.label} limit: ${pct}% used${w.resetsAt ? `, ${resetIn(w.resetsAt)}` : ''}` }, `${k === 'fiveHour' ? '5h' : 'wk'} ${pct}%${k === 'fiveHour' && w.resetsAt ? ` · ${resetIn(w.resetsAt)}` : ''}`);
     });
     node.append(...parts);
     node.title = `Claude plan limits (click to refresh)${c.stale ? `\nShowing older data: ${c.stale}` : ''}`;
