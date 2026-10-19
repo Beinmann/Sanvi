@@ -37,7 +37,7 @@ agent) is always fine; the UI picks changes up live.
 
 ## Ticket format
 
-`<dir>/<id>-<slug>.md`, with a 3-digit zero-padded id in the filename:
+`<dir>/<id>-<slug>.md`, with an id of at least 3 digits (zero-padded; it simply grows to `1000` and beyond, no migration) in the filename:
 
 ```markdown
 ---
