@@ -15,6 +15,41 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
+  // Keyboard navigation. Input: Ctrl+Up leaves for the messages. Messages: j/k or Down/Up step, g/G first/last,
+  // i, Enter or Ctrl+Down return to the input. Anywhere in the panel: Alt+Left/Right switch chat, Esc closes.
+  const HINT = 'Ctrl+Enter send · Ctrl+↑ messages · in messages: j/k step, g/G ends, i input · Alt+←/→ chat · Esc close';
+  const msgs = () => [...panel.querySelectorAll('.chatlog .msg')];
+  const focusInput = () => panel.querySelector('textarea')?.focus();
+  function focusMsg(to) {
+    const all = msgs();
+    if (!all.length) return false;
+    const cur = all.indexOf(document.activeElement);
+    const i = to === 'first' ? 0 : to === 'last' ? all.length - 1 : Math.min(all.length - 1, Math.max(0, cur < 0 ? all.length - 1 : cur + to));
+    all[i].focus();
+    all[i].scrollIntoView({ block: 'nearest' });
+    return true;
+  }
+  function stepChat(d) {
+    const i = chats.findIndex((c) => c.id === chat?.id);
+    const next = chats[i + d];
+    if (next) openChat(next.id).catch((err) => toast(err.message));
+  }
+  panel.addEventListener('keydown', (e) => {
+    const inLog = document.activeElement?.classList.contains('msg');
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    let handled = true;
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepChat(e.key === 'ArrowLeft' ? -1 : 1);
+    else if (e.target.tagName === 'TEXTAREA' && e.ctrlKey && e.key === 'ArrowUp') handled = focusMsg('last');
+    else if (inLog && plain && (e.key === 'j' || e.key === 'ArrowDown')) { if (!focusMsg(1)) handled = false; }
+    else if (inLog && plain && (e.key === 'k' || e.key === 'ArrowUp')) focusMsg(-1);
+    else if (inLog && plain && e.key === 'g') focusMsg('first');
+    else if (inLog && (e.key === 'G' || (e.ctrlKey && e.key === 'End'))) focusMsg('last');
+    else if (inLog && ((plain && (e.key === 'i' || e.key === 'Enter')) || (e.ctrlKey && e.key === 'ArrowDown'))) focusInput();
+    else if (inLog && e.key === 'Escape') toggle(false);
+    else handled = false;
+    if (handled) { e.preventDefault(); e.stopPropagation(); }
+  });
+
   const mark = (c) => {
     if (c.state === 'running') return '… ';
     if (c.state === 'queued') return '⏳ ';
@@ -90,7 +125,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     const body = el('div', { class: 'md' });
     if (m.role === 'user') body.textContent = m.text;
     else body.innerHTML = m.text ? renderMarkdown(m.text) : '';
-    return el('div', { class: `msg ${m.role}` },
+    return el('div', { class: `msg ${m.role}`, tabindex: '0' },
       el('div', { class: 'who' }, m.role === 'user' ? 'You' : 'Claude'),
       body,
       m.tools?.length ? el('div', { class: 'tools' }, `used: ${m.tools.join(', ')}`) : null);
@@ -151,6 +186,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       log,
       chat.error ? el('div', { class: 'banner err' }, chat.error) : null,
       chat.warning ? el('div', { class: 'banner' }, chat.warning) : null,
+      el('div', { class: 'chathint muted', title: 'Keyboard shortcuts in the chat panel' }, HINT),
       el('div', { class: 'chatinput' }, input,
         running
           ? el('button', { type: 'button', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`, {}).catch((e) => toast(e.message)) }, 'Cancel')
