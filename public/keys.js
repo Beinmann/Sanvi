@@ -655,7 +655,8 @@ export function initKeys(ctx) {
       if (isTyping(e.target)) {
         e.preventDefault();
         if (hashRoute() === 'new') location.hash = '#/'; else e.target.blur();
-      } else if (hashRoute() !== 'board') { e.preventDefault(); location.hash = '#/'; }
+      } else if (ctx.chatClose?.()) { e.preventDefault(); } // an open chat panel closes before navigating back
+      else if (hashRoute() !== 'board') { e.preventDefault(); location.hash = '#/'; }
       else if (selectedFile() || ctx.stripSelected?.() != null) { e.preventDefault(); ctx.select(null); ctx.selectStrip?.(null); } // clear the selection (and the card focus)
       return;
     }
