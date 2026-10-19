@@ -1022,6 +1022,16 @@ $('#new-btn').addEventListener('click', () => { location.hash = '#/new'; });
 $('#proj-sel').addEventListener('change', (e) => {
   setProject(e.target.value);
 });
+{ // hamburger menu: secondary header entries
+  const menuBtn = $('#menu-btn'), menuEl = $('#menu');
+  const setMenu = (open) => { menuEl.hidden = !open; menuBtn.setAttribute('aria-expanded', String(open)); };
+  menuBtn.addEventListener('click', () => setMenu(menuEl.hidden));
+  menuEl.addEventListener('click', (e) => { if (e.target.closest('button')) setMenu(false); });
+  document.addEventListener('click', (e) => { if (!menuEl.hidden && !e.target.closest('#menu-wrap')) setMenu(false); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menuEl.hidden) { e.preventDefault(); e.stopPropagation(); setMenu(false); menuBtn.focus(); }
+  }, true);
+}
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
 $('#projects-btn').addEventListener('click', () => { location.hash = '#/projects'; });
@@ -1030,6 +1040,8 @@ async function paintProjectsBadge() { // the button carries the number of projec
   try { await projectsPage.load(); } catch { return; }
   const n = projectsPage.warningCount();
   $('#projects-btn').textContent = n ? `Projects ⚠ ${n}` : 'Projects';
+  $('#menu-badge').hidden = !n;
+  $('#menu-badge').textContent = n ? `⚠ ${n}` : '';
   $('#projects-btn').title = n ? `${n} project warning${n > 1 ? 's' : ''}: open to see them` : 'Projects: directory and instructions for the agent';
 }
 document.addEventListener('projects-changed', paintProjectsBadge);
