@@ -16,14 +16,14 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
-  // Keyboard navigation (in the panel; when it is full screen, anywhere). Input: Ctrl+Up leaves for the messages. Messages: j/k or Down/Up step, g/G first/last,
-  // i, Enter or Ctrl+Down return to the input. Anywhere in the panel: Alt+Left/Right switch chat, Esc closes.
-  const HINT = 'Click Chat again: full screen · Ctrl+Enter send · Ctrl+↑ messages · in messages: j/k step, g/G ends, i input · Alt+←/→ chat · Esc close';
+  // Keyboard navigation (in the panel; when it is full screen, anywhere). Input: Esc (or Ctrl+Up) leaves for the messages. Messages: j/k or Down/Up step,
+  // g/G first/last, i, Enter or Ctrl+Down return to the input, Esc closes. Anywhere in the panel: Alt+Left/Right switch chat.
+  const HINT = 'Esc: input → messages → close · in messages: j/k step, g/G ends, i input · Alt+←/→ chat · Ctrl+Enter send · click Chat again: full screen';
   const msgs = () => [...panel.querySelectorAll('.chatlog .msg')];
   const focusInput = () => panel.querySelector('textarea')?.focus();
   function focusMsg(to) {
     const all = msgs();
-    if (!all.length) return false;
+    if (!all.length) { const log = panel.querySelector('.chatlog'); if (!log) return false; log.focus(); return true; } // empty chat: the list itself takes focus
     const cur = all.indexOf(document.activeElement);
     const i = to === 'first' ? 0 : to === 'last' ? all.length - 1 : Math.min(all.length - 1, Math.max(0, cur < 0 ? all.length - 1 : cur + to));
     all[i].focus();
@@ -37,11 +37,11 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   }
   function onKey(e) {
     const loose = full && document.activeElement === document.body; // nothing focused: act as if in the messages
-    const inLog = loose || document.activeElement?.classList.contains('msg');
+    const inLog = loose || document.activeElement?.classList.contains('msg') || document.activeElement?.classList.contains('chatlog');
     const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
     let handled = true;
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepChat(e.key === 'ArrowLeft' ? -1 : 1);
-    else if (e.target.tagName === 'TEXTAREA' && e.ctrlKey && e.key === 'ArrowUp') handled = focusMsg('last');
+    else if (e.target.tagName === 'TEXTAREA' && ((e.ctrlKey && e.key === 'ArrowUp') || (e.key === 'Escape' && plain))) handled = focusMsg('last');
     else if (inLog && plain && (e.key === 'j' || e.key === 'ArrowDown')) { if (!focusMsg(1)) handled = false; }
     else if (inLog && plain && (e.key === 'k' || e.key === 'ArrowUp')) focusMsg(-1);
     else if (inLog && plain && e.key === 'g') focusMsg('first');
@@ -187,13 +187,12 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       rows: 3, placeholder: chat.kind === 'ask' ? 'Ask about the board (read-only; Ctrl+Enter to send)' : 'Message Claude (Ctrl+Enter to send)', 'aria-label': 'Message',
       onkeydown: (e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(input); }
-        else if (e.key === 'Escape') { e.stopPropagation(); toggle(false); }
       },
     });
     input.value = typed;
     const select = el('select', { 'aria-label': 'Chat', onchange: (e) => openChat(e.target.value).catch((err) => toast(err.message)) },
       chats.map((c) => el('option', { value: c.id, selected: c.id === chat.id }, `${mark(c)}${c.title}`)));
-    const log = el('div', { class: 'chatlog' },
+    const log = el('div', { class: 'chatlog', tabindex: '-1' },
       chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, chat.kind === 'ask' ? 'Ask about tickets and what changed. Claude can only read the tickets and the change log here; it cannot edit anything.' : chat.kind === 'refine' ? 'Refine run: Claude may edit only this ticket.' : 'Claude runs on this machine with read access to the project and permission to edit files there.'));
     panel.classList.toggle('full', full);
     show(panel,
