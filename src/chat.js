@@ -132,7 +132,7 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
         c.outcome = d.denials ? 'problems' : verdict.outcome || 'ok';
         c.warning = warnings.join('; ') || null;
       }
-      else { c.state = d.cancelled ? 'idle' : 'failed'; c.error = d.error; if (d.cancelled) reply.text += '\n\n(cancelled)'; }
+      else { c.state = d.cancelled ? 'idle' : 'failed'; c.error = d.error; if (d.cancelled) reply.text += `${reply.text ? '\n\n' : ''}(stopped)`; }
       log({ chat: c.id, action: d.ok ? 'agent-finish' : d.cancelled ? 'agent-cancel' : 'agent-fail', seconds: Math.round((Date.now() - started) / 1000), costUsd: d.costUsd });
       touch(c.id);
       while (running < maxRuns && pending.length) { const next = chats.get(pending.shift()); if (next?.state === 'queued') launch(next); }
@@ -151,7 +151,7 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
 
   function cancel(id) {
     const c = get(id);
-    if (c.state === 'queued') { pending.splice(pending.indexOf(id), 1); c.state = 'idle'; c.messages.at(-1).text = '(cancelled)'; touch(id); }
+    if (c.state === 'queued') { pending.splice(pending.indexOf(id), 1); c.state = 'idle'; c.messages.at(-1).text = '(stopped)'; touch(id); }
     c.active?.cancel();
     return view(c);
   }

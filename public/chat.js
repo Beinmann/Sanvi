@@ -214,7 +214,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       usage.claude ? el('div', { class: 'chathint muted', title: 'Summed over all known chats and runs, as recorded by Sanvi (not your plan quota)' }, `Claude usage: ≈ $${usage.claude.costUsd.toFixed(2)} at API rates`) : null,
       el('div', { class: 'chatinput' }, input,
         running
-          ? el('button', { type: 'button', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`, {}).catch((e) => toast(e.message)) }, 'Cancel')
+          ? el('button', { type: 'button', class: 'danger', title: 'Stop the AI now; the partial answer is kept and the chat can be used again', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`, {}).catch((e) => toast(e.message)) }, '■ Stop')
           : el('button', { type: 'button', class: 'primary', onclick: () => submit(input) }, 'Send')));
     log.scrollTop = log.scrollHeight;
     if (hadFocus || (!keep && !running)) input.focus();

@@ -88,6 +88,7 @@ test('one run per chat, an optional global limit, cancel, and failures are shown
   assert.throws(() => chats.send(c.id, '  '), /empty/);
   chats.cancel(a.id); await tick();
   assert.equal(chats.get(a.id).state, 'idle');
+  assert.match(chats.get(a.id).messages.at(-1).text, /\(stopped\)/);
   f.calls[1].end({ ok: false, error: 'boom' }); await tick();
   assert.equal(chats.get(b.id).state, 'failed');
   assert.equal(chats.get(b.id).error, 'boom');
