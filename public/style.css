@@ -23,6 +23,9 @@ header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; back
 #proj-label { font-weight: 600; color: var(--accent); }
 #proj-sel { max-width: 180px; } #proj-sel.set { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 #live { color: var(--muted); font-size: 11px; margin-left: auto; }
+#limits { display: flex; gap: 8px; margin-left: auto; padding: 2px 8px; font-size: 12px; background: none; }
+#limits + #live { margin-left: 0; }
+#limits .lim.warm { color: var(--warn, #b7791f); } #limits .lim.hot { color: var(--danger, #c53030); font-weight: 600; }
 #live.on { color: var(--ok); }
 button, select, input, textarea { font: inherit; color: inherit; }
 button { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r); padding: 5px 12px; font-weight: 500; cursor: pointer; }

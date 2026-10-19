@@ -14,6 +14,7 @@ import { formatNote } from '../public/notes.js';
 import { buildInfo, commitsBehind } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 import { createChats, resolveDir } from './chat.js';
+import { createLimits } from './limits.js';
 import { implementPrompt, implementRunOpts, createWorktree, mergeWorktree } from './implement.js';
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
@@ -80,7 +81,7 @@ function readBuffer(req, limit) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false, bindHost }) {
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false, bindHost, limitsFetch }) {
   const extraHosts = new Set([...allowedHosts.map((h) => h.toLowerCase()), ...bindHosts(bindHost)]);
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h);
@@ -101,6 +102,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       return { outcome: 'ok' };
     } catch { return { outcome: 'problems', warning: 'the ticket could not be read afterwards' }; }
   }
+
+  const limits = agents ? createLimits({ fetchFn: limitsFetch }) : null;
 
   // Agent chats run `claude` on this machine, so they exist only when the server was started with --agents.
   const chats = agents ? createChats({
@@ -216,6 +219,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir }) });
       if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
       if (parts[1] === 'usage' && parts.length === 2 && method === 'GET') return send(res, 200, chats.usage());
+      if (parts[1] === 'limits' && parts.length === 2 && method === 'GET') return send(res, 200, await limits.get(url.searchParams.get('refresh') === '1'));
       if (parts[1] === 'refine-all' && parts.length === 2 && method === 'POST') return send(res, 200, startRefineAll());
       if (parts[1] === 'ask' && parts.length === 2 && method === 'POST') return send(res, 201, startAsk((await readJson(req)).question));
       if (parts[1] === 'implement' && parts.length === 2 && method === 'POST') return send(res, 201, startImplement((await readJson(req)).file));

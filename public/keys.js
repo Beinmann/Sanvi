@@ -532,6 +532,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Columns…', hint: 'show / hide', push: columnsLevel },
           ...(ctx.agents?.() ? [
             { cmd: true, label: 'Chat with Claude', hint: 'a', run: () => $('#chat-btn').click() },
+            { cmd: true, label: 'Refresh Claude limits (5-hour, weekly)', hint: 'agent', run: () => ctx.refreshLimits() },
             { cmd: true, label: 'Refine all design tickets', hint: 'agent', run: () => ctx.refineAll() },
             { cmd: true, label: 'Ask Claude about the board…', hint: 'agent', run: () => ctx.ask('') },
           ] : []),

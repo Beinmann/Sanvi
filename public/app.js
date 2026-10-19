@@ -6,6 +6,7 @@ import { planStatusDelete, parseQuery, formatQuery, matchTicket, scoreTicket, ma
 import { initKeys } from './keys.js';
 import { attachVim } from './vim.js';
 import { initChat } from './chat.js';
+import { initLimits } from './limits.js';
 import { initProjects } from './projects.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -979,6 +980,7 @@ initKeys({
   },
   about: () => api('GET', 'about'),
   agents: () => agentOn,
+  refreshLimits: () => limitsUi.refresh(),
   chatClose: () => { if (!agentOn || !chatPage.isOpen()) return false; chatPage.close(); return true; },
   refine: refineTicket,
   implement: (file) => chatPage.implement(file).catch((e) => toast(`Implement failed: ${e.message}`)),
@@ -1050,11 +1052,13 @@ async function refineTicket(file) {
   try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
 }
 const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), project: () => (project === NO_PROJECT ? '' : project) });
+const limitsUi = initLimits({ el, api, toast, node: $('#limits') });
 api('GET', 'agent').then((a) => {
   agentOn = a.enabled;
   $('#chat-btn').hidden = !a.enabled;
   if (!a.enabled) return;
   chatPage.start();
+  limitsUi.start();
   let lastKey = '';
   chatPage.onChange(() => { // repaint the board / detail when the set of tickets being refined changes
     const key = S.tickets.filter((t) => chatPage.refining(t.file)).map((t) => t.file).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');

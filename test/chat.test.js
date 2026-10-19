@@ -110,7 +110,7 @@ console.log(JSON.stringify({ type: 'result', is_error: false, result: 'fin', tot
 test('agent routes are refused unless the server was started with agents', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-agent-'));
   const off = createTicketServer({ dir });
-  const on = createTicketServer({ dir, agents: true, agentRun: fakeRunner().run, chatsFile: null });
+  const on = createTicketServer({ dir, agents: true, agentRun: fakeRunner().run, chatsFile: null, limitsFetch: async () => ({ ok: false, status: 503 }) });
   try {
     for (const [app, expect] of [[off, 403], [on, 201]]) {
       const { port } = await app.listen(0);
@@ -121,6 +121,7 @@ test('agent routes are refused unless the server was started with agents', async
       const usage = await fetch(`${base}/api/agent/usage`);
       assert.equal(usage.status, expect === 201 ? 200 : 403);
       if (expect === 201) assert.equal((await usage.json()).claude.costUsd, 0);
+      assert.equal((await fetch(`${base}/api/agent/limits`)).status, expect === 201 ? 200 : 403);
       const cross = await fetch(`${base}/api/agent/chats`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://evil.example' }, body: '{}' });
       assert.equal(cross.status, 403);
     }
