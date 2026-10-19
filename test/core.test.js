@@ -330,3 +330,24 @@ test('a ticket being rewritten in place (empty for a moment) is still listed wit
   assert.equal(readSettled(dir, '001-first.md', 0)?.version, t.version);
   assert.equal(readSettled(dir, '009-missing.md', 1, 1), null);
 });
+
+test('a ticket that stays empty or absent past the re-reads keeps its last good copy for a grace period', () => {
+  const dir = tmp();
+  const file = path.join(dir, '001-sample-ticket.md');
+  assert.equal(listTickets(dir)[0].status, 'open');
+  fs.writeFileSync(file, '');
+  assert.equal(listTickets(dir)[0].status, 'open', 'empty file');
+  fs.writeFileSync(file, '# Sample ticket\n');
+  assert.equal(listTickets(dir)[0].status, 'open', 'frontmatter lost');
+  fs.rmSync(file);
+  assert.deepEqual(listTickets(dir).map((t) => t.file), ['001-sample-ticket.md'], 'absent file');
+  fs.writeFileSync(file, SAMPLE.replace('status: open', 'status: testing'));
+  assert.equal(listTickets(dir)[0].status, 'testing', 'recovered');
+});
+
+test('a deleted ticket is not kept alive by the grace period', () => {
+  const dir = tmp();
+  const t = listTickets(dir)[0];
+  deleteTicket(dir, t.file, t.version);
+  assert.deepEqual(listTickets(dir), []);
+});

@@ -156,12 +156,32 @@ export function readSettled(dir, name, tries = 5, waitMs = 20) {
   }
 }
 
+// A save that outlasts the re-reads above (slow writer, busy disk) must not flicker the ticket either: for a short
+// grace period keep serving the last good copy of a file that is now empty, absent or has lost its frontmatter.
+// A ticket that stays that way is real (hand-edited, deleted) and shows as it is.
+const SETTLE_GRACE_MS = 3000;
+const lastGood = new Map(); // dir/file -> { ticket, suspectSince }
+const suspect = (t, prev) => !t || t.version === hash('') || (prev && prev.ticket.hasFrontmatter && !t.hasFrontmatter);
+
 export function listTickets(dir) {
   const out = [];
-  for (const name of fs.readdirSync(dir)) {
-    if (!isTicketFile(name)) continue;
+  const names = fs.readdirSync(dir).filter(isTicketFile);
+  const seen = new Set(names);
+  for (const name of names) {
+    const key = path.join(dir, name);
+    const prev = lastGood.get(key);
     const t = readSettled(dir, name);
+    if (suspect(t, prev)) {
+      const since = prev?.suspectSince || Date.now();
+      if (prev && Date.now() - since < SETTLE_GRACE_MS) { lastGood.set(key, { ticket: prev.ticket, suspectSince: since }); out.push(prev.ticket); continue; }
+    } else lastGood.set(key, { ticket: t, suspectSince: 0 });
     if (t) out.push(t);
+  }
+  // listed by the directory a moment ago but gone now: a rename-style save in progress
+  for (const [key, v] of lastGood) {
+    if (path.dirname(key) !== dir || seen.has(path.basename(key))) continue;
+    if (!fs.existsSync(key) && Date.now() - (v.suspectSince || (v.suspectSince = Date.now())) < SETTLE_GRACE_MS) out.push(v.ticket);
+    else lastGood.delete(key);
   }
   return out.sort((a, b) => a.file.localeCompare(b.file, 'en', { numeric: true }));
 }
@@ -438,6 +458,7 @@ export function deleteTicket(dir, file, version, now = Date.now()) {
   fs.mkdirSync(path.join(dest, ASSET_DIR), { recursive: true });
   for (const name of assetsOf(dir, t.id)) fs.renameSync(path.join(dir, ASSET_DIR, name), path.join(dest, ASSET_DIR, name));
   fs.renameSync(p, path.join(dest, file));
+  lastGood.delete(p);
   return { key, file, id: t.id, title: t.title };
 }
 
