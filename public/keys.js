@@ -131,7 +131,8 @@ export function initKeys(ctx) {
     [...document.querySelectorAll('.col')].find((c) => c.dataset.status === s)?.querySelectorAll('.card') ?? []);
   // The card keys act on: the selection; hover only counts while nothing is selected.
   const selectedFile = () => ctx.selected?.() ?? null;
-  const cardTarget = () => selectedFile() ?? hoverFile;
+  const focusedCardFile = () => document.activeElement?.closest?.('.card')?.dataset.file ?? null;
+  const cardTarget = () => selectedFile() ?? focusedCardFile() ?? hoverFile;
   function moveFocus(dir) {
     const cols = boardCols().map((c) => [...c].map((x) => x.dataset.file));
     const hiddenList = ctx.hiddenColumns?.() ?? [];
@@ -368,7 +369,7 @@ export function initKeys(ctx) {
     closeMenu();
     if (was === file || overlay) return;
     const entry = (label, hint, run) => el('button', { type: 'button', role: 'menuitem', onclick: () => { closeMenu(); run(); } }, label, el('kbd', {}, hint));
-    const refinable = ctx.agents?.() && S.tickets.find((x) => x.file === file)?.status === 'design';
+    const refinable = ctx.agents?.();
     const refining = refinable && ctx.isRefining(file);
     menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file },
       entry('Add comment', 'c', () => openNote(file)),
@@ -442,7 +443,7 @@ export function initKeys(ctx) {
       placeholder: `Actions for #${t.id} ${t.title}`,
       rows: () => [
         { label: 'Open', hint: 'Enter', run: () => { location.hash = `#/t/${encodeURIComponent(t.file)}`; } },
-        ...(ctx.agents?.() && t.status === 'design' ? [{ label: ctx.isRefining(t.file) ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', run: () => ctx.refine(t.file) }] : []),
+        ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', run: () => ctx.refine(t.file) }] : []),
         ...(ctx.agents?.() ? [{ label: 'Implement with Claude', hint: 'agent', run: () => ctx.implement(t.file) }] : []),
         { label: 'Change status…', hint: hint('status'), push: () => valueLevel(t, 'status') },
         { label: 'Change priority…', hint: hint('priority'), push: () => valueLevel(t, 'priority') },
@@ -512,7 +513,7 @@ export function initKeys(ctx) {
         if (t) {
           rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', cmd: true, push: () => ticketLevel(t) });
           if (ctx.agents?.()) {
-            if (t.status === 'design') { const refining = ctx.isRefining(t.file); rows.push({ label: refining ? 'Claude is refining this ticket…' : 'Refine this ticket', hint: 'agent', cmd: true, run: () => { if (!refining) ctx.refine(t.file); } }); }
+            { const refining = ctx.isRefining(t.file); rows.push({ label: refining ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', cmd: true, run: () => { if (!refining) ctx.refine(t.file); } }); }
             rows.push({ label: 'Implement with Claude', hint: 'agent', cmd: true, run: () => ctx.implement(t.file) });
           }
         }
