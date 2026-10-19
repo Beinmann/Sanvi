@@ -25,7 +25,9 @@ export function implementRunOpts({ ticketsDir, projectDir }) {
   let notes = ticketsDir;
   try { notes = git(ticketsDir, 'rev-parse', '--show-toplevel'); } catch { /* tickets are not in a git repo */ }
   const rule = (tool, p) => `${tool}(/${p}/**)`;
-  const inside = projectDir && (projectDir === notes || projectDir.startsWith(`${notes}/`));
+  const within = (p, root) => p === root || p.startsWith(`${root}/`);
+  // never lock the agent out of its own ticket, even if the tickets live inside the project's checkout
+  const inside = projectDir && within(projectDir, notes) && !within(ticketsDir, projectDir);
   return {
     permissionMode: 'acceptEdits',
     tools: ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'],

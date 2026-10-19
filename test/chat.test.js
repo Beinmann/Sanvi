@@ -254,6 +254,7 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     assert.match(f.calls[0].opts.prompt, /status: testing/);
     assert.ok(f.calls[0].opts.addDirs.includes(repo), 'notes repo readable');
     assert.ok(f.calls[0].opts.allowedTools.some((r) => r.startsWith('Write(') && r.includes(repo)), 'notes repo writable');
+    assert.ok(dir.startsWith(repo), 'the ticket is under the writable notes repo');
     assert.deepEqual(f.calls[0].opts.disallowedTools, [`Edit(/${repo}/**)`, `Write(/${repo}/**)`], 'main checkout is off limits');
     fs.writeFileSync(path.join(wt1, 'new.txt'), 'x\n'); // left uncommitted: the server commits it
     f.calls[0].end(); await tick();
