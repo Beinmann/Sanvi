@@ -326,4 +326,5 @@ test('implement permissions: main checkout off limits unless the tickets live in
   assert.ok(o.allowedTools.includes(`Edit(/${notes}/**)`));
   assert.deepEqual(o.disallowedTools, [`Edit(/${notes}/code/**)`, `Write(/${notes}/code/**)`]);
   assert.deepEqual(o.addDirs, [notes]);
+  assert.equal(o.permissionMode, 'auto');
 });

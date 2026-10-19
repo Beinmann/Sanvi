@@ -29,7 +29,7 @@ export function implementRunOpts({ ticketsDir, projectDir }) {
   // never lock the agent out of its own ticket, even if the tickets live inside the project's checkout
   const inside = projectDir && within(projectDir, notes) && !within(ticketsDir, projectDir);
   return {
-    permissionMode: 'acceptEdits',
+    permissionMode: 'auto',
     tools: ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'],
     allowedTools: [rule('Edit', notes), rule('Write', notes), 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git log:*)', 'Bash(npm test:*)', 'Bash(npm run test:*)', 'Bash(node --test:*)'],
     disallowedTools: inside ? [rule('Edit', projectDir), rule('Write', projectDir)] : [],
