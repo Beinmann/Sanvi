@@ -1,4 +1,4 @@
-// Chat with the agent: a floating panel (expandable) with a list of chats. Only active when the server runs with --agents.
+// Chat with the agent: a full-screen panel with a list of chats. Only active when the server runs with --agents.
 import { renderMarkdown } from './md.js';
 
 const store = {
@@ -12,14 +12,13 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   let chat = null;    // the open chat, as last fetched
   let drafts = {};    // unsent text per chat id
   let isOpen = false;
-  let quiet = false;  // opened by the hotkey: leave the focus alone so `a` again goes full screen
-  let full = false;   // full screen: the keyboard shortcuts work anywhere on the page
+  let quiet = false;  // opened by the hotkey: leave the focus alone
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
   // Keyboard navigation (in the panel; while it is open, also anywhere outside input fields, taking precedence over the page hotkeys). Input: Esc (or Ctrl+Up) leaves for the messages. Messages: j/k scroll (hold to keep scrolling), Down/Up step message by message,
   // g/G first/last, i, Enter or Ctrl+Down return to the input, Esc closes. Anywhere in the panel: Alt+Left/Right (in the messages also plain h/l) switch chat.
-  const HINT = '+ type · Esc: input → messages → close · a: open, again full screen · j/k scroll, ↑/↓ step, g/G ends, i input · h/l chat · Ctrl+Enter send';
+  const HINT = '+ type · Esc: input → messages → close · a: open/close · j/k scroll, ↑/↓ step, g/G ends, i input · h/l chat · Ctrl+Enter send';
   const msgs = () => [...panel.querySelectorAll('.chatlog .msg')];
   const focusInput = () => panel.querySelector('textarea')?.focus();
   function focusMsg(to) {
@@ -140,18 +139,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     toast(r.started ? `Refining ${r.started} design ticket${r.started > 1 ? 's' : ''}${r.skipped ? ` (${r.skipped} already running)` : ''}` : r.skipped ? 'All design tickets are already being refined' : 'No design tickets to refine');
   }
 
-  function setFull(on, { focus = true } = {}) {
-    full = on;
-    const was = quiet;
-    quiet = !focus || quiet; // paint() would focus the input too
-    try { paint(); } finally { quiet = was; }
-    if (full && focus && !panel.contains(document.activeElement)) focusInput();
-  }
-
   async function toggle(force) {
     isOpen = force ?? !isOpen;
     if (!isOpen) stopHold();
-    if (!isOpen) { full = false; panel.classList.remove('full'); } // else the stale full-screen class shows on reopen
     panel.hidden = !isOpen;
     if (!isOpen) return;
     try {
@@ -223,13 +213,11 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       chats.map((c) => el('option', { value: c.id, selected: c.id === chat.id }, `${mark(c)}${c.title}`)));
     const log = el('div', { class: 'chatlog', tabindex: '-1' },
       chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, chat.kind === 'ask' ? 'Ask about tickets and what changed. Claude can only read the tickets and the change log here; it cannot edit anything.' : chat.kind === 'refine' ? 'Refine run: Claude may edit only this ticket.' : 'Claude runs on this machine with read access to the project and permission to edit files there.'));
-    panel.classList.toggle('full', full);
     show(panel,
       el('div', { class: 'chathead' }, select,
         el('button', { type: 'button', title: 'New read-only question about the board', onclick: () => ask().catch((e) => toast(e.message)) }, '?'),
         el('button', { type: 'button', title: 'New chat', onclick: () => openChat(null).catch((e) => toast(e.message)) }, '+'),
         el('button', { type: 'button', title: 'Delete this chat', disabled: running, onclick: remove }, '🗑'),
-        el('button', { type: 'button', title: full ? 'Leave full screen' : 'Full screen (or click Chat again)', onclick: () => setFull(!full) }, full ? '▢' : '⤢'),
         el('button', { type: 'button', title: 'Close (Esc)', onclick: () => toggle(false) }, '×')),
       chat.messages.length || chat.kind !== 'chat'
         ? el('div', { class: 'chatmeta muted', title: `${chat.cwd}\nThe cost is the Claude CLI's own estimate at API prices. On a subscription login it is not charged to you; it counts against your plan limits. With ANTHROPIC_API_KEY set it is real spend.` }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.state === 'queued' ? 'waiting for a free slot…' : chat.costUsd ? `≈ $${chat.costUsd.toFixed(3)} at API rates` : 'ready'}`)
@@ -248,9 +236,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     if (hadFocus || (!keep && !running && !quiet)) input.focus();
   }
 
-  // Hotkey `a`: open without taking focus; again: full screen (still without focus); in full screen: close.
+  // Hotkey `a`: open without taking focus; again: close.
   async function hotkey() {
-    if (isOpen) { if (full) await toggle(false); else setFull(true, { focus: false }); return; }
+    if (isOpen) { await toggle(false); return; }
     quiet = true;
     try { await toggle(true); } finally { quiet = false; }
   }
@@ -260,8 +248,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     focusInput();
   }
 
-  // A second click on the button while the panel is open goes full screen; a click in full screen closes it.
-  button.addEventListener('click', () => { if (isOpen && !full) setFull(true); else toggle(); });
+  button.addEventListener('click', () => toggle());
   return {
     toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, implement, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && c.kind === 'refine' && active(c)),

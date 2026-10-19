@@ -83,7 +83,7 @@ export const HELP = [
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['Ctrl+M / m', 'Quick note: free text saved to NOTES.md next to the tickets, not tied to any ticket (Ctrl+M also while typing; m outside fields)'],
     ['g', 'Go to the Notes view (search, make a ticket from a note, delete)'],
-    ['a', 'Claude chat (only with --agents): open without focus; again: full screen; again: close'],
+    ['a', 'Claude chat (only with --agents): open full screen without focus; again: close'],
     ['h / l', 'With the chat open (outside fields): previous / next chat; the chat\'s j/k/g/G/i keys also work and win over the page keys'],
     ['+', 'Claude chat: open if needed and focus the message input'],
     ['/', 'Go to the search box (from any view; goes to the board first)'],
