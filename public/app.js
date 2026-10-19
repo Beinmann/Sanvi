@@ -766,6 +766,10 @@ function renderDetail({ fresh = false, edit = false } = {}) {
         disabled: chatPage.refining(D.file),
         onclick: () => refineTicket(D.file),
       }, chatPage.refining(D.file) ? 'Refining…' : 'Refine with Claude'),
+      agentOn && chatPage.forTicket(D.loaded.id, D.loaded.project || '') && el('button', {
+        type: 'button', id: 'chat-link', title: 'Open the latest Claude chat about this ticket',
+        onclick: () => chatPage.open(chatPage.forTicket(D.loaded.id, D.loaded.project || '').id).catch((e) => toast(e.message)),
+      }, 'Open AI chat'),
       el('span', { id: 'state', class: 'state' }),
       el('button', { id: 'save', class: 'primary', type: 'button', onclick: save }, 'Save')),
     el('div', { id: 'banner' }),
@@ -1040,7 +1044,7 @@ api('GET', 'agent').then((a) => {
   chatPage.start();
   let lastKey = '';
   chatPage.onChange(() => { // repaint the board / detail when the set of tickets being refined changes
-    const key = S.tickets.filter((t) => chatPage.refining(t.file)).map((t) => t.file).join();
+    const key = S.tickets.filter((t) => chatPage.refining(t.file)).map((t) => t.file).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');
     if (key === lastKey) return;
     lastKey = key;
     if (document.querySelector('.board, .tablewrap')) renderBoard();

@@ -55,7 +55,7 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
 
   // `dir` is explicit; otherwise the project's directory (from its project object); otherwise the default.
   // The project's instructions go to the agent with the first message.
-  function create({ dir, project, title = 'New chat', kind = 'chat', runOpts, meta, preamble } = {}) {
+  function create({ dir, project, title = 'New chat', kind = 'chat', runOpts, meta, preamble, ticketId } = {}) {
     const info = projectInfo(project || '') || {};
     let chatDir = cwd;
     let warning = null;
@@ -64,7 +64,7 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
       try { chatDir = resolveDir(info.dir); } catch { warning = `the directory of project "${project || 'default project'}" (${info.dir}) was not found; using the default directory`; }
     }
     if (!preamble && info.instructions) preamble = `Instructions for project "${project || 'default project'}":\n${info.instructions}\n\nUser message:`;
-    const c = { id: crypto.randomUUID(), title, kind, runOpts, meta, preamble, cwd: chatDir, state: 'idle', error: null, warning, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
+    const c = { id: crypto.randomUUID(), title, kind, runOpts, meta, preamble, ticketId: ticketId ? String(ticketId) : null, project: project || '', cwd: chatDir, state: 'idle', error: null, warning, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
     chats.set(c.id, c);
     touch(c.id);
     return view(c);
@@ -161,6 +161,6 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
     create, send, cancel, remove, setCwd,
     defaultDir: cwd,
     get: (id) => view(get(id)),
-    list: () => [...chats.values()].map(({ id, title, state, created, kind, outcome, meta }) => ({ id, title, state, created, kind: kind || 'chat', outcome: outcome || null, ticket: meta?.file || null })).sort((a, b) => b.created.localeCompare(a.created)),
+    list: () => [...chats.values()].map(({ id, title, state, created, kind, outcome, meta, ticketId, project }) => ({ id, title, state, created, kind: kind || 'chat', outcome: outcome || null, ticket: meta?.file || null, ticketId: ticketId || null, project: project || '' })).sort((a, b) => b.created.localeCompare(a.created)),
   };
 }

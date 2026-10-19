@@ -205,6 +205,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   return {
     toggle, onEvent, ask, refine, implement, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && active(c)),
+    // The most recent chat linked to a ticket (the list is newest first), or null.
+    forTicket: (id, proj = '') => (id && chats.find((c) => c.ticketId === id && (c.project || '') === proj)) || null,
+    open: async (id) => { await toggle(true); await openChat(id); },
     start: () => refreshList().catch(() => {}),
   };
 }

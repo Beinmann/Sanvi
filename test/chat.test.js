@@ -196,6 +196,26 @@ test('refine outcome: unchanged ticket is a problem, still-design means question
   } finally { await s.app.close(); }
 });
 
+test('a chat started for a ticket is linked to it by id and project, and the link survives a restart', async () => {
+  const s = await refineSetup([['001-a.md', 'design'], ['002-b.md', 'open']]);
+  try {
+    await s.j('POST', '/api/agent/refine', { file: '001-a.md' });
+    const list = await s.list();
+    assert.equal(list.length, 1);
+    assert.equal(list[0].ticketId, '001');
+    assert.equal(list[0].project, '');
+  } finally { await s.app.close(); }
+
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-link-')), 'chats.json');
+  const chats = createChats({ cwd: '/w', file, run: fakeRunner().run });
+  const plain = chats.create();
+  const linked = chats.create({ ticketId: 7, project: 'web' });
+  const again = createChats({ cwd: '/w', file, run: fakeRunner().run }).list();
+  assert.equal(again.find((c) => c.id === linked.id).ticketId, '7');
+  assert.equal(again.find((c) => c.id === linked.id).project, 'web');
+  assert.equal(again.find((c) => c.id === plain.id).ticketId, null);
+});
+
 test('refine-all starts every design ticket not already running', async () => {
   const s = await refineSetup([['001-a.md', 'design'], ['002-b.md', 'open'], ['003-c.md', 'design']]);
   try {
