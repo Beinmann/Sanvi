@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import {
   listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig, writeStatuses,
   ConflictError, ValidationError, slugify, createIdea, ideaTitle, addNote,
-  deleteTicket, listTrash, restoreTicket, purgeTrash, purgeTrashItem, saveAsset, readSettled,
+  deleteTicket, listTrash, restoreTicket, purgeTrash, purgeTrashItem, saveAsset, readSettled, readTicketSettled,
 } from '../src/core.js';
 
 const SAMPLE = `---
@@ -350,4 +350,15 @@ test('a deleted ticket is not kept alive by the grace period', () => {
   const t = listTickets(dir)[0];
   deleteTicket(dir, t.file, t.version);
   assert.deepEqual(listTickets(dir), []);
+});
+
+test('the single-ticket read serves the last good copy of a ticket caught mid-save', () => {
+  const dir = tmp();
+  const file = path.join(dir, '001-sample-ticket.md');
+  assert.equal(readTicketSettled(dir, '001-sample-ticket.md').status, 'open');
+  fs.writeFileSync(file, '');
+  assert.equal(readTicketSettled(dir, '001-sample-ticket.md').status, 'open', 'empty file');
+  fs.rmSync(file);
+  assert.equal(readTicketSettled(dir, '001-sample-ticket.md').status, 'open', 'absent file');
+  assert.throws(() => readTicketSettled(dir, '042-never-existed.md'), /no such ticket/);
 });

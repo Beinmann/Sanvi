@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  IDEA_STATUS, listTickets, readTicket, listScratch, addScratch, deleteScratch, promoteScratch, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
+  IDEA_STATUS, listTickets, readTicket, readTicketSettled, listScratch, addScratch, deleteScratch, promoteScratch, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
   ConflictError, NotFoundError, ValidationError,
   writeStatuses,
 } from './core.js';
@@ -325,7 +325,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
         changes: ['status', 'area', 'project', 'priority'].filter((f) => t[f]).map((f) => ({ field: f, from: null, to: t[f] })) });
       return send(res, 201, t);
     }
-    if (parts.length === 2 && method === 'GET') return send(res, 200, readTicket(dir, decodeURIComponent(parts[1])));
+    if (parts.length === 2 && method === 'GET') return send(res, 200, readTicketSettled(dir, decodeURIComponent(parts[1])));
     if (parts.length === 3 && parts[2] === 'assets' && method === 'POST') {
       const buf = await readBuffer(req, MAX_ASSET_BYTES);
       const rel = saveAsset(dir, decodeURIComponent(parts[1]), buf, req.headers['content-type']);
