@@ -46,7 +46,16 @@ export function createWorktree({ dir, id }) {
   if (!base) throw new ValidationError('the repository is on a detached HEAD; check out a branch first');
   const branch = `ticket-${id}`;
   const worktree = `${top}-worktrees/${branch}`;
-  try { git(top, 'worktree', 'add', worktree, '-b', branch); } catch (e) { throw new ValidationError(`could not create the worktree: ${gitError(e)}`); }
+  try {
+    // a leftover from an earlier attempt: keep its branch (and worktree, if still there) and continue on it
+    git(top, 'worktree', 'prune');
+    const registered = git(top, 'worktree', 'list', '--porcelain').split('\n').some((l) => l === `worktree ${worktree}`);
+    if (!registered) {
+      let exists = true;
+      try { git(top, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`); } catch { exists = false; }
+      git(top, 'worktree', 'add', ...(exists ? [worktree, branch] : [worktree, '-b', branch]));
+    }
+  } catch (e) { throw new ValidationError(`could not create the worktree: ${gitError(e)}`); }
   return { top, base, branch, worktree };
 }
 
