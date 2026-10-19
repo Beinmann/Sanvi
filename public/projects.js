@@ -65,7 +65,7 @@ export function initProjects({ el, show, api, toast, view, canBrowse = () => fal
     show(view, el('div', { class: 'detail projects' },
       el('a', { href: '#/' }, '← Board'),
       el('h1', {}, 'Projects'),
-      el('p', { class: 'muted' }, 'The directory is where the agent runs for tickets and chats of that project; the instructions are sent to it as context. Used only with --agents; the Browse… button needs it too. The run command is started by the Run button next to the project switcher (shell command; starting it again restarts it). Stored as small Markdown files in _projects/ next to the tickets.'),
+      el('p', { class: 'muted' }, 'The directory is where the agent runs for tickets and chats of that project; the instructions are sent to it as context. Used only with --agents; the Browse… button needs it too. The run command is started by the Run button next to the project switcher (also for "No project", which is the default project; shell command; starting it again restarts it). Stored as small Markdown files in _projects/ next to the tickets.'),
       list.map(card)));
   }
 

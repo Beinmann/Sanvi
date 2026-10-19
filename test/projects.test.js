@@ -144,7 +144,8 @@ test('run config round-trips, and POST /api/projects/run starts and restarts the
   const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
   try {
     assert.equal((await post({ name: 'plain' })).status, 400); // no run command
-    assert.equal((await post({ name: '' })).status, 400);
+    assert.equal((await post({ name: '' })).status, 400); // the default project has no run command yet
+    assert.equal((await post({})).status, 400); // no name at all
     assert.equal((await post({ name: 'web' }, { origin: 'http://evil.example' })).status, 403);
     const first = await (await post({ name: 'web' })).json();
     assert.equal(first.restarted, false);
@@ -156,6 +157,10 @@ test('run config round-trips, and POST /api/projects/run starts and restarts the
     await waitFor(2);
     assert.equal(pids().length, 2);
     assert.equal(alive(p1), false); // the old process is gone
+    saveProject(dir, { name: '', dir: cwd, run: 'echo default >> default.txt', runDir: cwd });
+    assert.equal((await post({ name: '' })).status, 200); // the default project can have a run config too
+    for (let i = 0; i < 100 && !fs.existsSync(path.join(cwd, 'default.txt')); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(fs.existsSync(path.join(cwd, 'default.txt')));
   } finally { await app.close(); }
   await new Promise((r) => setTimeout(r, 200));
   assert.equal(alive(pids()[1]), false); // closing the server stops what it started

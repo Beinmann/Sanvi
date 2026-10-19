@@ -26,9 +26,9 @@ export function createRunner({ dir, grace = KILL_GRACE_MS }) {
   }
 
   async function start(name) {
-    if (!name) throw new ValidationError('choose a project to run');
+    if (typeof name !== 'string') throw new ValidationError('choose a project to run');
     const o = listProjectObjects(dir).find((x) => x.name === name);
-    if (!o?.run) throw new ValidationError(`project "${name}" has no run command`);
+    if (!o?.run) throw new ValidationError(`project "${name || 'default project'}" has no run command`);
     const cwd = expand(o.runDir || o.dir || '');
     if (!cwd) throw new ValidationError(`project "${name}" has a run command but no working directory (set one, or the project directory)`);
     if (!path.isAbsolute(cwd)) throw new ValidationError('the working directory must be absolute (or start with ~/)');

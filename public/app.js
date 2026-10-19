@@ -312,28 +312,31 @@ function paintProject() {
   sel.classList.toggle('set', !!project);
   paintRun();
 }
-// Run button (096): only for a named project that has a run command; the command itself stays on the server.
-const runnable = () => !!project && project !== NO_PROJECT && runConfigs.has(project);
+// Run button (096): for a project (or "No project" = the default project) that has a run command; the command itself stays on the server.
+const runName = () => (project === NO_PROJECT ? '' : project);
+// With no named project at all there is no switcher and "All projects" is just the default project.
+const runnable = () => (!!project || projectNames().length === 0) && runConfigs.has(runName());
+const runLabel = () => runName() || 'default project';
 const runConfigs = new Set();
 function paintRun() {
   const b = $('#run-btn');
   if (!b) return;
   b.hidden = !runnable();
-  if (!b.hidden) b.title = `Run ${project}: starts its run command, restarting it if still running`;
+  if (!b.hidden) b.title = `Run ${runLabel()}: starts its run command, restarting it if still running`;
 }
 async function refreshRunConfigs() {
   try {
     const list = await api('GET', 'projects');
     runConfigs.clear();
-    for (const p of list) if (p.name && p.run) runConfigs.add(p.name);
+    for (const p of list) if (p.run) runConfigs.add(p.name);
   } catch { return; }
   paintRun();
 }
 async function runProject() {
   if (!runnable()) return;
   try {
-    const r = await api('POST', 'projects/run', { name: project });
-    toast(r.restarted ? `Restarted ${project}` : `Started ${project}`);
+    const r = await api('POST', 'projects/run', { name: runName() });
+    toast(r.restarted ? `Restarted ${runLabel()}` : `Started ${runLabel()}`);
   } catch (e) { toast(`Run failed: ${e.message}`); }
 }
 function loadHash() {
