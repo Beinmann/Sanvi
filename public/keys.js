@@ -273,7 +273,7 @@ export function initKeys(ctx) {
     // Which project the idea goes to (079): defaults like a new ticket; changing it does not switch the view.
     const { names, fresh } = ctx.projects();
     const sel = names.length ? el('select', { 'aria-label': 'Project', id: 'idea-project' },
-      el('option', { value: '' }, 'No project'), ...(fresh && !names.includes(fresh) ? [fresh, ...names] : names).map((n) => el('option', { value: n }, n))) : null;
+      el('option', { value: '' }, 'Default project'), ...(fresh && !names.includes(fresh) ? [fresh, ...names] : names).map((n) => el('option', { value: n }, n))) : null;
     if (sel) sel.value = fresh;
     const save = async () => {
       const text = ta.value.trim();
@@ -484,11 +484,11 @@ export function initKeys(ctx) {
     };
   }
 
-  // One row per choice: All projects, each project, No project. `prefix` turns them into palette commands (083).
+  // One row per choice: All projects, each project, Default project. `prefix` turns them into palette commands (083).
   function projectRows(prefix = '') {
     const { names, current, recent, none } = ctx.projects();
     const row = (label, value, hint) => ({ label: `${prefix}${label}`, hint: value === current ? 'current' : hint, ...(prefix ? { cmd: true } : {}), run: () => ctx.setProject(value) });
-    return [row('All projects', '', ''), ...names.map((n) => row(n, n, recent.includes(n) ? 'recent' : '')), row('No project', none, '')];
+    return [row('All projects', '', ''), ...names.map((n) => row(n, n, recent.includes(n) ? 'recent' : '')), row('Default project', none, '')];
   }
   function projectLevel() {
     return { placeholder: 'Switch project…', rows: () => projectRows() };
