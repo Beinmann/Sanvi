@@ -14,9 +14,10 @@ export function implementPrompt({ ticketsDir, file, instructions = '', project =
   return `You are implementing one ticket in a Markdown ticket tracker. Nobody can answer questions during this run, so do not ask any.
 
 1. Read the ticket format in ${readme} (if it does not exist, keep the ticket's own structure) and the ticket ${ticket}.
-2. Implement the ticket in the repository you are running in (a git worktree on its own branch). Follow the surrounding code's style, add or update tests where the repo has them, and run them.
-3. Tick the ticket's acceptance criteria that are met, add a dated Note saying what you did, write or update its "## Summary" ("To test: ..."), and set "status: testing" (not "done") in the frontmatter. The ticket is ${ticket}, outside your repository; edit it there. You may also read and edit notes elsewhere in the notes repository (${path.dirname(ticketsDir)} and below), but never the project's main checkout.
-4. Commit your changes in the repository with git. Do not switch branches, merge or push: the branch is merged for you if you finish successfully.${instructions ? `\n\nInstructions for project "${project}":\n${instructions}` : ''}`;
+2. Judge whether the ticket is clear enough to implement without guessing: an understandable problem and concrete, verifiable acceptance criteria. If it is not, do NOT change any code and do not set its status to "in-progress" or "testing". Instead add a dated Note to the ticket (${ticket}) that starts with "Blocked:" and lists your specific open questions, optionally set "status: blocked" in the frontmatter, and stop here (skip steps 3-5).
+3. Implement the ticket in the repository you are running in (a git worktree on its own branch). Follow the surrounding code's style, add or update tests where the repo has them, and run them.
+4. Tick the ticket's acceptance criteria that are met, add a dated Note saying what you did, write or update its "## Summary" ("To test: ..."), and set "status: testing" (not "done") in the frontmatter. The ticket is ${ticket}, outside your repository; edit it there. You may also read and edit notes elsewhere in the notes repository (${path.dirname(ticketsDir)} and below), but never the project's main checkout.
+5. Commit your changes in the repository with git. Do not switch branches, merge or push: the branch is merged for you if you finish successfully.${instructions ? `\n\nInstructions for project "${project}":\n${instructions}` : ''}`;
 }
 
 // The notes repo (the one holding the tickets) is readable and writable, so the agent can use notes, research and the

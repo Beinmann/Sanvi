@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createWorktree } from '../src/implement.js';
+import { createWorktree, implementPrompt } from '../src/implement.js';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
@@ -53,4 +53,12 @@ test('createWorktree creates a worktree for an existing branch that was never ch
   const wt = createWorktree({ dir: top, id: '004' });
   assert.equal(git(wt.worktree, 'branch', '--show-current'), 'ticket-004');
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('implementPrompt tells the agent to block on unclear tickets before implementing', () => {
+  const p = implementPrompt({ ticketsDir: '/t', file: '001-x.md' });
+  const clear = p.indexOf('clear enough');
+  assert.ok(clear > 0 && clear < p.indexOf('3. Implement'));
+  assert.match(p, /do NOT change any code/);
+  assert.match(p, /dated Note[^\n]*Blocked:/);
 });
