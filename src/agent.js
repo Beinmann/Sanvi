@@ -9,8 +9,8 @@ export const DEFAULT_TOOLS = ['Read', 'Grep', 'Glob', 'Edit'];
 //   done: resolves (never rejects) to { ok, sessionId, text, costUsd, denials, error, cancelled }.
 //   denials: how many tool calls were refused (a headless run cannot ask for permission).
 //   permissionMode: 'acceptEdits' lets Edit change any file under cwd; 'default' with `allowedTools` (e.g. 'Edit(/abs/file)')
-//   allows only what is listed, everything else is denied because a headless run cannot ask. `addDirs` extends read access.
-export function startRun({ prompt, cwd, resume, tools = DEFAULT_TOOLS, maxBudgetUsd = 2, bin = 'claude', permissionMode = 'acceptEdits', allowedTools, addDirs = [] }) {
+//   allows only what is listed, everything else is denied because a headless run cannot ask. `disallowedTools` always wins over allowed ones. `addDirs` extends read access.
+export function startRun({ prompt, cwd, resume, tools = DEFAULT_TOOLS, maxBudgetUsd = 2, bin = 'claude', permissionMode = 'acceptEdits', allowedTools, disallowedTools, addDirs = [] }) {
   const args = [
     '-p', prompt,
     '--output-format', 'stream-json', '--verbose',
@@ -20,6 +20,7 @@ export function startRun({ prompt, cwd, resume, tools = DEFAULT_TOOLS, maxBudget
   ];
   if (resume) args.push('--resume', resume);
   if (allowedTools?.length) args.push('--allowedTools', allowedTools.join(','));
+  if (disallowedTools?.length) args.push('--disallowedTools', disallowedTools.join(','));
   if (addDirs.length) args.push('--add-dir', ...addDirs);
 
   const listeners = [];

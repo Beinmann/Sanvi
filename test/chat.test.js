@@ -239,6 +239,8 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
   const dir = path.join(repo, 'tickets');
   fs.mkdirSync(dir);
   fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: open\n---\n# A\n');
+  fs.mkdirSync(path.join(dir, '_projects'));
+  fs.writeFileSync(path.join(dir, '_projects', '_default.md'), `---\nname: ""\ndir: ${repo}\n---\n`);
   fs.writeFileSync(path.join(dir, '002-b.md'), '---\nstatus: open\n---\n# B\n');
   const f = fakeRunner();
   const app = createTicketServer({ dir, agents: true, agentRun: f.run, chatsFile: null });
@@ -250,6 +252,9 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     const wt1 = f.calls[0].opts.cwd;
     assert.match(wt1, /ticket-001$/);
     assert.match(f.calls[0].opts.prompt, /status: testing/);
+    assert.ok(f.calls[0].opts.addDirs.includes(repo), 'notes repo readable');
+    assert.ok(f.calls[0].opts.allowedTools.some((r) => r.startsWith('Write(') && r.includes(repo)), 'notes repo writable');
+    assert.deepEqual(f.calls[0].opts.disallowedTools, [`Edit(/${repo}/**)`, `Write(/${repo}/**)`], 'main checkout is off limits');
     fs.writeFileSync(path.join(wt1, 'new.txt'), 'x\n'); // left uncommitted: the server commits it
     f.calls[0].end(); await tick();
     assert.equal((await chat(c1.id)).state, 'idle');
@@ -278,4 +283,13 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     assert.equal(g(repo, 'status', '--porcelain', '--untracked-files=no'), ''); // no half-merge left behind
     assert.equal(fs.readFileSync(path.join(repo, 'a.txt'), 'utf8'), 'from main\n');
   } finally { await app.close(); }
+});
+
+test('implement needs a project directory', async () => {
+  const s = await refineSetup([['001-a.md', 'open']]);
+  try {
+    const r = await s.j('POST', '/api/agent/implement', { file: '001-a.md' });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /has no directory/);
+  } finally { await s.app.close(); }
 });

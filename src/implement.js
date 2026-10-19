@@ -15,16 +15,23 @@ export function implementPrompt({ ticketsDir, file, instructions = '', project =
 
 1. Read the ticket format in ${readme} (if it does not exist, keep the ticket's own structure) and the ticket ${ticket}.
 2. Implement the ticket in the repository you are running in (a git worktree on its own branch). Follow the surrounding code's style, add or update tests where the repo has them, and run them.
-3. Tick the ticket's acceptance criteria that are met, add a dated Note saying what you did, write or update its "## Summary" ("To test: ..."), and set "status: testing" (not "done") in the frontmatter. Edit the ticket only at ${ticket}.
+3. Tick the ticket's acceptance criteria that are met, add a dated Note saying what you did, write or update its "## Summary" ("To test: ..."), and set "status: testing" (not "done") in the frontmatter. The ticket is ${ticket}, outside your repository; edit it there. You may also read and edit notes elsewhere in the notes repository (${path.dirname(ticketsDir)} and below), but never the project's main checkout.
 4. Commit your changes in the repository with git. Do not switch branches, merge or push: the branch is merged for you if you finish successfully.${instructions ? `\n\nInstructions for project "${project}":\n${instructions}` : ''}`;
 }
 
-export function implementRunOpts({ ticketsDir, file }) {
+// The notes repo (the one holding the tickets) is readable and writable, so the agent can use notes, research and the
+// ticket. The project's main checkout may lie inside it but is off limits: code changes belong in the worktree.
+export function implementRunOpts({ ticketsDir, projectDir }) {
+  let notes = ticketsDir;
+  try { notes = git(ticketsDir, 'rev-parse', '--show-toplevel'); } catch { /* tickets are not in a git repo */ }
+  const rule = (tool, p) => `${tool}(/${p}/**)`;
+  const inside = projectDir && (projectDir === notes || projectDir.startsWith(`${notes}/`));
   return {
     permissionMode: 'acceptEdits',
     tools: ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'],
-    allowedTools: [`Edit(/${path.join(ticketsDir, file)})`, 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git log:*)', 'Bash(npm test:*)', 'Bash(npm run test:*)', 'Bash(node --test:*)'],
-    addDirs: [ticketsDir],
+    allowedTools: [rule('Edit', notes), rule('Write', notes), 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git log:*)', 'Bash(npm test:*)', 'Bash(npm run test:*)', 'Bash(node --test:*)'],
+    disallowedTools: inside ? [rule('Edit', projectDir), rule('Write', projectDir)] : [],
+    addDirs: [notes],
     maxBudgetUsd: 5,
   };
 }

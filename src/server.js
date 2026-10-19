@@ -18,7 +18,7 @@ import { implementPrompt, implementRunOpts, createWorktree, mergeWorktree } from
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
-import { projectView, projectInfo, saveProject, listDirs } from './projects.js';
+import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // Any top-level file in public/ is served by name, so new frontend modules need no route.
@@ -141,8 +141,9 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     const t = readTicket(dir, file);
     if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} already has an agent running`);
     const info = projectInfo(dir, t.project);
-    const wt = createWorktree({ dir: resolveDir(info.dir || path.dirname(dir)), id: t.id });
-    const chat = chats.create({ dir: wt.worktree, project: t.project, kind: 'implement', meta: { file, wt }, title: `Implement #${t.id}: ${t.title}`.slice(0, 80), runOpts: implementRunOpts({ ticketsDir: dir, file }) });
+    if (!info.dir) throw new ValidationError(`project "${t.project || DEFAULT_LABEL}" has no directory: set the repository to implement in on the Projects page`);
+    const wt = createWorktree({ dir: resolveDir(info.dir), id: t.id });
+    const chat = chats.create({ dir: wt.worktree, project: t.project, kind: 'implement', meta: { file, wt }, title: `Implement #${t.id}: ${t.title}`.slice(0, 80), runOpts: implementRunOpts({ ticketsDir: dir, projectDir: resolveDir(info.dir) }) });
     chats.send(chat.id, `Implement ticket #${t.id} (${file}) in worktree ${wt.branch}; merged into ${wt.base} when done.`, { prompt: implementPrompt({ ticketsDir: dir, file, project: t.project, instructions: info.instructions }), queue: true });
     return chat;
   }
