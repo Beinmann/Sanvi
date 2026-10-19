@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createWorktree, implementPrompt } from '../src/implement.js';
+import { createWorktree, implementPrompt, mergeWorktree } from '../src/implement.js';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
@@ -61,4 +61,48 @@ test('implementPrompt tells the agent to block on unclear tickets before impleme
   assert.ok(clear > 0 && clear < p.indexOf('3. Implement'));
   assert.match(p, /do NOT change any code/);
   assert.match(p, /dated Note[^\n]*Blocked:/);
+});
+
+function branchWithChange(file, text) {
+  const { root, top } = tempRepo();
+  git(top, 'config', 'user.name', 't');
+  git(top, 'config', 'user.email', 't@example.com');
+  fs.writeFileSync(path.join(top, file), 'one\n');
+  git(top, 'add', '-A');
+  git(top, 'commit', '-q', '-m', 'add file');
+  const wt = createWorktree({ dir: top, id: '002' });
+  fs.writeFileSync(path.join(wt.worktree, file), text);
+  return { root, top, wt };
+}
+
+test('mergeWorktree reports uncommitted changes in the main checkout, not a conflict', () => {
+  const { root, top, wt } = branchWithChange('a.txt', 'branch\n');
+  fs.writeFileSync(path.join(top, 'a.txt'), 'local edit\n');
+  const r = mergeWorktree(wt);
+  assert.equal(r.merged, false);
+  assert.match(r.error, /uncommitted changes to a\.txt/);
+  assert.match(r.error, /complete and kept/);
+  assert.match(r.error, /commit or stash/i);
+  assert.doesNotMatch(r.error, /merge conflict/);
+  assert.equal(fs.readFileSync(path.join(top, 'a.txt'), 'utf8'), 'local edit\n');
+  assert.ok(fs.existsSync(wt.worktree));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('mergeWorktree reports a real conflict as a conflict', () => {
+  const { root, top, wt } = branchWithChange('a.txt', 'branch\n');
+  fs.writeFileSync(path.join(top, 'a.txt'), 'main\n');
+  git(top, 'commit', '-q', '-am', 'main change');
+  const r = mergeWorktree(wt);
+  assert.equal(r.merged, false);
+  assert.match(r.error, /merge conflict in a\.txt/);
+  assert.doesNotMatch(r.error, /uncommitted/);
+  assert.equal(git(top, 'status', '--porcelain'), '');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('mergeWorktree merges cleanly when nothing is in the way', () => {
+  const { root, wt } = branchWithChange('a.txt', 'branch\n');
+  assert.deepEqual(mergeWorktree(wt), { merged: true });
+  fs.rmSync(root, { recursive: true, force: true });
 });
