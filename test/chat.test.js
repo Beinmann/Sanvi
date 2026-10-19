@@ -57,7 +57,14 @@ test('usage sums the cost of all chats under the claude provider', async () => {
   assert.equal(chats.usage().claude.chats, 2);
 });
 
-test('one run per chat, a global limit, cancel, and failures are shown', async () => {
+test('by default any number of chats run at once, none is queued or rejected', () => {
+  const f = fakeRunner();
+  const chats = createChats({ cwd: '/w', run: f.run });
+  for (let i = 0; i < 8; i++) assert.equal(chats.send(chats.create().id, 'x').state, 'running');
+  assert.equal(f.calls.length, 8);
+});
+
+test('one run per chat, an optional global limit, cancel, and failures are shown', async () => {
   const f = fakeRunner();
   const chats = createChats({ cwd: '/w', run: f.run, maxRuns: 2 });
   const [a, b, c] = [chats.create(), chats.create(), chats.create()];
