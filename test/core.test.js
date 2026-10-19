@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import {
   listTickets, readTicket, saveTicket, createTicket, findTicket, validate, readConfig, writeStatuses,
   ConflictError, ValidationError, slugify, createIdea, ideaTitle, addNote,
-  deleteTicket, listTrash, restoreTicket, purgeTrash, purgeTrashItem, saveAsset,
+  deleteTicket, listTrash, restoreTicket, purgeTrash, purgeTrashItem, saveAsset, readSettled,
 } from '../src/core.js';
 
 const SAMPLE = `---
@@ -314,4 +315,18 @@ test('ids grow past 999 without migration: allocation, order, lookup, validate',
   assert.equal(saved.status, 'done');
   assert.equal(validate(dir).filter((p) => /id/.test(p.message)).length, 0);
   assert.ok(fs.existsSync(path.join(dir, '.ids', '1000')));
+});
+
+test('a ticket being rewritten in place (empty for a moment) is still listed with its fields', async () => {
+  const dir = tmp();
+  const file = path.join(dir, '001-first.md');
+  const good = '---\nstatus: open\n---\n\n# First\n';
+  fs.writeFileSync(file, ''); // truncated, as an in-place write does before the content arrives
+  const writer = spawn('sh', ['-c', 'sleep 0.04; cat > "$0"', file], { stdio: ['pipe', 'ignore', 'ignore'] });
+  writer.stdin.end(good);
+  const t = listTickets(dir).find((x) => x.file === '001-first.md');
+  await new Promise((r) => writer.on('close', r));
+  assert.ok(t.status, 'status survives the truncated moment');
+  assert.equal(readSettled(dir, '001-first.md', 0)?.version, t.version);
+  assert.equal(readSettled(dir, '009-missing.md', 1, 1), null);
 });

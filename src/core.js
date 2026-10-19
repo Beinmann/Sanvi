@@ -143,11 +143,25 @@ export function readTicket(dir, file) {
   return toTicket(file, raw, fs.statSync(p).mtimeMs);
 }
 
+// An agent saving a ticket in place truncates it first: for a moment the file is empty (or, with a rename-style
+// writer, absent). Read in that moment, the ticket would show without status or title, or drop out of the list.
+// Re-read a few times before accepting an empty file or giving up on a vanished one.
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
+export function readSettled(dir, name, tries = 5, waitMs = 20) {
+  for (let i = 0; ; i++) {
+    let t = null;
+    try { t = readTicket(dir, name); } catch { /* vanished mid-read */ }
+    if ((t && t.version !== hash('')) || i >= tries) return t;
+    Atomics.wait(sleeper, 0, 0, waitMs);
+  }
+}
+
 export function listTickets(dir) {
   const out = [];
   for (const name of fs.readdirSync(dir)) {
     if (!isTicketFile(name)) continue;
-    try { out.push(readTicket(dir, name)); } catch { /* vanished mid-read */ }
+    const t = readSettled(dir, name);
+    if (t) out.push(t);
   }
   return out.sort((a, b) => a.file.localeCompare(b.file, 'en', { numeric: true }));
 }
