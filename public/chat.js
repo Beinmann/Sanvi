@@ -158,7 +158,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   async function submit(input) {
     const text = input.value.trim();
     if (!text || chat.state === 'running') return;
-    try { chat = await api('POST', `agent/chats/${chat.id}/messages`, { text }); drafts[chat.id] = ''; await refreshList(); paint(); } catch (e) { toast(`Not sent: ${e.message}`); }
+    try { chat = await api('POST', `agent/chats/${chat.id}/messages`, { text }); drafts[chat.id] = ''; input.value = ''; await refreshList(); paint(); focusInput(); } catch (e) { toast(`Not sent: ${e.message}`); }
   }
 
   async function changeDir(input) {
