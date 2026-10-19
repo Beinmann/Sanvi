@@ -233,7 +233,7 @@ body.has-selection .selhint { display: none; }
 .about dd { margin: 0; }
 .chatpanel { position: fixed; right: 16px; bottom: 16px; width: min(420px, calc(100vw - 32px)); height: min(560px, calc(100vh - 90px)); z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: 0 8px 28px rgba(0, 0, 0, .25); }
 .chatpanel[hidden] { display: none; }
-.chatpanel.wide { width: min(820px, calc(100vw - 32px)); height: calc(100vh - 90px); }
+.chatpanel.full { inset: 0; width: auto; height: auto; border-radius: 0; padding: 16px max(16px, calc((100vw - 900px) / 2)); }
 .chathead { display: flex; gap: 6px; align-items: center; } .chathead select { flex: 1; min-width: 0; padding: 4px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); }
 .chatmeta { font-size: 12px; }
 .chatlog { display: grid; gap: 8px; align-content: start; flex: 1; overflow-y: auto; padding: 2px; }

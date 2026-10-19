@@ -12,13 +12,13 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   let chat = null;    // the open chat, as last fetched
   let drafts = {};    // unsent text per chat id
   let isOpen = false;
-  let wide = store.get('wide') === '1';
+  let full = false;   // full screen: the keyboard shortcuts work anywhere on the page
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
-  // Keyboard navigation. Input: Ctrl+Up leaves for the messages. Messages: j/k or Down/Up step, g/G first/last,
+  // Keyboard navigation (in the panel; when it is full screen, anywhere). Input: Ctrl+Up leaves for the messages. Messages: j/k or Down/Up step, g/G first/last,
   // i, Enter or Ctrl+Down return to the input. Anywhere in the panel: Alt+Left/Right switch chat, Esc closes.
-  const HINT = 'Ctrl+Enter send · Ctrl+↑ messages · in messages: j/k step, g/G ends, i input · Alt+←/→ chat · Esc close';
+  const HINT = 'Click Chat again: full screen · Ctrl+Enter send · Ctrl+↑ messages · in messages: j/k step, g/G ends, i input · Alt+←/→ chat · Esc close';
   const msgs = () => [...panel.querySelectorAll('.chatlog .msg')];
   const focusInput = () => panel.querySelector('textarea')?.focus();
   function focusMsg(to) {
@@ -35,8 +35,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     const next = chats[i + d];
     if (next) openChat(next.id).catch((err) => toast(err.message));
   }
-  panel.addEventListener('keydown', (e) => {
-    const inLog = document.activeElement?.classList.contains('msg');
+  function onKey(e) {
+    const loose = full && document.activeElement === document.body; // nothing focused: act as if in the messages
+    const inLog = loose || document.activeElement?.classList.contains('msg');
     const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
     let handled = true;
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepChat(e.key === 'ArrowLeft' ? -1 : 1);
@@ -49,7 +50,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     else if (inLog && e.key === 'Escape') toggle(false);
     else handled = false;
     if (handled) { e.preventDefault(); e.stopPropagation(); }
-  });
+  }
+  panel.addEventListener('keydown', onKey);
+  document.addEventListener('keydown', (e) => { if (isOpen && full && !panel.contains(e.target) && e.target === document.body) onKey(e); }, true);
 
   const mark = (c) => {
     if (c.state === 'running') return '… ';
@@ -111,8 +114,15 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     toast(r.started ? `Refining ${r.started} design ticket${r.started > 1 ? 's' : ''}${r.skipped ? ` (${r.skipped} already running)` : ''}` : r.skipped ? 'All design tickets are already being refined' : 'No design tickets to refine');
   }
 
+  function setFull(on) {
+    full = on;
+    paint();
+    if (full && !panel.contains(document.activeElement)) focusInput();
+  }
+
   async function toggle(force) {
     isOpen = force ?? !isOpen;
+    if (!isOpen) full = false;
     panel.hidden = !isOpen;
     if (!isOpen) return;
     try {
@@ -185,13 +195,13 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       chats.map((c) => el('option', { value: c.id, selected: c.id === chat.id }, `${mark(c)}${c.title}`)));
     const log = el('div', { class: 'chatlog' },
       chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, chat.kind === 'ask' ? 'Ask about tickets and what changed. Claude can only read the tickets and the change log here; it cannot edit anything.' : chat.kind === 'refine' ? 'Refine run: Claude may edit only this ticket.' : 'Claude runs on this machine with read access to the project and permission to edit files there.'));
-    panel.classList.toggle('wide', wide);
+    panel.classList.toggle('full', full);
     show(panel,
       el('div', { class: 'chathead' }, select,
         el('button', { type: 'button', title: 'New read-only question about the board', onclick: () => ask().catch((e) => toast(e.message)) }, '?'),
         el('button', { type: 'button', title: 'New chat', onclick: () => openChat(null).catch((e) => toast(e.message)) }, '+'),
         el('button', { type: 'button', title: 'Delete this chat', disabled: running, onclick: remove }, '🗑'),
-        el('button', { type: 'button', title: wide ? 'Smaller' : 'Larger', onclick: () => { wide = !wide; store.set('wide', wide ? '1' : '0'); paint(); } }, wide ? '▢' : '⤢'),
+        el('button', { type: 'button', title: full ? 'Leave full screen' : 'Full screen (or click Chat again)', onclick: () => setFull(!full) }, full ? '▢' : '⤢'),
         el('button', { type: 'button', title: 'Close (Esc)', onclick: () => toggle(false) }, '×')),
       chat.messages.length || chat.kind !== 'chat'
         ? el('div', { class: 'chatmeta muted', title: `${chat.cwd}\nThe cost is the Claude CLI's own estimate at API prices. On a subscription login it is not charged to you; it counts against your plan limits. With ANTHROPIC_API_KEY set it is real spend.` }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.state === 'queued' ? 'waiting for a free slot…' : chat.costUsd ? `≈ $${chat.costUsd.toFixed(3)} at API rates` : 'ready'}`)
@@ -210,7 +220,8 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     if (hadFocus || (!keep && !running)) input.focus();
   }
 
-  button.addEventListener('click', () => toggle());
+  // A second click on the button while the panel is open goes full screen; a click in full screen closes it.
+  button.addEventListener('click', () => { if (isOpen && !full) setFull(true); else toggle(); });
   return {
     toggle, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, implement, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && c.kind === 'refine' && active(c)),
