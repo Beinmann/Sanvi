@@ -364,3 +364,65 @@ test('implement permissions: main checkout off limits unless the tickets live in
   assert.deepEqual(o.addDirs, [notes]);
   assert.equal(o.permissionMode, 'auto');
 });
+
+// Session reuse for refine/implement runs
+const usage = (n) => ({ type: 'assistant', message: { content: [], usage: { input_tokens: n, cache_read_input_tokens: 0, output_tokens: 0 } } });
+async function runOne(chats, f, kind, { sid, tokens = 1000, fail = false, cwd = '/work' } = {}) {
+  const c = chats.create({ kind, dir: undefined });
+  chats.get(c.id); // exists
+  chats.send(c.id, 'go');
+  const h = f.calls.at(-1);
+  if (tokens) h.emitUsage(tokens);
+  if (fail) h.end({ ok: false, error: 'No conversation found', sessionId: null }); else h.end({ sessionId: sid });
+  await tick();
+  return h;
+}
+function usageRunner() {
+  const f = fakeRunner();
+  const run = (opts) => { const h = f.run(opts); let l; const on = h.onEvent; h.onEvent = (fn) => { l = fn; on(fn); }; h.emitUsage = (n) => l(usage(n)); return h; };
+  return { ...f, run };
+}
+
+test('refine runs resume the previous session until it reaches the token threshold', async () => {
+  const f = usageRunner();
+  const chats = createChats({ cwd: '/work', run: f.run, sessionReuse: { enabled: true, maxTokens: 70000 } });
+  await runOne(chats, f, 'refine', { sid: 'a', tokens: 50000 });
+  assert.equal(f.calls[0].opts.resume, null);
+  await runOne(chats, f, 'refine', { sid: 'a', tokens: 80000 });
+  assert.equal(f.calls[1].opts.resume, 'a');
+  await runOne(chats, f, 'refine', { sid: 'b' });
+  assert.equal(f.calls[2].opts.resume, null); // 80k >= 70k: new session
+  await runOne(chats, f, 'refine', { sid: 'b' });
+  assert.equal(f.calls[3].opts.resume, 'b');
+  await runOne(chats, f, 'implement', { sid: 'c' });
+  assert.equal(f.calls[4].opts.resume, null); // other kind: separate session
+});
+
+test('session reuse can be switched off, and plain chats never share a session', async () => {
+  const f = usageRunner();
+  const off = createChats({ cwd: '/work', run: f.run, sessionReuse: { enabled: false, maxTokens: 70000 } });
+  await runOne(off, f, 'refine', { sid: 'a' });
+  await runOne(off, f, 'refine', { sid: 'a' });
+  assert.equal(f.calls[1].opts.resume, null);
+  const on = createChats({ cwd: '/work', run: f.run, sessionReuse: { enabled: true, maxTokens: 70000 } });
+  await runOne(on, f, 'chat', { sid: 'x' });
+  await runOne(on, f, 'chat', { sid: 'x' });
+  assert.equal(f.calls[3].opts.resume, null);
+});
+
+test('a missing session falls back to a fresh one without failing the run', async () => {
+  const f = usageRunner();
+  const chats = createChats({ cwd: '/work', run: f.run, sessionReuse: { enabled: true, maxTokens: 70000 } });
+  await runOne(chats, f, 'refine', { sid: 'gone' });
+  const c = chats.create({ kind: 'refine' });
+  chats.send(c.id, 'go');
+  assert.equal(f.calls[1].opts.resume, 'gone');
+  f.calls[1].end({ ok: false, error: 'No conversation found', sessionId: 'gone' }); await tick();
+  assert.equal(f.calls.length, 3);
+  assert.equal(f.calls[2].opts.resume, null);
+  assert.equal(chats.get(c.id).state, 'running');
+  f.calls[2].end({ sessionId: 'new' }); await tick();
+  assert.equal(chats.get(c.id).state, 'idle');
+  await runOne(chats, f, 'refine', { sid: 'new' });
+  assert.equal(f.calls[3].opts.resume, 'new');
+});
