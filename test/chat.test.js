@@ -225,3 +225,57 @@ test('ask: read-only tools, runs in the tickets dir, preamble only on the first 
     assert.equal(empty.messages.length, 0);
   } finally { await s.app.close(); }
 });
+
+test('implement: runs in a worktree, merges into the base branch on success, keeps the worktree on failure', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-impl-'));
+  const repo = path.join(root, 'repo');
+  fs.mkdirSync(repo);
+  g(repo, 'init', '-q', '-b', 'main');
+  g(repo, 'config', 'user.email', 't@example.com'); g(repo, 'config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'a\n');
+  g(repo, 'add', '-A'); g(repo, 'commit', '-qm', 'init');
+  const dir = path.join(repo, 'tickets');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: open\n---\n# A\n');
+  fs.writeFileSync(path.join(dir, '002-b.md'), '---\nstatus: open\n---\n# B\n');
+  const f = fakeRunner();
+  const app = createTicketServer({ dir, agents: true, agentRun: f.run, chatsFile: null });
+  const { port } = await app.listen(0);
+  const post = (file) => fetch(`http://127.0.0.1:${port}/api/agent/implement`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file }) });
+  const chat = async (id) => (await fetch(`http://127.0.0.1:${port}/api/agent/chats/${id}`)).json();
+  try {
+    const c1 = await (await post('001-a.md')).json();
+    const wt1 = f.calls[0].opts.cwd;
+    assert.match(wt1, /ticket-001$/);
+    assert.match(f.calls[0].opts.prompt, /status: testing/);
+    fs.writeFileSync(path.join(wt1, 'new.txt'), 'x\n'); // left uncommitted: the server commits it
+    f.calls[0].end(); await tick();
+    assert.equal((await chat(c1.id)).state, 'idle');
+    assert.ok(fs.existsSync(path.join(repo, 'new.txt')), 'merged into main');
+    assert.ok(!fs.existsSync(wt1), 'worktree removed');
+
+    const c2 = await (await post('002-b.md')).json();
+    const wt2 = f.calls[1].opts.cwd;
+    fs.writeFileSync(path.join(wt2, 'other.txt'), 'y\n');
+    f.calls[1].end({ ok: false, error: 'boom' }); await tick();
+    const after = await chat(c2.id);
+    assert.equal(after.state, 'failed');
+    assert.ok(!fs.existsSync(path.join(repo, 'other.txt')), 'nothing merged');
+    assert.ok(fs.existsSync(wt2), 'worktree kept');
+
+    // conflict: the same file changed on main and in the worktree
+    fs.writeFileSync(path.join(dir, '003-c.md'), '---\nstatus: open\n---\n# C\n');
+    const c3 = await (await post('003-c.md')).json();
+    const wt3 = f.calls[2].opts.cwd;
+    fs.writeFileSync(path.join(wt3, 'a.txt'), 'from agent\n');
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'from main\n'); g(repo, 'commit', '-qam', 'main change');
+    f.calls[2].end(); await tick();
+    const conflict = await chat(c3.id);
+    assert.equal(conflict.state, 'failed');
+    assert.match(conflict.error, /Nothing was merged/);
+    assert.equal(g(repo, 'status', '--porcelain', '--untracked-files=no'), ''); // no half-merge left behind
+    assert.equal(fs.readFileSync(path.join(repo, 'a.txt'), 'utf8'), 'from main\n');
+  } finally { await app.close(); }
+});

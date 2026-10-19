@@ -976,6 +976,7 @@ initKeys({
   about: () => api('GET', 'about'),
   agents: () => agentOn,
   refine: refineTicket,
+  implement: (file) => chatPage.implement(file).catch((e) => toast(`Implement failed: ${e.message}`)),
   refineAll: () => chatPage.refineAll().catch((e) => toast(`Refine failed: ${e.message}`)),
   ask: (q) => chatPage.ask(q).catch((e) => toast(`Ask failed: ${e.message}`)),
   isRefining: (file) => chatPage.refining(file),
