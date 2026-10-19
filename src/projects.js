@@ -2,6 +2,8 @@
 //   ---
 //   name: web
 //   dir: /path/to/the/repo        (a path on the machine that runs Sanvi)
+//   run: npm start                (optional run config: a shell command ...)
+//   run_dir: /path/to/run/in      (... and its working directory; defaults to dir)
 //   ---
 //   Free-text instructions for the agent (conventions, what to avoid, ...).
 // The empty project name ("default project") lives in `_default.md`. Files may be hand-edited or missing; a file
@@ -29,23 +31,23 @@ export function listProjectObjects(dir) {
     const f = parseFront(front);
     const base = file.replace(/\.md$/, '');
     const name = f.name !== undefined ? f.name.trim() : (file === DEFAULT_FILE ? '' : base);
-    out.push({ name, dir: (f.dir || '').trim(), instructions: body.trim(), file });
+    out.push({ name, dir: (f.dir || '').trim(), instructions: body.trim(), run: (f.run || '').trim(), runDir: (f.run_dir || '').trim(), file });
   }
   return out;
 }
 
 const plain = (v) => (/^[\w./@~-][^:#]*$/.test(v) && v === v.trim() ? v : JSON.stringify(v));
 
-export function saveProject(dir, { name = '', dir: pdir = '', instructions = '' } = {}) {
-  for (const [k, v] of Object.entries({ name, dir: pdir, instructions })) if (typeof v !== 'string') throw new ValidationError(`${k} must be a string`);
-  name = name.trim(); pdir = pdir.trim();
-  if (/[\r\n]/.test(name) || /[\r\n]/.test(pdir)) throw new ValidationError('name and directory must be a single line');
+export function saveProject(dir, { name = '', dir: pdir = '', instructions = '', run = '', runDir = '' } = {}) {
+  for (const [k, v] of Object.entries({ name, dir: pdir, instructions, run, runDir })) if (typeof v !== 'string') throw new ValidationError(`${k} must be a string`);
+  name = name.trim(); pdir = pdir.trim(); run = run.trim(); runDir = runDir.trim();
+  if ([name, pdir, run, runDir].some((v) => /[\r\n]/.test(v))) throw new ValidationError('name, directory and run config must be a single line');
   const file = fileFor(name);
   const clash = listProjectObjects(dir).find((o) => o.file === file && o.name !== name);
   if (clash) throw new ValidationError(`"${name}" would use the same file as project "${clash.name}"`);
   const root = path.join(dir, PROJECTS_DIR);
   fs.mkdirSync(root, { recursive: true });
-  const front = [`name: ${name ? plain(name) : '""'}`, ...(pdir ? [`dir: ${plain(pdir)}`] : [])].join('\n');
+  const front = [`name: ${name ? plain(name) : '""'}`, ...(pdir ? [`dir: ${plain(pdir)}`] : []), ...(run ? [`run: ${JSON.stringify(run)}`] : []), ...(runDir ? [`run_dir: ${plain(runDir)}`] : [])].join('\n');
   atomicWrite(path.join(root, file), `---\n${front}\n---\n${instructions.trim() ? `${instructions.trim()}\n` : ''}`);
 }
 
@@ -66,7 +68,7 @@ export function projectView(dir) {
       try { dirOk = fs.statSync(o.dir).isDirectory(); } catch { dirOk = false; }
       if (!dirOk) warnings.push(`directory not found on this machine: ${o.dir}`);
     }
-    return { name, label: name || DEFAULT_LABEL, exists: !!o, dir: o?.dir || '', instructions: o?.instructions || '', tickets, dirOk, warnings, file: o?.file || null };
+    return { name, label: name || DEFAULT_LABEL, exists: !!o, dir: o?.dir || '', instructions: o?.instructions || '', run: o?.run || '', runDir: o?.runDir || '', tickets, dirOk, warnings, file: o?.file || null };
   });
   return list.sort((a, b) => (a.name === '' ? -1 : b.name === '' ? 1 : a.name.localeCompare(b.name)));
 }

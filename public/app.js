@@ -310,6 +310,31 @@ function paintProject() {
     el('option', { value: NO_PROJECT }, 'No project'));
   sel.value = project;
   sel.classList.toggle('set', !!project);
+  paintRun();
+}
+// Run button (096): only for a named project that has a run command; the command itself stays on the server.
+const runnable = () => !!project && project !== NO_PROJECT && runConfigs.has(project);
+const runConfigs = new Set();
+function paintRun() {
+  const b = $('#run-btn');
+  if (!b) return;
+  b.hidden = !runnable();
+  if (!b.hidden) b.title = `Run ${project}: starts its run command, restarting it if still running`;
+}
+async function refreshRunConfigs() {
+  try {
+    const list = await api('GET', 'projects');
+    runConfigs.clear();
+    for (const p of list) if (p.name && p.run) runConfigs.add(p.name);
+  } catch { return; }
+  paintRun();
+}
+async function runProject() {
+  if (!runnable()) return;
+  try {
+    const r = await api('POST', 'projects/run', { name: project });
+    toast(r.restarted ? `Restarted ${project}` : `Started ${project}`);
+  } catch (e) { toast(`Run failed: ${e.message}`); }
 }
 function loadHash() {
   const h = location.hash || '#/';
@@ -1056,6 +1081,9 @@ $('#proj-sel').addEventListener('change', (e) => {
 }
 $('#trash-btn').addEventListener('click', () => { location.hash = '#/trash'; });
 $('#notes-btn').addEventListener('click', () => { location.hash = '#/notes'; });
+$('#run-btn').addEventListener('click', runProject);
+document.addEventListener('projects-changed', refreshRunConfigs);
+refreshRunConfigs();
 $('#projects-btn').addEventListener('click', () => { location.hash = '#/projects'; });
 const projectsPage = initProjects({ el, show, api, toast, view, canBrowse: () => agentOn });
 async function paintProjectsBadge() { // the button carries the number of project warnings

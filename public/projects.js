@@ -15,6 +15,8 @@ export function initProjects({ el, show, api, toast, view, canBrowse = () => fal
     const dir = el('input', { value: p.dir, placeholder: '/absolute/path on the machine running Sanvi', 'aria-label': `Directory of ${p.label}`, spellcheck: 'false' });
     const ins = el('textarea', { rows: 4, placeholder: 'Instructions for the agent: conventions, what to avoid, how to build or test…', 'aria-label': `Instructions for ${p.label}` });
     ins.value = p.instructions;
+    const run = el('input', { value: p.run, placeholder: 'e.g. npm start (optional; run with the Run button in the header)', 'aria-label': `Run command of ${p.label}`, spellcheck: 'false' });
+    const runDir = el('input', { value: p.runDir, placeholder: 'working directory (empty: the project directory)', 'aria-label': `Run directory of ${p.label}`, spellcheck: 'false' });
     const picker = el('div', { class: 'dirpicker', hidden: true });
     let showHidden = false;
     // Lists the sub-directories of `at`; a bad path shows its message and keeps the picker usable.
@@ -41,7 +43,7 @@ export function initProjects({ el, show, api, toast, view, canBrowse = () => fal
     }
     const save = async () => {
       try {
-        list = await api('PUT', 'projects', { name: p.name, dir: dir.value, instructions: ins.value });
+        list = await api('PUT', 'projects', { name: p.name, dir: dir.value, instructions: ins.value, run: run.value, runDir: runDir.value });
         toast(`Saved ${p.label}`);
         paint();
         document.dispatchEvent(new Event('projects-changed'));
@@ -53,6 +55,8 @@ export function initProjects({ el, show, api, toast, view, canBrowse = () => fal
       el('label', {}, 'Directory', el('span', { class: 'dirfield' }, dir,
         canBrowse() ? el('button', { type: 'button', title: 'Browse the directories of the machine running Sanvi', onclick: () => browse(dir.value.trim() || '~') }, 'Browse…') : null)),
       picker,
+      el('label', {}, 'Run command', run),
+      el('label', {}, 'Run directory', runDir),
       el('label', {}, 'Instructions', ins),
       el('div', { class: 'buttons' }, el('button', { type: 'button', class: 'primary', onclick: save }, p.exists ? 'Save' : 'Create project object')));
   }
@@ -61,7 +65,7 @@ export function initProjects({ el, show, api, toast, view, canBrowse = () => fal
     show(view, el('div', { class: 'detail projects' },
       el('a', { href: '#/' }, '← Board'),
       el('h1', {}, 'Projects'),
-      el('p', { class: 'muted' }, 'The directory is where the agent runs for tickets and chats of that project; the instructions are sent to it as context. Used only with --agents; the Browse… button needs it too. Stored as small Markdown files in _projects/ next to the tickets.'),
+      el('p', { class: 'muted' }, 'The directory is where the agent runs for tickets and chats of that project; the instructions are sent to it as context. Used only with --agents; the Browse… button needs it too. The run command is started by the Run button next to the project switcher (shell command; starting it again restarts it). Stored as small Markdown files in _projects/ next to the tickets.'),
       list.map(card)));
   }
 

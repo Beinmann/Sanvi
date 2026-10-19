@@ -126,3 +126,37 @@ test('GET /api/dirs lists sub-directories only, sorted, and reports bad paths; n
     }
   } finally { await off.close(); await on.close(); }
 });
+
+test('run config round-trips, and POST /api/projects/run starts and restarts the command', async () => {
+  const dir = setup([['a', 'web']]);
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-run-')));
+  saveProject(dir, { name: 'web', dir: cwd, run: 'echo $$ >> pids.txt; sleep 30', runDir: cwd });
+  saveProject(dir, { name: 'plain', dir: cwd });
+  const o = listProjectObjects(dir).find((x) => x.name === 'web');
+  assert.equal(o.run, 'echo $$ >> pids.txt; sleep 30');
+  assert.equal(o.runDir, cwd);
+  assert.equal(projectView(dir).find((p) => p.name === 'web').run, o.run);
+  const app = createTicketServer({ dir });
+  const { port } = await app.listen(0);
+  const post = (b, headers = {}) => fetch(`http://127.0.0.1:${port}/api/projects/run`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(b) });
+  const pids = () => { try { return fs.readFileSync(path.join(cwd, 'pids.txt'), 'utf8').trim().split('\n').map(Number); } catch { return []; } };
+  const waitFor = async (n) => { for (let i = 0; i < 100 && pids().length < n; i++) await new Promise((r) => setTimeout(r, 50)); };
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  try {
+    assert.equal((await post({ name: 'plain' })).status, 400); // no run command
+    assert.equal((await post({ name: '' })).status, 400);
+    assert.equal((await post({ name: 'web' }, { origin: 'http://evil.example' })).status, 403);
+    const first = await (await post({ name: 'web' })).json();
+    assert.equal(first.restarted, false);
+    await waitFor(1);
+    const [p1] = pids();
+    assert.ok(alive(p1));
+    const second = await (await post({ name: 'web' })).json();
+    assert.equal(second.restarted, true);
+    await waitFor(2);
+    assert.equal(pids().length, 2);
+    assert.equal(alive(p1), false); // the old process is gone
+  } finally { await app.close(); }
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(alive(pids()[1]), false); // closing the server stops what it started
+});

@@ -19,6 +19,7 @@ import { implementPrompt, implementRunOpts, createWorktree, mergeWorktree } from
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
+import { createRunner } from './runner.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -102,6 +103,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       return { outcome: 'ok' };
     } catch { return { outcome: 'problems', warning: 'the ticket could not be read afterwards' }; }
   }
+
+  const runner = createRunner({ dir });
 
   const limits = agents ? createLimits({ probe: limitsProbe }) : null;
 
@@ -248,11 +251,17 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (parts[0] === 'projects' && parts.length === 1) {
       if (method === 'GET') return send(res, 200, projectView(dir));
       if (method === 'PUT') {
-        const { name, dir: pdir, instructions } = await readJson(req);
-        saveProject(dir, { name, dir: pdir, instructions });
+        const { name, dir: pdir, instructions, run, runDir } = await readJson(req);
+        saveProject(dir, { name, dir: pdir, instructions, run, runDir });
         changelog.log({ ticket: '-', action: 'project', project: name || '' });
         return send(res, 200, projectView(dir));
       }
+    }
+    if (parts[0] === 'projects' && parts[1] === 'run' && parts.length === 2 && method === 'POST') { // start or restart the project's run config
+      const { name } = await readJson(req);
+      const r = await runner.start(typeof name === 'string' ? name : '');
+      changelog.log({ ticket: '-', action: 'run', project: name });
+      return send(res, 200, r);
     }
     if (parts[0] === 'events' && method === 'GET') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
@@ -426,7 +435,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       });
     },
     close() {
-      clearTimeout(timer); clearInterval(heartbeat); watcher.close();
+      clearTimeout(timer); clearInterval(heartbeat); watcher.close(); runner.stopAll();
       for (const c of clients) c.end();
       return new Promise((resolve) => { server.close(resolve); server.closeAllConnections?.(); });
     },
