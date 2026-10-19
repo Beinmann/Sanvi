@@ -17,9 +17,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const panel = el('aside', { class: 'chatpanel', 'aria-label': 'Chat with Claude', hidden: true });
   document.body.append(panel);
 
-  // Keyboard navigation (in the panel; when it is full screen, anywhere). Input: Esc (or Ctrl+Up) leaves for the messages. Messages: j/k or Down/Up step,
-  // g/G first/last, i, Enter or Ctrl+Down return to the input, Esc closes. Anywhere in the panel: Alt+Left/Right (in the messages also Shift+H/L) switch chat.
-  const HINT = '+ type · Esc: input → messages → close · a: open, again full screen · j/k step, g/G ends, i input · Shift+H/L chat · Ctrl+Enter send';
+  // Keyboard navigation (in the panel; while it is open, also anywhere outside input fields, taking precedence over the page hotkeys). Input: Esc (or Ctrl+Up) leaves for the messages. Messages: j/k or Down/Up step,
+  // g/G first/last, i, Enter or Ctrl+Down return to the input, Esc closes. Anywhere in the panel: Alt+Left/Right (in the messages also plain h/l) switch chat.
+  const HINT = '+ type · Esc: input → messages → close · a: open, again full screen · j/k step, g/G ends, i input · h/l chat · Ctrl+Enter send';
   const msgs = () => [...panel.querySelectorAll('.chatlog .msg')];
   const focusInput = () => panel.querySelector('textarea')?.focus();
   function focusMsg(to) {
@@ -36,14 +36,16 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     const next = chats[i + d];
     if (next) openChat(next.id).catch((err) => toast(err.message));
   }
+  // typing in or activating something outside the panel: leave the key alone
+  const isField = (n) => !!n && (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A', 'SUMMARY'].includes(n.tagName) || n.isContentEditable);
   function onKey(e) {
-    const loose = full && document.activeElement === document.body; // nothing focused: act as if in the messages
+    const loose = !panel.contains(document.activeElement) && !isField(document.activeElement); // focus outside the panel: act as if in the messages
     const inLog = loose || document.activeElement?.classList.contains('msg') || document.activeElement?.classList.contains('chatlog');
     const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
     let handled = true;
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepChat(e.key === 'ArrowLeft' ? -1 : 1);
     else if (e.target.tagName === 'TEXTAREA' && ((e.ctrlKey && e.key === 'ArrowUp') || (e.key === 'Escape' && plain))) handled = focusMsg('last');
-    else if (inLog && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'H' || e.key === 'L')) stepChat(e.key === 'H' ? -1 : 1);
+    else if (inLog && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'h' || e.key === 'l')) stepChat(e.key === 'h' ? -1 : 1);
     else if (inLog && plain && (e.key === 'j' || e.key === 'ArrowDown')) { if (!focusMsg(1)) handled = false; }
     else if (inLog && plain && (e.key === 'k' || e.key === 'ArrowUp')) focusMsg(-1);
     else if (inLog && plain && e.key === 'g') focusMsg('first');
@@ -54,7 +56,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     if (handled) { e.preventDefault(); e.stopPropagation(); }
   }
   panel.addEventListener('keydown', onKey);
-  document.addEventListener('keydown', (e) => { if (isOpen && full && !panel.contains(e.target) && e.target === document.body) onKey(e); }, true);
+  document.addEventListener('keydown', (e) => { if (isOpen && !panel.contains(e.target) && !isField(e.target)) onKey(e); }, true);
 
   const mark = (c) => {
     if (c.state === 'running') return '… ';

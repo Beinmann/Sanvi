@@ -138,7 +138,7 @@ tk --dir /path/to/tickets serve [--port 4321]
 - Keyboard (press **?** for the overlay): **Ctrl+K** command menu (jump to a
   ticket, set status, new ticket); on the board `j/k` `h/l` move focus, `/`
   focuses search, `Enter` opens, `s` sets status, `1`-`9` moves the focused card to that column (the numbers show on the headers while a card is focused or dragged), `n`
-  creates, `b` goes to the board, `a` opens the Claude chat without focusing it (again: full screen, again: close), `+` opens it if needed and focuses the input, `Shift+H/L` in the messages switch chats (with `--agents`; in the chat `Esc` leaves the input for the messages, a second `Esc` closes it; it also closes when focus is elsewhere); in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
+  creates, `b` goes to the board, `a` opens the Claude chat without focusing it (again: full screen, again: close), `+` opens it if needed and focuses the input, `h`/`l` switch chats (chat keys also work while the panel is open but unfocused, outside fields) (with `--agents`; in the chat `Esc` leaves the input for the messages, a second `Esc` closes it; it also closes when focus is elsewhere); in a ticket `e`/`p` edit/preview, `Esc` leaves the editor, then
   goes back. Single-key hotkeys are off while typing in a field.
 - Description editor: optional **Vim mode** (checkbox under the editor,
   remembered per browser; off by default). Home-grown subset, no
