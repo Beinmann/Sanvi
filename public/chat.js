@@ -140,10 +140,12 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     toast(r.started ? `Refining ${r.started} design ticket${r.started > 1 ? 's' : ''}${r.skipped ? ` (${r.skipped} already running)` : ''}` : r.skipped ? 'All design tickets are already being refined' : 'No design tickets to refine');
   }
 
-  function setFull(on) {
+  function setFull(on, { focus = true } = {}) {
     full = on;
-    paint();
-    if (full && !panel.contains(document.activeElement)) focusInput();
+    const was = quiet;
+    quiet = !focus || quiet; // paint() would focus the input too
+    try { paint(); } finally { quiet = was; }
+    if (full && focus && !panel.contains(document.activeElement)) focusInput();
   }
 
   async function toggle(force) {
@@ -246,9 +248,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     if (hadFocus || (!keep && !running && !quiet)) input.focus();
   }
 
-  // Hotkey `a`: open without taking focus; again: full screen; in full screen: close.
+  // Hotkey `a`: open without taking focus; again: full screen (still without focus); in full screen: close.
   async function hotkey() {
-    if (isOpen) { if (full) await toggle(false); else setFull(true); return; }
+    if (isOpen) { if (full) await toggle(false); else setFull(true, { focus: false }); return; }
     quiet = true;
     try { await toggle(true); } finally { quiet = false; }
   }
