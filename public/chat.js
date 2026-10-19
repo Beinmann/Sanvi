@@ -7,6 +7,7 @@ const store = {
 };
 
 export function initChat({ el, show, api, toast, button, project = () => '' }) {
+  let usage = {};     // cost per provider, e.g. { claude: { costUsd } }
   let chats = [];     // list entries: { id, title, state }
   let chat = null;    // the open chat, as last fetched
   let drafts = {};    // unsent text per chat id
@@ -62,9 +63,16 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const paintButton = () => {
     const n = chats.filter(active).length;
     button.textContent = n ? `Chat (${n}…)` : 'Chat';
+    const cost = usage.claude?.costUsd;
+    button.title = `Chat with Claude${cost == null ? '' : `\nClaude usage so far: $${cost.toFixed(2)} (cost recorded by Sanvi)`}`;
   };
 
-  async function refreshList() { chats = await api('GET', 'agent/chats'); paintButton(); for (const fn of changed) fn(); }
+  async function refreshList() {
+    chats = await api('GET', 'agent/chats');
+    usage = await api('GET', 'agent/usage').catch(() => usage);
+    paintButton();
+    for (const fn of changed) fn();
+  }
 
   async function openChat(id) {
     if (chat) drafts[chat.id] = panel.querySelector('textarea')?.value ?? drafts[chat.id] ?? '';
@@ -193,6 +201,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       chat.error ? el('div', { class: 'banner err' }, chat.error) : null,
       chat.warning ? el('div', { class: 'banner' }, chat.warning) : null,
       el('div', { class: 'chathint muted', title: 'Keyboard shortcuts in the chat panel' }, HINT),
+      usage.claude ? el('div', { class: 'chathint muted', title: 'Summed over all known chats and runs, as recorded by Sanvi (not your plan quota)' }, `Claude usage: ≈ $${usage.claude.costUsd.toFixed(2)} at API rates`) : null,
       el('div', { class: 'chatinput' }, input,
         running
           ? el('button', { type: 'button', onclick: () => api('POST', `agent/chats/${chat.id}/cancel`, {}).catch((e) => toast(e.message)) }, 'Cancel')
