@@ -24,22 +24,37 @@ export function resolveDir(input) {
   } catch { throw new ValidationError(`not a directory: ${p}`); }
 }
 
-export function createChats({ cwd, file, check, projectInfo = () => ({}), finalize, notify = () => {}, run = defaultRun, maxRuns = Infinity, log = () => {} }) {
+// Refine/implement runs share one agent session per kind + directory, so many small runs do not each start with a
+// fresh context. Once the session holds `maxTokens` or more, the next run starts a new one. Env: TK_SESSION_REUSE=0
+// switches it off, TK_SESSION_MAX_TOKENS changes the threshold.
+export const DEFAULT_SESSION_TOKENS = 70000;
+export function sessionReuseFromEnv(env = process.env) {
+  const n = Number(env.TK_SESSION_MAX_TOKENS);
+  return { enabled: !/^(0|off|false|no)$/i.test(env.TK_SESSION_REUSE || ''), maxTokens: n > 0 ? n : DEFAULT_SESSION_TOKENS };
+}
+const REUSE_KINDS = new Set(['refine', 'implement']);
+// Context size after a turn: everything the model read plus what it wrote.
+const contextTokens = (u) => (u ? (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.output_tokens || 0) : 0);
+
+export function createChats({ cwd, file, check, sessionReuse = sessionReuseFromEnv(), projectInfo = () => ({}), finalize, notify = () => {}, run = defaultRun, maxRuns = Infinity, log = () => {} }) {
   const chats = new Map();
   let running = 0;
   const pending = []; // ids of chats waiting for a free slot
+  const sessions = new Map(); // `${kind}\0${cwd}` -> { sessionId, tokens }, for session reuse
+  const busy = new Set(); // reuse keys with a run in flight (a session cannot serve two runs at once)
 
   const persisted = ({ active, ...c }) => c;
   function save() {
     if (!file) return;
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(`${file}.tmp`, JSON.stringify({ chats: [...chats.values()].map(persisted) }));
+      fs.writeFileSync(`${file}.tmp`, JSON.stringify({ chats: [...chats.values()].map(persisted), sessions: Object.fromEntries(sessions) }));
       fs.renameSync(`${file}.tmp`, file);
     } catch (e) { console.error(`could not save chats: ${e.message}`); }
   }
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const [k, v] of Object.entries(saved.sessions || {})) sessions.set(k, v);
     for (const c of Array.isArray(saved) ? saved : saved.chats) {
       if (c.state === 'running' || c.state === 'queued') { // the run died with the previous server
         c.state = 'failed'; c.error = 'interrupted by a server restart';
@@ -105,9 +120,27 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
     const started = Date.now();
     log({ chat: c.id, action: 'agent-start' });
 
-    const r = run({ prompt: c.prompt, cwd: c.cwd, resume: c.sessionId, ...c.runOpts });
+    start(c, reply, started, true);
+    touch(c.id);
+  }
+
+  // One agent run for the chat's current prompt. A chat that already has a session resumes it; a fresh refine/implement
+  // chat may take over the shared session of its kind + directory while that is small enough and not in use.
+  function start(c, reply, started, mayReuse) {
+    const key = `${c.kind}\0${c.cwd}`;
+    let resume = c.sessionId;
+    let reused = false;
+    if (!resume && mayReuse && sessionReuse.enabled && REUSE_KINDS.has(c.kind) && !busy.has(key)) {
+      const rec = sessions.get(key);
+      if (rec && rec.tokens < sessionReuse.maxTokens) { resume = rec.sessionId; reused = true; }
+    }
+    const track = sessionReuse.enabled && REUSE_KINDS.has(c.kind) && !busy.has(key);
+    if (track) busy.add(key);
+    let tokens = 0;
+    const r = run({ prompt: c.prompt, cwd: c.cwd, resume, ...c.runOpts });
     c.active = r;
     r.onEvent((ev) => {
+      if (ev.type === 'assistant' && ev.message?.usage) tokens = contextTokens(ev.message.usage) || tokens;
       if (ev.type !== 'assistant' || !Array.isArray(ev.message?.content)) return;
       for (const part of ev.message.content) {
         if (part.type === 'text') reply.text += (reply.text ? '\n\n' : '') + part.text;
@@ -116,9 +149,17 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
       touch(c.id);
     });
     r.done.then((d) => {
+      if (track) busy.delete(key);
+      if (reused && !d.ok && !d.cancelled && !reply.text && !reply.tools.length) { // the old session is gone: start a fresh one
+        sessions.delete(key);
+        log({ chat: c.id, action: 'session-resume-failed' });
+        return start(c, reply, started, false);
+      }
       running--;
       c.active = null;
       if (d.sessionId) c.sessionId = d.sessionId;
+      if (track && d.ok && d.sessionId) sessions.set(key, { sessionId: d.sessionId, tokens });
+      else if (track && !d.ok && reused) sessions.delete(key);
       if (d.costUsd) c.costUsd += d.costUsd;
       if (d.ok && finalize && c.kind === 'implement') { // post-run work (merge); a failure there fails the chat
         let v;
@@ -137,7 +178,6 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
       touch(c.id);
       while (running < maxRuns && pending.length) { const next = chats.get(pending.shift()); if (next?.state === 'queued') launch(next); }
     });
-    touch(c.id);
   }
 
   // Claude keeps sessions per directory, so a chat can only change directory before its first message.
