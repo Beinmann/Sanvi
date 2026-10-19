@@ -46,6 +46,19 @@ test('a message starts a run, resumes the session on the next one, and records t
   assert.equal(chats.get(c.id).costUsd, 0.01);
 });
 
+test('a normal chat runs in auto mode with Write; ask chats keep their own options', () => {
+  const f = fakeRunner();
+  const chats = createChats({ cwd: '/work', run: f.run });
+  const c = chats.create();
+  chats.send(c.id, 'hi');
+  assert.equal(f.calls[0].opts.permissionMode, 'auto');
+  assert.deepEqual(f.calls[0].opts.tools, ['Read', 'Grep', 'Glob', 'Edit', 'Write']);
+  const a = chats.create({ kind: 'ask', runOpts: { permissionMode: 'default', tools: ['Read'] } });
+  chats.send(a.id, 'q');
+  assert.equal(f.calls[1].opts.permissionMode, 'default');
+  assert.deepEqual(f.calls[1].opts.tools, ['Read']);
+});
+
 test('usage sums the cost of all chats under the claude provider', async () => {
   const f = fakeRunner();
   const chats = createChats({ cwd: '/work', run: f.run });

@@ -7,6 +7,11 @@ import path from 'node:path';
 import { startRun as defaultRun } from './agent.js';
 import { ValidationError, NotFoundError } from './core.js';
 
+// A normal chat runs in auto permission mode and may also create files (Write), not only edit existing ones.
+export function chatRunOpts() {
+  return { permissionMode: 'auto', tools: ['Read', 'Grep', 'Glob', 'Edit', 'Write'] };
+}
+
 // A directory the agent may run in: absolute (or ~/...), existing, resolved through symlinks.
 export function resolveDir(input) {
   let p = String(input ?? '').trim();
@@ -64,6 +69,7 @@ export function createChats({ cwd, file, check, projectInfo = () => ({}), finali
       try { chatDir = resolveDir(info.dir); } catch { warning = `the directory of project "${project || 'default project'}" (${info.dir}) was not found; using the default directory`; }
     }
     if (!preamble && info.instructions) preamble = `Instructions for project "${project || 'default project'}":\n${info.instructions}\n\nUser message:`;
+    if (!runOpts && kind === 'chat') runOpts = chatRunOpts();
     const c = { id: crypto.randomUUID(), title, kind, runOpts, meta, preamble, ticketId: ticketId ? String(ticketId) : null, project: project || '', cwd: chatDir, state: 'idle', error: null, warning, costUsd: 0, sessionId: null, messages: [], created: new Date().toISOString(), active: null };
     chats.set(c.id, c);
     touch(c.id);
