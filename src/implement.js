@@ -67,9 +67,18 @@ export function mergeWorktree({ top, base, branch, worktree }) {
     if (git(worktree, 'status', '--porcelain')) { git(worktree, 'add', '-A'); git(worktree, 'commit', '-m', `Implement ${branch}`); }
     if (!git(top, 'rev-list', `${base}..${branch}`)) return { merged: false, error: 'the agent made no commits' };
     if (git(top, 'branch', '--show-current') !== base) return { merged: false, error: `the main checkout is no longer on ${base}; merge ${branch} by hand` };
+    const kept = `The branch ${branch} is complete and kept; the worktree is at ${worktree}.`;
+    // uncommitted changes in the main checkout to files the branch also changes make git refuse the merge; that is not a conflict
+    const changed = new Set(git(top, 'diff', '--name-only', `${base}...${branch}`).split('\n').filter(Boolean));
+    const dirty = git(top, 'status', '--porcelain', '--untracked-files=no').split('\n').filter(Boolean)
+      .map((l) => l.replace(/^\s*\S+\s+/, '').replace(/^.* -> /, '')).filter((f) => changed.has(f));
+    if (dirty.length) return { merged: false, error: `not merged: the main checkout has uncommitted changes to ${dirty.join(', ')}, which ${branch} also changes. Nothing was merged. ${kept} Commit or stash those changes, then merge ${branch} by hand.` };
     try { git(top, 'merge', '--no-edit', branch); } catch (e) {
+      let conflicts = [];
+      try { conflicts = git(top, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean); } catch { /* none to list */ }
       try { git(top, 'merge', '--abort'); } catch { /* nothing to abort */ }
-      return { merged: false, error: `merge conflict or blocked merge: ${gitError(e)}` };
+      if (conflicts.length) return { merged: false, error: `merge conflict in ${conflicts.join(', ')}: ${base} and ${branch} changed the same lines. Nothing was merged. ${kept} Resolve it by merging ${branch} by hand.` };
+      return { merged: false, error: `the merge was refused: ${gitError(e)} Nothing was merged. ${kept}` };
     }
   } catch (e) { return { merged: false, error: gitError(e) }; }
   try { git(top, 'worktree', 'remove', worktree); git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
