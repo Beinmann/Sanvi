@@ -51,8 +51,9 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   document.addEventListener('keyup', (e) => { if (hold && e.key === hold.key) stopHold(); });
   window.addEventListener('blur', stopHold);
   function stepChat(d) {
-    const i = chats.findIndex((c) => c.id === chat?.id);
-    const next = chats[i + d];
+    const list = visible();
+    const i = list.findIndex((c) => c.id === chat?.id);
+    const next = list[i + d];
     if (next) openChat(next.id).catch((err) => toast(err.message));
   }
   // typing in or activating something outside the panel: leave the key alone
@@ -86,6 +87,78 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     if (c.kind !== 'refine') return '';
     return c.outcome === 'problems' ? '⚠ ' : c.outcome === 'questions' ? '? ' : '✓ ';
   };
+  // The chat picker: a button plus a popup list, built once and patched in place (paint() must not rebuild it, or an open list would close on every agent event).
+  // By default it lists running/queued chats, the open one and those opened in this session; "Show all" adds the older ones.
+  let showAll = store.get('showAll') === '1';
+  let pickOpen = false;
+  let hl = null;                 // highlighted chat id while the list is open
+  const seen = new Set();        // chats opened in this session
+  const visible = () => chats.filter((c) => showAll || active(c) || c.id === chat?.id || seen.has(c.id));
+  const trigger = el('button', { type: 'button', class: 'pickbtn', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': 'Chat', onclick: () => setPick(!pickOpen) });
+  const popup = el('div', { class: 'pickpop', role: 'listbox', tabindex: '0', 'aria-label': 'Chats', hidden: true });
+  const picker = el('div', { class: 'chatpick' }, trigger, popup);
+  const kindOf = (c) => (c.kind === 'refine' ? 'Refine' : c.kind === 'implement' ? 'Implement' : c.kind === 'ask' ? 'Ask' : 'Chat');
+  const rowTitle = (c) => c.title.replace(/^(Refine|Implement) #\S+?:\s*/, '');
+  const stateWord = (c) => (c.state === 'running' ? 'running' : c.state === 'queued' ? 'queued' : c.state === 'failed' ? 'failed' : c.kind === 'refine' && c.outcome === 'problems' ? 'problems' : c.kind === 'refine' && c.outcome === 'questions' ? 'questions' : c.state === 'idle' ? '' : 'done');
+  function pickRow(c) {
+    const word = stateWord(c);
+    return el('div', { class: `pickrow${c.id === hl ? ' hl' : ''}${c.id === chat?.id ? ' cur' : ''}`, role: 'option', 'aria-selected': c.id === chat?.id ? 'true' : 'false', 'data-id': c.id, title: c.title, onmousedown: (e) => e.preventDefault(), onclick: () => choose(c.id) },
+      el('span', { class: `pickstate ${c.state}${c.state === 'idle' ? ' ' + (c.outcome || '') : ''}` }, mark(c).trim() || '·'),
+      el('span', { class: 'pickkind' }, kindOf(c)),
+      c.ticketId ? el('span', { class: 'pickid' }, `#${c.ticketId}`) : null,
+      el('span', { class: 'picktitle' }, rowTitle(c)),
+      word ? el('span', { class: 'pickword muted' }, word) : null);
+  }
+  function renderPicker() {
+    const list = visible();
+    const cur = chats.find((c) => c.id === chat?.id);
+    trigger.replaceChildren(cur ? `${mark(cur)}${cur.title}` : 'Chat', el('span', { class: 'caret' }, '▾'));
+    if (!list.some((c) => c.id === hl)) hl = chat?.id ?? list[0]?.id ?? null;
+    const hidden = chats.length - list.length;
+    popup.replaceChildren(...list.map(pickRow),
+      !list.length ? el('p', { class: 'muted pickempty' }, 'No open chats') : null,
+      chats.length > list.length || showAll
+        ? el('div', { class: 'pickrow pickmore', role: 'option', onmousedown: (e) => e.preventDefault(), onclick: toggleAll }, showAll ? 'Show only open chats' : `Show all (${hidden} older)`)
+        : null);
+    popup.querySelector('.hl')?.scrollIntoView({ block: 'nearest' });
+  }
+  function toggleAll() { showAll = !showAll; store.set('showAll', showAll ? '1' : '0'); renderPicker(); }
+  function setPick(on) {
+    if (!on && popup.contains(document.activeElement)) trigger.focus();
+    pickOpen = on;
+    popup.hidden = !on;
+    trigger.setAttribute('aria-expanded', String(on));
+    if (on) { hl = chat?.id ?? null; renderPicker(); popup.focus(); }
+  }
+  function choose(id) { setPick(false); if (id !== chat?.id) openChat(id).catch((err) => toast(err.message)); else focusInput(); }
+  function pickKey(e) {
+    const list = visible();
+    const i = list.findIndex((c) => c.id === hl);
+    const move = (to) => { hl = list[Math.max(0, Math.min(list.length - 1, to))]?.id ?? null; renderPicker(); };
+    const k = e.key;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (k === 'ArrowDown' || k === 'j') move(i + 1);
+    else if (k === 'ArrowUp' || k === 'k') move(i - 1);
+    else if (k === 'Home' || k === 'g') move(0);
+    else if (k === 'End' || k === 'G') move(list.length - 1);
+    else if (k === 'Enter' || k === ' ') { if (hl) choose(hl); }
+    else if (k === 'a') toggleAll();
+    else if (k === 'Escape' || k === 'Tab') { setPick(false); if (k === 'Tab') return; trigger.focus(); }
+    else return;
+    e.preventDefault(); e.stopPropagation();
+  }
+  popup.addEventListener('keydown', pickKey);
+  popup.addEventListener('blur', () => setTimeout(() => { if (pickOpen && !picker.contains(document.activeElement)) setPick(false); }, 0));
+  trigger.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' && !e.altKey) { e.preventDefault(); setPick(true); } });
+  // The header is built once too, so the picker keeps focus across paint(); only the body below it is rebuilt.
+  const delBtn = el('button', { type: 'button', title: 'Delete this chat', onclick: () => remove() }, '🗑');
+  const head = el('div', { class: 'chathead' }, picker,
+    el('button', { type: 'button', title: 'New read-only question about the board', onclick: () => ask().catch((e) => toast(e.message)) }, '?'),
+    el('button', { type: 'button', title: 'New chat', onclick: () => openChat(null).catch((e) => toast(e.message)) }, '+'),
+    delBtn,
+    el('button', { type: 'button', title: 'Close (Esc)', onclick: () => toggle(false) }, '×'));
+  const body = el('div', { class: 'chatbody' });
+  panel.append(head, body);
   const changed = [];  // callbacks: the set of tickets being refined may have changed
   const active = (c) => c.state === 'running' || c.state === 'queued';
   const paintButton = () => {
@@ -99,6 +172,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     chats = await api('GET', 'agent/chats');
     usage = await api('GET', 'agent/usage').catch(() => usage);
     paintButton();
+    renderPicker();
     for (const fn of changed) fn();
   }
 
@@ -106,6 +180,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     if (chat) drafts[chat.id] = panel.querySelector('textarea')?.value ?? drafts[chat.id] ?? '';
     chat = id ? await api('GET', `agent/chats/${id}`) : await api('POST', 'agent/chats', { project: project() });
     store.set('current', chat.id);
+    seen.add(chat.id);
     await refreshList();
     paint();
   }
@@ -115,6 +190,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     const c = await api('POST', 'agent/ask', { question: question || '' });
     if (chat) drafts[chat.id] = panel.querySelector('textarea')?.value ?? drafts[chat.id] ?? '';
     chat = c;
+    seen.add(c.id);
     store.set('current', c.id);
     await toggle(true);
     await refreshList();
@@ -199,7 +275,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   function paint() {
     if (!chat) return;
     const running = chat.state === 'running' || chat.state === 'queued';
-    const keep = panel.querySelector('textarea');
+    const keep = body.querySelector('textarea');
     const typed = keep ? keep.value : drafts[chat.id] ?? '';
     const hadFocus = keep && document.activeElement === keep;
     const input = el('textarea', {
@@ -209,16 +285,11 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
       },
     });
     input.value = typed;
-    const select = el('select', { 'aria-label': 'Chat', onchange: (e) => openChat(e.target.value).catch((err) => toast(err.message)) },
-      chats.map((c) => el('option', { value: c.id, selected: c.id === chat.id }, `${mark(c)}${c.title}`)));
+    renderPicker();
     const log = el('div', { class: 'chatlog', tabindex: '-1' },
       chat.messages.length ? chat.messages.map(bubble) : el('p', { class: 'muted' }, chat.kind === 'ask' ? 'Ask about tickets and what changed. Claude can only read the tickets and the change log here; it cannot edit anything.' : chat.kind === 'refine' ? 'Refine run: Claude may edit only this ticket.' : 'Claude runs on this machine with read access to the project and permission to edit files there.'));
-    show(panel,
-      el('div', { class: 'chathead' }, select,
-        el('button', { type: 'button', title: 'New read-only question about the board', onclick: () => ask().catch((e) => toast(e.message)) }, '?'),
-        el('button', { type: 'button', title: 'New chat', onclick: () => openChat(null).catch((e) => toast(e.message)) }, '+'),
-        el('button', { type: 'button', title: 'Delete this chat', disabled: running, onclick: remove }, '🗑'),
-        el('button', { type: 'button', title: 'Close (Esc)', onclick: () => toggle(false) }, '×')),
+    delBtn.disabled = running;
+    show(body,
       chat.messages.length || chat.kind !== 'chat'
         ? el('div', { class: 'chatmeta muted', title: `${chat.cwd}\nThe cost is the Claude CLI's own estimate at API prices. On a subscription login it is not charged to you; it counts against your plan limits. With ANTHROPIC_API_KEY set it is real spend.` }, `${chat.cwd.split('/').slice(-2).join('/')} · ${running ? 'answering…' : chat.state === 'queued' ? 'waiting for a free slot…' : chat.costUsd ? `≈ $${chat.costUsd.toFixed(3)} at API rates` : 'ready'}`)
         : el('label', { class: 'chatmeta muted dirrow', title: 'Directory this chat runs in (a path on the machine running Sanvi). Fixed after the first message; set per project on the Projects page.' }, 'Directory ',

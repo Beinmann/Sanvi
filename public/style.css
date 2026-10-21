@@ -233,7 +233,15 @@ body.has-selection .selhint { display: none; }
 .about dd { margin: 0; }
 .chatpanel { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 16px max(16px, calc((100vw - 900px) / 2)); background: var(--panel); }
 .chatpanel[hidden] { display: none; }
-.chathead { display: flex; gap: 6px; align-items: center; } .chathead select { flex: 1; min-width: 0; padding: 4px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); }
+.chathead { display: flex; gap: 6px; align-items: center; } .chatbody { display: contents; }
+.chatpick { position: relative; flex: 1; min-width: 0; }
+.pickbtn { width: 100%; display: flex; justify-content: space-between; gap: 8px; text-align: left; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); } .pickbtn .caret { flex: none; opacity: .6; }
+.pickpop { position: absolute; z-index: 9; left: 0; right: 0; top: calc(100% + 4px); max-height: min(60vh, 420px); overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); box-shadow: 0 6px 24px rgba(0,0,0,.25); outline: none; padding: 4px; } .pickpop[hidden] { display: none; }
+.pickrow { display: flex; gap: 8px; align-items: baseline; padding: 5px 8px; border-radius: var(--r); cursor: pointer; } .pickrow.hl { background: var(--border); } .pickrow.cur .picktitle { font-weight: 600; }
+.pickstate { flex: none; width: 1.4em; text-align: center; } .pickstate.running { color: var(--accent, #2a7); } .pickstate.failed { color: var(--danger); }
+.pickkind { flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; opacity: .7; min-width: 5.5em; } .pickid { flex: none; font-variant-numeric: tabular-nums; }
+.picktitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pickword { flex: none; font-size: 11px; }
+.pickmore { justify-content: center; font-size: 12px; opacity: .8; border-top: 1px solid var(--border); border-radius: 0; margin-top: 4px; } .pickempty { padding: 4px 8px; margin: 0; }
 .chatmeta { font-size: 12px; }
 .chatlog { display: grid; gap: 8px; align-content: start; flex: 1; overflow-y: auto; outline: none; padding: 2px; }
 .msg { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); padding: 6px 10px; }
