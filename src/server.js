@@ -123,7 +123,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       r.onEvent((ev) => limits.record(ev));
       return r;
     },
-    notify: (id) => broadcast({ type: 'chat', id }),
+    notify: (id) => { broadcast({ type: 'chat', id }); startQueuedImplements(); },
     log: (e) => changelog.log({ ticket: '-', ...e }),
   }) : null;
 
@@ -146,9 +146,29 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     return { started: started.length, skipped };
   }
 
+  // Implementations asked for while the ticket was being refined; each starts once its refine run has finished well.
+  const implementAfterRefine = new Set();
+  const activeRuns = (file) => chats.list().filter((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'));
+  function startQueuedImplements() {
+    for (const file of [...implementAfterRefine]) {
+      if (activeRuns(file).length) continue;
+      implementAfterRefine.delete(file);
+      const last = chats.list().find((c) => c.ticket === file && c.kind === 'refine'); // newest first
+      try {
+        if (last?.state !== 'idle' || last.outcome !== 'ok') throw new ValidationError('the refine run did not finish cleanly; implementation not started');
+        startImplement(file);
+      } catch (e) { broadcast({ type: 'notice', message: `Queued implementation of ${file} dropped: ${e.message}` }); }
+    }
+  }
+
   // Implement runs in a new worktree of the project's repo and is merged into its current branch when it finishes cleanly.
+  // While the ticket is being refined it is only queued: it starts after the refine run (see startQueuedImplements).
   function startImplement(file) {
     const t = readTicket(dir, file);
+    if (!implementAfterRefine.has(file) && activeRuns(file).some((c) => c.kind === 'refine')) {
+      implementAfterRefine.add(file);
+      return { queued: true, title: `Implement #${t.id}: ${t.title} (after refine)` };
+    }
     if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} already has an agent running`);
     const info = projectInfo(dir, t.project);
     if (!info.dir) throw new ValidationError(`project "${t.project || DEFAULT_LABEL}" has no directory: set the repository to implement in on the Projects page`);

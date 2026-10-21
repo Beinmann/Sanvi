@@ -1152,6 +1152,7 @@ es.onmessage = (e) => {
   let msg = {};
   try { msg = JSON.parse(e.data); } catch { /* treat as a file change */ }
   if (msg.type === 'chat') return chatPage.onEvent(msg);
+  if (msg.type === 'notice') return toast(msg.message);
   clearTimeout(refreshTimer); refreshTimer = setTimeout(refreshAll, 100);
 };
 

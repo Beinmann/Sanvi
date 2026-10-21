@@ -343,6 +343,43 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
   } finally { await app.close(); }
 });
 
+test('implement while refining is queued and starts after a clean refine; dropped otherwise', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-implq-'));
+  const repo = path.join(root, 'repo');
+  fs.mkdirSync(repo);
+  g(repo, 'init', '-q', '-b', 'main');
+  g(repo, 'config', 'user.email', 't@example.com'); g(repo, 'config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'a\n');
+  g(repo, 'add', '-A'); g(repo, 'commit', '-qm', 'init');
+  const dir = path.join(repo, 'tickets');
+  fs.mkdirSync(path.join(dir, '_projects'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '_projects', '_default.md'), `---\nname: ""\ndir: ${repo}\n---\n`);
+  fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: design\n---\n# A\n');
+  fs.writeFileSync(path.join(dir, '002-b.md'), '---\nstatus: design\n---\n# B\n');
+  const f = fakeRunner();
+  const app = createTicketServer({ dir, agents: true, agentRun: f.run, chatsFile: null });
+  const { port } = await app.listen(0);
+  const post = (url, body) => fetch(`http://127.0.0.1:${port}/api/agent/${url}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  try {
+    await post('refine', { file: '001-a.md' });
+    const q = await (await post('implement', { file: '001-a.md' })).json();
+    assert.equal(q.queued, true);
+    assert.equal(f.calls.length, 1, 'no implement run yet');
+    fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: open\n---\n# A\nrefined\n');
+    f.calls[0].end(); await tick();
+    assert.equal(f.calls.length, 2, 'implement started after the refine');
+    assert.match(f.calls[1].opts.cwd, /ticket-001$/);
+
+    // a refine that fails drops the queued implementation
+    await post('refine', { file: '002-b.md' });
+    assert.equal((await (await post('implement', { file: '002-b.md' })).json()).queued, true);
+    f.calls[2].say('partial'); f.calls[2].end({ ok: false, error: 'boom' }); await tick(); // output so far: no fresh-session retry
+    assert.equal(f.calls.length, 3, 'no implement run after a failed refine');
+  } finally { await app.close(); }
+});
+
 test('implement needs a project directory', async () => {
   const s = await refineSetup([['001-a.md', 'open']]);
   try {

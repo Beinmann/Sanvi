@@ -376,7 +376,7 @@ export function initKeys(ctx) {
     menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file },
       entry('Add comment', 'c', () => openNote(file)),
       ...(refinable ? [entry(refining ? 'Claude is refining this ticket…' : 'Refine with Claude', 'agent', () => { if (!refining) ctx.refine(file); })] : []),
-      ...(ctx.agents?.() ? [entry('Implement with Claude', 'agent', () => ctx.implement(file))] : []),
+      ...(ctx.agents?.() ? [entry(refining ? 'Queue implementation with Claude' : 'Implement with Claude', 'agent', () => ctx.implement(file))] : []),
       entry('Delete…', 'd', () => openConfirmDelete(file)));
     document.body.append(menu);
     const r = anchor.getBoundingClientRect();
@@ -446,7 +446,7 @@ export function initKeys(ctx) {
       rows: () => [
         { label: 'Open', hint: 'Enter', run: () => { location.hash = `#/t/${encodeURIComponent(t.file)}`; } },
         ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', run: () => ctx.refine(t.file) }] : []),
-        ...(ctx.agents?.() ? [{ label: 'Implement with Claude', hint: 'agent', run: () => ctx.implement(t.file) }] : []),
+        ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', run: () => ctx.implement(t.file) }] : []),
         { label: 'Change status…', hint: hint('status'), push: () => valueLevel(t, 'status') },
         { label: 'Change priority…', hint: hint('priority'), push: () => valueLevel(t, 'priority') },
         { label: 'Change project…', hint: hint('project'), push: () => valueLevel(t, 'project') },
@@ -516,7 +516,7 @@ export function initKeys(ctx) {
           rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', cmd: true, push: () => ticketLevel(t) });
           if (ctx.agents?.()) {
             { const refining = ctx.isRefining(t.file); rows.push({ label: refining ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', cmd: true, run: () => { if (!refining) ctx.refine(t.file); } }); }
-            rows.push({ label: 'Implement with Claude', hint: 'agent', cmd: true, run: () => ctx.implement(t.file) });
+            rows.push({ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', cmd: true, run: () => ctx.implement(t.file) });
           }
         }
         rows.push({ heading: 'Commands' },
