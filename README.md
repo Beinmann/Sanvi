@@ -35,6 +35,17 @@ The ticket files are the only source of truth. The UI and CLI are views and
 helpers over them, so editing the files by hand (or with an editor or an AI
 agent) is always fine; the UI picks changes up live.
 
+**Add `.sanvi/` to your project's `.gitignore`.** Sanvi keeps local, per-machine
+state next to the tickets dir (chat history with costs, logs, UI layout) in
+`<tickets dir>/../.sanvi/`, which should not be committed:
+
+```
+echo '.sanvi/' >> .gitignore
+```
+
+Sanvi writes a `.gitignore` containing `*` into `.sanvi/` once it logs the first
+change, but that comes later than `chats.json` and `server.log`, so don't rely on it.
+
 ## Ticket format
 
 `<dir>/<id>-<slug>.md`, with an id of at least 3 digits (zero-padded; it simply grows to `1000` and beyond, no migration) in the filename:
@@ -214,8 +225,8 @@ Linux) is a `tk.js` process.
 Everything else lives in the project's `<tickets dir>/../.sanvi/`: `layout.json`,
 `changes.log`, `chats.json` (chat history, incl. costs) and `server.log`
 (background `tk start` output). Chats and logs from the old per-user location
-(`chats/`, `logs/`) are moved over on first use, never overwriting. Consider
-gitignoring `.sanvi` in your project.
+(`chats/`, `logs/`) are moved over on first use, never overwriting. Add
+`.sanvi/` to your project's `.gitignore` (see Quick start).
 
 The tickets dir is `--dir`, `$TK_DIR`, or the nearest `./tickets` upwards.
 Use `--json` for machine-readable output. Nothing requires going through it.
