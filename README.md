@@ -5,7 +5,7 @@
 A local web UI and an optional CLI for tickets stored as plain Markdown files
 with frontmatter. No dependencies; needs Node 20+.
 
-The command is `tk` (alias `sanvi`).
+The command is `tk` (alias `sanvi`). If `tk` clashes with another program on your system (e.g. the Tcl/Tk tooling or another `tk` CLI), use `sanvi`, which is identical and conflict-free; `install.sh` warns when it finds a different `tk` on your `PATH`.
 
 > **Security warning: the AI features run an agent on your machine.** With
 > `--agents` Sanvi starts the Claude Code CLI, which reads files, edits files

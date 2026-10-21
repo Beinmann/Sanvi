@@ -37,9 +37,16 @@ mkdir -p "$bindir"
 for name in tk sanvi; do
   link="$bindir/$name"
   if [ -e "$link" ] && [ ! -L "$link" ]; then echo "skipping $link: exists and is not a symlink" >&2; continue; fi
+  if [ -L "$link" ] && [ "$(readlink "$link")" != "$target" ]; then echo "warning: replacing $link, which pointed to $(readlink "$link")" >&2; fi
   ln -sf "$target" "$link"
   echo "linked $link -> $target"
 done
+
+# Warn when another program named `tk` is what the shell finds first (or at all, if bindir is not on PATH).
+found="$(command -v tk 2>/dev/null || true)"
+if [ -n "$found" ] && [ "$(readlink -f "$found")" != "$target" ]; then
+  echo "warning: 'tk' on your PATH is $found, not Sanvi; it may clash with ours. 'sanvi' works the same, use that instead." >&2
+fi
 
 case ":$PATH:" in
   *":$bindir:"*) ;;
