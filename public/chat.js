@@ -130,7 +130,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   async function implement(file) {
     const c = await api('POST', 'agent/implement', { file });
     await refreshList();
-    toast(`Implementing: ${c.title}`);
+    toast(c.queued ? `Queued: ${c.title}` : `Implementing: ${c.title}`);
   }
 
   async function refineAll() {
