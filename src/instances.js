@@ -1,10 +1,11 @@
 // Per-user registry of running web UI instances: one small JSON file per
-// tickets dir in a state dir outside any repo. Entries are only trusted after
+// tickets dir in a state dir outside any repo (chats and the server log are per project, see below). Entries are only trusted after
 // checking the process is alive (and, where possible, really is `tk`).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { dataDir } from './datadir.js';
 
 export function stateDir() {
   if (process.env.TK_STATE_DIR) return process.env.TK_STATE_DIR;
@@ -15,8 +16,21 @@ export function stateDir() {
 const instDir = () => path.join(stateDir(), 'instances');
 const keyOf = (dir) => crypto.createHash('sha1').update(path.resolve(dir)).digest('hex').slice(0, 12);
 const entryPath = (dir) => path.join(instDir(), `${keyOf(dir)}.json`);
-export const chatsPath = (dir) => path.join(stateDir(), 'chats', `${keyOf(dir)}.json`);
-export const logPath = (dir) => path.join(stateDir(), 'logs', `${keyOf(dir)}.log`);
+// Chats and the server log live in the project's `.sanvi` dir. Files from the per-user state dir
+// (`chats/<hash>.json`, `logs/<hash>.log`) are moved over on first use, never overwriting.
+function projectFile(dir, name, oldRel) {
+  const target = path.join(dataDir(dir), name);
+  const old = path.join(stateDir(), oldRel(keyOf(dir)));
+  try {
+    if (!fs.existsSync(target) && fs.existsSync(old)) {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      try { fs.renameSync(old, target); } catch { fs.copyFileSync(old, target); fs.unlinkSync(old); }
+    }
+  } catch { /* leave the old file; the new one starts empty */ }
+  return target;
+}
+export const chatsPath = (dir) => projectFile(dir, 'chats.json', (k) => path.join('chats', `${k}.json`));
+export const logPath = (dir) => projectFile(dir, 'server.log', (k) => path.join('logs', `${k}.log`));
 
 export function isTkProcess(pid) {
   try { process.kill(pid, 0); } catch (e) { if (e.code !== 'EPERM') return false; }
