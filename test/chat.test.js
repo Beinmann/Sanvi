@@ -334,12 +334,31 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     const wt3 = f.calls[2].opts.cwd;
     fs.writeFileSync(path.join(wt3, 'a.txt'), 'from agent\n');
     fs.writeFileSync(path.join(repo, 'a.txt'), 'from main\n'); g(repo, 'commit', '-qam', 'main change');
-    f.calls[2].end(); await tick();
+    f.calls[2].end(); await tick(); await tick();
+    assert.equal((await chat(c3.id)).state, 'running', 'the agent is called again for the conflict');
+    assert.equal(f.calls[3].opts.cwd, repo);
+    assert.match(f.calls[3].opts.prompt, /git merge --no-edit ticket-/);
+    f.calls[3].end(); await tick(); await tick(); // it resolved nothing and aborted nothing
     const conflict = await chat(c3.id);
     assert.equal(conflict.state, 'failed');
     assert.match(conflict.error, /Nothing was merged/);
     assert.equal(g(repo, 'status', '--porcelain', '--untracked-files=no'), ''); // no half-merge left behind
     assert.equal(fs.readFileSync(path.join(repo, 'a.txt'), 'utf8'), 'from main\n');
+
+    // conflict the agent resolves: merge, fix, commit
+    fs.writeFileSync(path.join(dir, '004-d.md'), '---\nstatus: open\n---\n# D\n');
+    const c4 = await (await post('004-d.md')).json();
+    const wt4 = f.calls[4].opts.cwd;
+    fs.writeFileSync(path.join(wt4, 'a.txt'), 'from agent 2\n');
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'from main 2\n'); g(repo, 'commit', '-qam', 'main change 2');
+    f.calls[4].end(); await tick(); await tick();
+    try { g(repo, 'merge', '--no-edit', 'ticket-004'); } catch { /* conflict expected */ }
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'both\n'); g(repo, 'add', 'a.txt'); g(repo, 'commit', '-q', '--no-edit');
+    f.calls[5].end(); await tick(); await tick();
+    const resolved = await chat(c4.id);
+    assert.equal(resolved.state, 'idle');
+    assert.ok(!fs.existsSync(wt4), 'worktree removed');
+    assert.equal(fs.readFileSync(path.join(repo, 'a.txt'), 'utf8'), 'both\n');
   } finally { await app.close(); }
 });
 

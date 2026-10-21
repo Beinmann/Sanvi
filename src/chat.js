@@ -155,29 +155,47 @@ export function createChats({ cwd, file, check, sessionReuse = sessionReuseFromE
         log({ chat: c.id, action: 'session-resume-failed' });
         return start(c, reply, started, false);
       }
-      running--;
       c.active = null;
       if (d.sessionId) c.sessionId = d.sessionId;
       if (track && d.ok && d.sessionId) sessions.set(key, { sessionId: d.sessionId, tokens });
       else if (track && !d.ok && reused) sessions.delete(key);
       if (d.costUsd) c.costUsd += d.costUsd;
-      if (d.ok && finalize && c.kind === 'implement') { // post-run work (merge); a failure there fails the chat
-        let v;
-        try { v = finalize(c, d); } catch (e) { v = { ok: false, error: e.message }; }
-        if (!v.ok) { d = { ...d, ok: false, error: v.error }; }
-      }
-      if (d.ok) {
-        c.state = 'idle'; if (!reply.text) reply.text = d.text;
-        const verdict = check?.(c, d) || {};
-        const warnings = [verdict.warning, d.denials ? `${d.denials} tool call${d.denials > 1 ? 's were' : ' was'} refused (a headless run cannot ask for permission)` : null].filter(Boolean);
-        c.outcome = d.denials ? 'problems' : verdict.outcome || 'ok';
-        c.warning = warnings.join('; ') || null;
-      }
-      else { c.state = d.cancelled ? 'idle' : 'failed'; c.error = d.error; if (d.cancelled) reply.text += `${reply.text ? '\n\n' : ''}(stopped)`; }
-      log({ chat: c.id, action: d.ok ? 'agent-finish' : d.cancelled ? 'agent-cancel' : 'agent-fail', seconds: Math.round((Date.now() - started) / 1000), costUsd: d.costUsd });
-      touch(c.id);
-      while (running < maxRuns && pending.length) { const next = chats.get(pending.shift()); if (next?.state === 'queued') launch(next); }
+      if (d.ok && finalize && c.kind === 'implement') { // post-run work (merge, maybe with another agent run); a failure there fails the chat
+        const agent = (o) => followUp(c, reply, o);
+        Promise.resolve().then(() => finalize(c, d, { agent })).catch((e) => ({ ok: false, error: e.message }))
+          .then((v) => conclude(c, reply, started, v.ok ? d : { ...d, ok: false, error: v.error }));
+      } else conclude(c, reply, started, d);
     });
+  }
+
+  // A further agent run inside the chat's current turn (e.g. resolving a merge conflict); its output joins the reply.
+  function followUp(c, reply, { prompt, cwd, runOpts }) {
+    const r = run({ prompt, cwd, ...runOpts });
+    c.active = r;
+    r.onEvent((ev) => {
+      if (ev.type !== 'assistant' || !Array.isArray(ev.message?.content)) return;
+      for (const part of ev.message.content) {
+        if (part.type === 'text') reply.text += (reply.text ? '\n\n' : '') + part.text;
+        else if (part.type === 'tool_use') reply.tools.push(part.name);
+      }
+      touch(c.id);
+    });
+    return r.done.then((d) => { c.active = null; if (d.costUsd) c.costUsd += d.costUsd; return d; });
+  }
+
+  function conclude(c, reply, started, d) {
+    running--;
+    if (d.ok) {
+      c.state = 'idle'; if (!reply.text) reply.text = d.text;
+      const verdict = check?.(c, d) || {};
+      const warnings = [verdict.warning, d.denials ? `${d.denials} tool call${d.denials > 1 ? 's were' : ' was'} refused (a headless run cannot ask for permission)` : null].filter(Boolean);
+      c.outcome = d.denials ? 'problems' : verdict.outcome || 'ok';
+      c.warning = warnings.join('; ') || null;
+    }
+    else { c.state = d.cancelled ? 'idle' : 'failed'; c.error = d.error; if (d.cancelled) reply.text += `${reply.text ? '\n\n' : ''}(stopped)`; }
+    log({ chat: c.id, action: d.ok ? 'agent-finish' : d.cancelled ? 'agent-cancel' : 'agent-fail', seconds: Math.round((Date.now() - started) / 1000), costUsd: d.costUsd });
+    touch(c.id);
+    while (running < maxRuns && pending.length) { const next = chats.get(pending.shift()); if (next?.state === 'queued') launch(next); }
   }
 
   // Claude keeps sessions per directory, so a chat can only change directory before its first message.

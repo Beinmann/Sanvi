@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createWorktree, implementPrompt, mergeWorktree } from '../src/implement.js';
+import { createWorktree, implementPrompt, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge } from '../src/implement.js';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
@@ -96,6 +96,8 @@ test('mergeWorktree reports a real conflict as a conflict', () => {
   const r = mergeWorktree(wt);
   assert.equal(r.merged, false);
   assert.match(r.error, /merge conflict in a\.txt/);
+  assert.equal(r.conflict, true);
+  assert.deepEqual(r.conflicts, ['a.txt']);
   assert.doesNotMatch(r.error, /uncommitted/);
   assert.equal(git(top, 'status', '--porcelain'), '');
   fs.rmSync(root, { recursive: true, force: true });
@@ -105,4 +107,53 @@ test('mergeWorktree merges cleanly when nothing is in the way', () => {
   const { root, wt } = branchWithChange('a.txt', 'branch\n');
   assert.deepEqual(mergeWorktree(wt), { merged: true });
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('non-conflict refusals are not flagged as conflicts', () => {
+  const { root, top, wt } = branchWithChange('a.txt', 'branch\n');
+  fs.writeFileSync(path.join(top, 'a.txt'), 'local edit\n');
+  assert.equal(mergeWorktree(wt).conflict, undefined);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+function conflicted() {
+  const c = branchWithChange('a.txt', 'branch\n');
+  fs.writeFileSync(path.join(c.top, 'a.txt'), 'main\n');
+  git(c.top, 'commit', '-q', '-am', 'main change');
+  return c;
+}
+
+test('conflict path: a resolving agent (stubbed) completes the merge and the worktree goes away', () => {
+  const { root, top, wt } = conflicted();
+  assert.equal(mergeWorktree(wt).conflict, true);
+  // stand-in for the agent: merge, resolve, commit
+  try { git(top, 'merge', '--no-edit', wt.branch); } catch { /* conflict expected */ }
+  fs.writeFileSync(path.join(top, 'a.txt'), 'main+branch\n');
+  git(top, 'add', 'a.txt');
+  git(top, 'commit', '-q', '--no-edit');
+  assert.deepEqual(completeMerge(wt), { merged: true });
+  assert.ok(!fs.existsSync(wt.worktree));
+  assert.equal(fs.readFileSync(path.join(top, 'a.txt'), 'utf8'), 'main+branch\n');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('conflict path: an agent that gives up leaves the merge aborted and the worktree kept', () => {
+  const { root, top, wt } = conflicted();
+  mergeWorktree(wt);
+  try { git(top, 'merge', '--no-edit', wt.branch); } catch { /* conflict expected */ }
+  const r = completeMerge(wt); // the agent neither resolved nor aborted
+  assert.equal(r.merged, false);
+  assert.match(r.error, /not resolved/);
+  assert.equal(git(top, 'status', '--porcelain'), '');
+  assert.ok(fs.existsSync(wt.worktree));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('the merge prompt offers resolving or blocking; its permissions cover the main checkout', () => {
+  const wt = { top: '/repo', base: 'main', branch: 'ticket-002', worktree: '/repo-worktrees/ticket-002' };
+  const p = mergeConflictPrompt({ ticketsDir: '/n/tickets', file: '002-x.md', wt, conflicts: ['a.txt'] });
+  assert.match(p, /git merge --no-edit ticket-002/);
+  assert.match(p, /not straightforward[^]*git merge --abort[^]*Blocked:[^]*status: blocked/);
+  const o = mergeRunOpts({ ticketsDir: '/n/tickets', projectDir: '/repo' });
+  assert.ok(o.allowedTools.includes('Edit(//repo/**)') && o.allowedTools.includes('Bash(git merge:*)'));
 });

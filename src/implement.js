@@ -77,10 +77,41 @@ export function mergeWorktree({ top, base, branch, worktree }) {
       let conflicts = [];
       try { conflicts = git(top, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean); } catch { /* none to list */ }
       try { git(top, 'merge', '--abort'); } catch { /* nothing to abort */ }
-      if (conflicts.length) return { merged: false, error: `merge conflict in ${conflicts.join(', ')}: ${base} and ${branch} changed the same lines. Nothing was merged. ${kept} Resolve it by merging ${branch} by hand.` };
+      if (conflicts.length) return { merged: false, conflict: true, conflicts, error: `merge conflict in ${conflicts.join(', ')}: ${base} and ${branch} changed the same lines. Nothing was merged. ${kept} Resolve it by merging ${branch} by hand.` };
       return { merged: false, error: `the merge was refused: ${gitError(e)} Nothing was merged. ${kept}` };
     }
   } catch (e) { return { merged: false, error: gitError(e) }; }
+  try { git(top, 'worktree', 'remove', worktree); git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
+  return { merged: true };
+}
+
+// The prompt for the follow-up run that resolves a merge conflict in the main checkout (`top`).
+export function mergeConflictPrompt({ ticketsDir, file, wt, conflicts = [] }) {
+  const ticket = path.join(ticketsDir, file);
+  return `Merging the branch ${wt.branch} into ${wt.base} in ${wt.top} stopped with a conflict (${conflicts.join(', ')}). The merge was aborted, so the checkout is clean. Nobody can answer questions during this run, so do not ask any.
+
+1. In ${wt.top} run "git merge --no-edit ${wt.branch}" and look at the conflicts (git status, git diff). The ticket ${ticket} says what ${wt.branch} intended.
+2. If the conflict is straightforward (both sides can simply be kept, or one side clearly supersedes the other; this is the case in 90+% of conflicts), resolve it by editing the conflicting files, run the tests if the repo has them, then git add the files and git commit to complete the merge.
+3. If the conflict is not straightforward (you would have to guess what is intended), do not guess: run "git merge --abort", add a dated Note to the ticket ${ticket} that starts with "Blocked:" and explains the conflict, and set "status: blocked" in its frontmatter.
+Do not push, do not switch branches, do not touch other files.`;
+}
+
+// Like implementRunOpts, but for the merge step: the main checkout is writable and git may merge there.
+export function mergeRunOpts({ ticketsDir, projectDir }) {
+  const o = implementRunOpts({ ticketsDir, projectDir: null });
+  const rule = (tool) => `${tool}(/${projectDir}/**)`;
+  return {
+    ...o,
+    allowedTools: [...o.allowedTools, rule('Edit'), rule('Write'), 'Bash(git merge:*)', 'Bash(git rm:*)', 'Bash(git show:*)', 'Bash(git checkout:*)'],
+    addDirs: [...o.addDirs, projectDir],
+  };
+}
+
+// After the conflict-resolving run: is the branch merged now? If so remove the worktree; otherwise leave nothing half-merged.
+export function completeMerge({ top, base, branch, worktree }) {
+  let merged = false;
+  try { git(top, 'merge-base', '--is-ancestor', branch, base); merged = true; } catch { /* not merged */ }
+  if (!merged) { try { git(top, 'merge', '--abort'); } catch { /* no merge in progress */ } return { merged: false, error: `the conflict was not resolved by the agent; ${base} is unchanged, the branch ${branch} is kept` }; }
   try { git(top, 'worktree', 'remove', worktree); git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
   return { merged: true };
 }

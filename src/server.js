@@ -15,7 +15,7 @@ import { buildInfo, commitsBehind } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 import { createChats, resolveDir } from './chat.js';
 import { createLimits } from './limits.js';
-import { implementPrompt, implementRunOpts, createWorktree, mergeWorktree } from './implement.js';
+import { implementPrompt, implementRunOpts, createWorktree, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge } from './implement.js';
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
@@ -113,9 +113,14 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     cwd: path.dirname(dir),
     file: chatsFile === undefined ? chatsPath(dir) : chatsFile,
     check: checkRefine,
-    finalize: (c) => {
-      const m = mergeWorktree(c.meta.wt);
-      return m.merged ? { ok: true } : { ok: false, error: `${m.error}. Nothing was merged; the worktree is kept at ${c.meta.wt.worktree} (branch ${c.meta.wt.branch})` };
+    finalize: async (c, d, { agent }) => {
+      const wt = c.meta.wt;
+      let m = mergeWorktree(wt);
+      if (m.conflict) { // a real conflict: the agent resolves it (or blocks the ticket) in the main checkout
+        const r = await agent({ cwd: wt.top, prompt: mergeConflictPrompt({ ticketsDir: dir, file: c.meta.file, wt, conflicts: m.conflicts }), runOpts: mergeRunOpts({ ticketsDir: dir, projectDir: wt.top }) });
+        m = r.ok ? completeMerge(wt) : { merged: false, error: m.error };
+      }
+      return m.merged ? { ok: true } : { ok: false, error: `${m.error}. Nothing was merged; the worktree is kept at ${wt.worktree} (branch ${wt.branch})` };
     },
     projectInfo: (name) => projectInfo(dir, name),
     run: (opts) => { // every run reports the plan limits; keep them for the header
