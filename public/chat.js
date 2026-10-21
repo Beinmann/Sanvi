@@ -255,6 +255,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     // The most recent chat linked to a ticket (the list is newest first), or null.
     implementing: (file) => chats.some((c) => c.ticket === file && c.kind === 'implement' && active(c)),
     forTicket: (id, proj = '') => (id && chats.find((c) => c.ticketId === id && (c.project || '') === proj)) || null,
+    allForTicket: (id, proj = '') => (id ? chats.filter((c) => c.ticketId === id && (c.project || '') === proj) : []),
     open: async (id) => { await toggle(true); await openChat(id); },
     start: () => refreshList().catch(() => {}),
   };

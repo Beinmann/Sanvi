@@ -457,6 +457,14 @@ export function initKeys(ctx) {
     };
   }
 
+  // Pick one of several chats about a ticket; `nav` makes plain h/j/k/l move, open and go back (the list is short, no text filter).
+  function chatsLevel(t, chats) {
+    return {
+      placeholder: `Chat for #${t.id}: j/k move, l or Enter opens, h goes back`, nav: true,
+      rows: () => chats.map((c) => ({ label: c.title || `(${c.kind})`, hint: c.kind, always: true, run: () => ctx.openChat(c.id) })),
+    };
+  }
+
   // Delete a status (063): pick it, then (if tickets use it) pick where they go, then confirm.
   function confirmLevel(question, label, run) {
     return { placeholder: question, rows: () => [{ label, hint: 'Enter confirms, Esc cancels', run }] };
@@ -517,6 +525,9 @@ export function initKeys(ctx) {
           if (ctx.agents?.()) {
             { const refining = ctx.isRefining(t.file); rows.push({ label: refining ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', cmd: true, run: () => { if (!refining) ctx.refine(t.file); } }); }
             rows.push({ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', cmd: true, run: () => ctx.implement(t.file) });
+            const chats = ctx.chatsFor(t);
+            if (chats.length === 1) rows.push({ label: 'Go to chat', hint: chats[0].kind, cmd: true, run: () => ctx.openChat(chats[0].id) });
+            else if (chats.length > 1) rows.push({ label: 'Go to chat…', hint: `${chats.length} chats`, cmd: true, push: () => chatsLevel(t, chats) });
           }
         }
         rows.push({ heading: 'Commands' },
@@ -588,7 +599,12 @@ export function initKeys(ctx) {
     input.addEventListener('input', () => { sel = 0; paint(); });
     input.addEventListener('keydown', (e) => {
       const ctrl = e.ctrlKey && !e.altKey;
-      if (e.key === 'ArrowDown' || (ctrl && e.key === 'n')) { sel = Math.min(sel + 1, shown.length - 1); paint(); }
+      if (top().nav && !e.ctrlKey && !e.metaKey && !e.altKey && ['h', 'j', 'k', 'l'].includes(e.key)) {
+        if (e.key === 'j') { sel = Math.min(sel + 1, shown.length - 1); paint(); }
+        else if (e.key === 'k') { sel = Math.max(sel - 1, 0); paint(); }
+        else if (e.key === 'h') back();
+        else if (shown[sel]) run(shown[sel]);
+      } else if (e.key === 'ArrowDown' || (ctrl && e.key === 'n')) { sel = Math.min(sel + 1, shown.length - 1); paint(); }
       else if (e.key === 'ArrowUp' || (ctrl && e.key === 'p')) { sel = Math.max(sel - 1, 0); paint(); }
       else if (e.key === 'Enter') { if (shown[sel]) run(shown[sel]); }
       else if (stack.length > 1 && (e.key === 'Escape' || (e.key === 'Backspace' && !input.value))) back(); // one step back

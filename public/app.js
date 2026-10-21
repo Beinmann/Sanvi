@@ -1035,6 +1035,8 @@ initKeys({
   refineAll: () => chatPage.refineAll().catch((e) => toast(`Refine failed: ${e.message}`)),
   ask: (q) => chatPage.ask(q).catch((e) => toast(`Ask failed: ${e.message}`)),
   isRefining: (file) => chatPage.refining(file),
+  chatsFor: (t) => chatPage.allForTicket(t.id, t.project || ''),
+  openChat: (id) => chatPage.open(id).catch((e) => toast(e.message)),
   detail: () => D, projects: () => ({ names: orderedProjects(), recent: recentProjects(), current: project, none: NO_PROJECT, mode: switcherMode(), fresh: newProjectValue() }), setProject,
   addNote: async (file, text, images = [], done = {}) => {
     const t = S.tickets.find((x) => x.file === file);
