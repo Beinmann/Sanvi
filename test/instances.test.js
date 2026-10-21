@@ -52,3 +52,32 @@ test('stale entries are cleaned up', () => {
     assert.deepEqual(fs.readdirSync(inst), []);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('chatsPath and logPath live in the project .sanvi dir; old per-user files are moved once', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sanvi-paths-'));
+  const stateBefore = process.env.TK_STATE_DIR;
+  process.env.TK_STATE_DIR = path.join(root, 'state');
+  try {
+    const { chatsPath, logPath } = await import('../src/instances.js');
+    const tickets = path.join(root, 'proj', 'tickets');
+    fs.mkdirSync(tickets, { recursive: true });
+    const c0 = chatsPath(tickets);
+    assert.equal(c0, path.join(root, 'proj', '.sanvi', 'chats.json'));
+    assert.equal(logPath(tickets), path.join(root, 'proj', '.sanvi', 'server.log'));
+    // plant an old-style file by deriving its name from a second project
+    const t2 = path.join(root, 'p2', 'tickets');
+    fs.mkdirSync(t2, { recursive: true });
+    const crypto = await import('node:crypto');
+    const k = crypto.createHash('sha1').update(path.resolve(t2)).digest('hex').slice(0, 12);
+    fs.mkdirSync(path.join(root, 'state', 'chats'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'state', 'chats', `${k}.json`), 'OLD');
+    assert.equal(fs.readFileSync(chatsPath(t2), 'utf8'), 'OLD');
+    assert.ok(!fs.existsSync(path.join(root, 'state', 'chats', `${k}.json`)));
+    // never overwrites
+    fs.writeFileSync(path.join(root, 'state', 'chats', `${k}.json`), 'OLD2');
+    assert.equal(fs.readFileSync(chatsPath(t2), 'utf8'), 'OLD');
+  } finally {
+    if (stateBefore === undefined) delete process.env.TK_STATE_DIR; else process.env.TK_STATE_DIR = stateBefore;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

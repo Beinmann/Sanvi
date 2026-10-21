@@ -207,8 +207,15 @@ tk ps                 # list running instances (dir, port, PID, URL); cleans up 
 
 Instances (also those from plain `serve`) are registered one JSON file each
 under `$TK_STATE_DIR`, else `$XDG_STATE_HOME/sanvi`, else
-`~/.local/state/sanvi`; background logs go to `logs/` there. An entry is
-only trusted if its PID is alive and (on Linux) is a `tk.js` process.
+`~/.local/state/sanvi` (`instances/`; this is the only per-user state, as it
+must span all projects). An entry is only trusted if its PID is alive and (on
+Linux) is a `tk.js` process.
+
+Everything else lives in the project's `<tickets dir>/../.sanvi/`: `layout.json`,
+`changes.log`, `chats.json` (chat history, incl. costs) and `server.log`
+(background `tk start` output). Chats and logs from the old per-user location
+(`chats/`, `logs/`) are moved over on first use, never overwriting. Consider
+gitignoring `.sanvi` in your project.
 
 The tickets dir is `--dir`, `$TK_DIR`, or the nearest `./tickets` upwards.
 Use `--json` for machine-readable output. Nothing requires going through it.
