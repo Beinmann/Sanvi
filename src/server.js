@@ -241,6 +241,21 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       writeStatuses(dir, statuses);
       return send(res, 200, configPayload());
     }
+    if (parts[0] === 'layout' && parts.length === 1) {
+      const file = path.join(path.dirname(path.resolve(dir)), '.tk', 'layout.json');
+      if (method === 'GET') {
+        let hidden = null; // null: no usable file yet
+        try { const h = JSON.parse(fs.readFileSync(file, 'utf8')).hidden; if (Array.isArray(h)) hidden = h.filter((x) => typeof x === 'string'); } catch { /* missing or corrupt: defaults */ }
+        return send(res, 200, { hidden });
+      }
+      if (method === 'PUT') {
+        const { hidden } = await readJson(req);
+        if (!Array.isArray(hidden) || hidden.some((x) => typeof x !== 'string')) throw new ValidationError('hidden must be an array of strings');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify({ hidden }, null, 2) + '\n');
+        return send(res, 200, { hidden });
+      }
+    }
     if (parts[0] === 'about' && parts.length === 1 && method === 'GET') {
       return send(res, 200, {
         version: build.version, commit: build.commit, date: build.date, node: process.version,

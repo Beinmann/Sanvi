@@ -223,3 +223,17 @@ test('about: version, node, directory name and ticket count, no absolute path', 
     assert.ok(!JSON.stringify(a).includes(path.dirname(dir)));
   } finally { await app.close(); }
 });
+
+test('layout: hidden statuses persist in .tk/layout.json, bad file tolerated', async () => {
+  const { app, dir, j } = await setup();
+  try {
+    assert.deepEqual(await (await j('GET', '/api/layout')).json(), { hidden: null });
+    assert.equal((await j('PUT', '/api/layout', { hidden: 'x' })).status, 400);
+    assert.equal((await j('PUT', '/api/layout', { hidden: ['done'] })).status, 200);
+    const file = path.join(path.dirname(dir), '.tk', 'layout.json');
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { hidden: ['done'] });
+    assert.deepEqual(await (await j('GET', '/api/layout')).json(), { hidden: ['done'] });
+    fs.writeFileSync(file, '{not json');
+    assert.deepEqual(await (await j('GET', '/api/layout')).json(), { hidden: null });
+  } finally { fs.rmSync(path.join(path.dirname(dir), '.tk'), { recursive: true, force: true }); await app.close(); }
+});

@@ -193,7 +193,7 @@ async function deleteStatus(status, target) {
   try {
     if (plan.inConfig) await api('PUT', 'config', { statuses: S.cfg.statuses.filter((c) => c !== status) });
   } catch (e) { toast(`Status not removed: ${e.message}. Moved: ${moved.join(', ') || 'none'}`); await refreshAll(); return; }
-  if (hidden.delete(status)) { try { localStorage.setItem('tk.hidden', JSON.stringify([...hidden])); } catch { /* ignore */ } }
+  if (hidden.delete(status)) saveHidden();
   await refreshAll();
   toast(`Status "${status}" deleted${moved.length ? `; moved ${moved.length} ticket${moved.length > 1 ? 's' : ''} to ${target}` : ''}`);
 }
@@ -550,11 +550,22 @@ async function save() {
   }
 }
 
-// Hidden board columns: a per-browser view preference (not written to the config file).
-const hidden = new Set((() => { try { return JSON.parse(localStorage.getItem('tk.hidden') || '[]'); } catch { return []; } })());
+// Hidden board columns: a view preference stored on the server (`.tk/layout.json`, 145), so it survives a
+// port change. Loaded at startup; an old localStorage value is used once if the server has no file yet.
+const hidden = new Set();
+const saveHidden = () => api('PUT', 'layout', { hidden: [...hidden] }).catch((e) => toast(`Layout not saved: ${e.message}`));
+async function loadHidden() {
+  let stored = null;
+  try { stored = (await api('GET', 'layout')).hidden; } catch { /* keep defaults */ }
+  if (!Array.isArray(stored)) {
+    try { stored = JSON.parse(localStorage.getItem('tk.hidden') || '[]'); } catch { stored = []; }
+    if (Array.isArray(stored) && stored.length) saveHidden();
+  }
+  for (const s of Array.isArray(stored) ? stored : []) if (typeof s === 'string') hidden.add(s);
+}
 function toggleColumn(status) {
   if (hidden.has(status)) hidden.delete(status); else hidden.add(status);
-  try { localStorage.setItem('tk.hidden', JSON.stringify([...hidden])); } catch { /* ignore */ }
+  saveHidden();
   if (document.querySelector('.board')) renderBoard();
 }
 const isHidden = (status) => hidden.has(status);
@@ -1160,6 +1171,6 @@ es.onmessage = (e) => {
 
 currentHash = location.hash;
 (async () => {
-  [S.cfg, S.tickets] = await Promise.all([api('GET', 'config'), api('GET', 'tickets?bodies=1')]);
+  [S.cfg, S.tickets] = await Promise.all([api('GET', 'config'), api('GET', 'tickets?bodies=1'), loadHidden()]).then((r) => r.slice(0, 2));
   route();
 })();
