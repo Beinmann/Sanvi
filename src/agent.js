@@ -1,6 +1,7 @@
 // The only module that knows how an agent is run. Today: the Claude Code CLI, headless (`claude -p`).
 // To use another backend, provide a function with the same shape as startRun.
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 
 export const DEFAULT_TOOLS = ['Read', 'Grep', 'Glob', 'Edit'];
 
@@ -43,6 +44,8 @@ export function startRun({ prompt, cwd, resume, model, tools = DEFAULT_TOOLS, ma
 
   const done = new Promise((resolve) => {
     const finish = (extra) => resolve({ ok: false, sessionId, text: '', costUsd: null, denials: result?.permission_denials?.length || 0, error: null, cancelled, ...extra });
+    // spawn also reports ENOENT for a missing cwd (e.g. a removed worktree); name that instead of blaming the binary
+    if (cwd && !fs.existsSync(cwd)) return finish({ error: `the working directory of this chat no longer exists: ${cwd}; open a new chat` });
     try {
       child = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) {

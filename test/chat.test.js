@@ -102,6 +102,15 @@ test('missing claude binary gives a clear message instead of crashing', async ()
   assert.match(d.error, /not found/);
 });
 
+test('a follow-up whose cwd no longer exists names the directory, not the claude binary', async () => {
+  const gone = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-gone-')), 'removed-worktree');
+  const d = await startRun({ prompt: 'x', cwd: gone, resume: 'old-session' }).done;
+  assert.equal(d.ok, false);
+  assert.match(d.error, /no longer exists/);
+  assert.ok(d.error.includes(gone));
+  assert.doesNotMatch(d.error, /not found/);
+});
+
 test('startRun parses stream-json from the CLI and passes resume', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-fake-'));
   const bin = path.join(dir, 'fake-claude');
