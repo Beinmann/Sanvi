@@ -17,7 +17,7 @@ async function setup(log) {
     method, headers: body ? { 'content-type': 'application/json' } : {}, body: body && JSON.stringify(body),
   });
   const entries = () => {
-    try { return fs.readFileSync(path.join(root, '.tk', 'changes.log'), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; }
+    try { return fs.readFileSync(path.join(root, '.sanvi', 'changes.log'), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; }
   };
   return { app, root, dir, j, entries };
 }
@@ -39,8 +39,8 @@ test('logs create, status, edit and conflict; no bodies; ignores hand edits', as
     assert.equal(e[2].body.ticked, 1);
     assert.deepEqual(e[2].body.sections, ['AC']);
     assert.equal(e[3].before, t.version);
-    assert.ok(!fs.readFileSync(path.join(root, '.tk', 'changes.log'), 'utf8').includes('SECRET'));
-    assert.equal(fs.readFileSync(path.join(root, '.tk', '.gitignore'), 'utf8'), '*\n');
+    assert.ok(!fs.readFileSync(path.join(root, '.sanvi', 'changes.log'), 'utf8').includes('SECRET'));
+    assert.equal(fs.readFileSync(path.join(root, '.sanvi', '.gitignore'), 'utf8'), '*\n');
   } finally { await app.close(); fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -74,7 +74,7 @@ test('log rotates by size and keeps a fixed number of files', () => {
 test('logging failure never blocks a save', async () => {
   const { app, root, dir, j } = await setup({ coalesceMs: 0 });
   try {
-    fs.writeFileSync(path.join(root, '.tk'), 'a file, so the log dir cannot be created');
+    fs.writeFileSync(path.join(root, '.sanvi'), 'a file, so the log dir cannot be created');
     const t = await (await j('GET', '/api/tickets/001-a.md')).json();
     const r = await j('PUT', '/api/tickets/001-a.md', { version: t.version, fields: { status: 'done' } });
     assert.equal(r.status, 200);
@@ -86,4 +86,29 @@ test('summarizeBody counts lines and sections', () => {
   const s = summarizeBody('# T\n\n## A\nx\n', '# T\n\n## A\nx\ny\n\n## B\nz\n');
   assert.equal(s.linesAdded, 3);
   assert.deepEqual(s.sections, ['A', 'B']);
+});
+
+test('data dir: .tk is migrated to .sanvi, never overwritten', async () => {
+  const { dataDir } = await import('../src/datadir.js');
+  const mk = () => { const r = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-mig-')); fs.mkdirSync(path.join(r, 'tickets')); return r; };
+  const warnings = [];
+  const warn = (m) => warnings.push(m);
+  const a = mk(), b = mk(), c = mk();
+  try {
+    fs.mkdirSync(path.join(a, '.tk')); fs.writeFileSync(path.join(a, '.tk', 'changes.log'), 'old\n');
+    assert.equal(dataDir(path.join(a, 'tickets'), warn), path.join(a, '.sanvi'));
+    assert.equal(fs.readFileSync(path.join(a, '.sanvi', 'changes.log'), 'utf8'), 'old\n');
+    assert.ok(!fs.existsSync(path.join(a, '.tk')));
+    assert.equal(warnings.length, 0);
+
+    for (const d of ['.tk', '.sanvi']) { fs.mkdirSync(path.join(b, d)); fs.writeFileSync(path.join(b, d, 'f'), d); }
+    dataDir(path.join(b, 'tickets'), warn);
+    assert.equal(fs.readFileSync(path.join(b, '.tk', 'f'), 'utf8'), '.tk');
+    assert.equal(fs.readFileSync(path.join(b, '.sanvi', 'f'), 'utf8'), '.sanvi');
+    assert.equal(warnings.length, 1);
+
+    assert.equal(dataDir(path.join(c, 'tickets'), warn), path.join(c, '.sanvi'));
+    assert.ok(!fs.existsSync(path.join(c, '.sanvi')) && !fs.existsSync(path.join(c, '.tk')));
+    assert.equal(warnings.length, 1);
+  } finally { for (const r of [a, b, c]) fs.rmSync(r, { recursive: true, force: true }); }
 });

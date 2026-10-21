@@ -177,7 +177,7 @@ Other agent features (all need `--agents`): an **Implement with Claude** entry i
 ## Change log
 
 Writes made **through the web UI** (create, status change, edit, and rejected
-409 saves) append one JSON line to `<tickets dir>/../.tk/changes.log`
+409 saves) append one JSON line to `<tickets dir>/../.sanvi/changes.log`
 (the dir gets a `.gitignore` containing `*`). Fields: `ts`, `ticket` (id),
 `action` (`create|status|edit|conflict`), `source`, `changes` (`{field, from, to}`),
 `body` (lines added/removed, sections touched, ticked/unticked criteria),

@@ -2,6 +2,7 @@
 // SSE stream that tells browsers when anything in the directory changed.
 import http from 'node:http';
 import fs from 'node:fs';
+import { dataDir } from './datadir.js';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,6 +90,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   dir = path.resolve(dir);
   if (!fs.statSync(dir).isDirectory()) throw new Error(`not a directory: ${dir}`);
   const clients = new Set();
+  dataDir(dir); // migrate a pre-rename .tk dir at start
   const changelog = createChangeLog(dir, logOpts);
   try { purgeTrash(dir); } catch (e) { console.error(`trash purge failed: ${e.message}`); }
 
@@ -188,7 +190,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
 
   // A read-only chat about the board: tickets (the working directory) and the change log, no editing, no shell.
   function startAsk(question) {
-    const logDir = path.join(path.dirname(dir), '.tk');
+    const logDir = dataDir(dir);
     const today = new Date().toISOString().slice(0, 10);
     // `//x` is an absolute path in a permission rule; reads outside these two directories are refused.
     const roots = [dir, ...(fs.existsSync(logDir) ? [logDir] : [])];
@@ -243,7 +245,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       return send(res, 200, configPayload());
     }
     if (parts[0] === 'layout' && parts.length === 1) {
-      const file = path.join(path.dirname(path.resolve(dir)), '.tk', 'layout.json');
+      const file = path.join(dataDir(dir), 'layout.json');
       if (method === 'GET') {
         let hidden = null; // null: no usable file yet
         try { const h = JSON.parse(fs.readFileSync(file, 'utf8')).hidden; if (Array.isArray(h)) hidden = h.filter((x) => typeof x === 'string'); } catch { /* missing or corrupt: defaults */ }

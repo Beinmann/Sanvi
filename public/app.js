@@ -551,7 +551,7 @@ async function save() {
   }
 }
 
-// Hidden board columns: a view preference stored on the server (`.tk/layout.json`, 145), so it survives a
+// Hidden board columns: a view preference stored on the server (`.sanvi/layout.json`, 145), so it survives a
 // port change. Loaded at startup; an old localStorage value is used once if the server has no file yet.
 const hidden = new Set();
 const saveHidden = () => api('PUT', 'layout', { hidden: [...hidden] }).catch((e) => toast(`Layout not saved: ${e.message}`));

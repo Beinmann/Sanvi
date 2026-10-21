@@ -1,8 +1,9 @@
 // Bounded change log for writes made through the web UI: JSON Lines in
-// `<tickets dir>/../.tk/changes.log`. Entries hold summaries and short content
+// `<tickets dir>/../.sanvi/changes.log`. Entries hold summaries and short content
 // hashes, never ticket bodies. Logging failures never propagate to callers.
 import fs from 'node:fs';
 import path from 'node:path';
+import { dataDir } from './datadir.js';
 
 const env = (k, d) => (Number(process.env[k]) > 0 ? Number(process.env[k]) : d);
 
@@ -65,7 +66,7 @@ function merge(prev, next) {
 
 export function createChangeLog(ticketsDir, opts = {}) {
   const o = { ...LOG_DEFAULTS(), ...opts };
-  const logDir = path.join(path.dirname(path.resolve(ticketsDir)), '.tk');
+  const logDir = dataDir(ticketsDir);
   const file = path.join(logDir, 'changes.log');
   const lastByTicket = new Map(); // ticket -> { entry, offset, at }
 
