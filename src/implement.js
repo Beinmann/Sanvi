@@ -2,6 +2,7 @@
 // The code change happens in a worktree of the project's repository on its own branch; the ticket file itself
 // (which may live in another repo) is edited in place. Merging into the base branch happens only after a clean run.
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { ValidationError } from './core.js';
 
@@ -39,28 +40,66 @@ export function implementRunOpts({ ticketsDir, projectDir }) {
   };
 }
 
-// A worktree on a new branch `ticket-<id>` next to the repo that contains `dir`; returns where it is and what to merge into.
-export function createWorktree({ dir, id }) {
+export const DEFAULT_POOL_SIZE = 4;
+
+// Worktrees come from a fixed pool of slots `<repo>-worktrees/slot-<n>`, created lazily and reused between tickets so
+// ignored files (node_modules, build output) survive. A slot is busy while `slot-<n>.busy` exists next to it; the marker
+// lives outside the worktree (so `git clean` never touches it) and on disk (so a restart does not lose it).
+const slotDir = (top, n) => `${top}-worktrees/slot-${n}`;
+const markerOf = (worktree) => `${worktree}.busy`;
+
+function branchExists(top, branch) {
+  try { git(top, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`); return true; } catch { return false; }
+}
+
+// Takes a free slot and checks out branch `ticket-<id>` in it (created from the current branch, or continued if a
+// leftover exists). A slot already busy with this ticket is reused. Returns where it is and what to merge into.
+export function createWorktree({ dir, id, poolSize = DEFAULT_POOL_SIZE }) {
   let top;
   try { top = git(dir, 'rev-parse', '--show-toplevel'); } catch { throw new ValidationError(`not inside a git repository: ${dir}`); }
   const base = git(top, 'branch', '--show-current');
   if (!base) throw new ValidationError('the repository is on a detached HEAD; check out a branch first');
   const branch = `ticket-${id}`;
-  const worktree = `${top}-worktrees/${branch}`;
+  const size = Math.max(1, Math.floor(Number(poolSize)) || DEFAULT_POOL_SIZE);
   try {
-    // a leftover from an earlier attempt: keep its branch (and worktree, if still there) and continue on it
     git(top, 'worktree', 'prune');
-    const registered = git(top, 'worktree', 'list', '--porcelain').split('\n').some((l) => l === `worktree ${worktree}`);
-    if (!registered) {
-      let exists = true;
-      try { git(top, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`); } catch { exists = false; }
-      git(top, 'worktree', 'add', ...(exists ? [worktree, branch] : [worktree, '-b', branch]));
+    const marked = (n) => fs.existsSync(markerOf(slotDir(top, n)));
+    let slot = 0;
+    for (let n = 1; n <= size && !slot; n++) { // this ticket's own slot from an earlier attempt
+      if (marked(n) && fs.readFileSync(markerOf(slotDir(top, n)), 'utf8').trim() === branch) slot = n;
     }
-  } catch (e) { throw new ValidationError(`could not create the worktree: ${gitError(e)}`); }
-  return { top, base, branch, worktree };
+    for (let n = 1; n <= size && !slot; n++) if (!marked(n)) slot = n;
+    if (!slot) throw new ValidationError(`all ${size} worktrees are busy; wait for a run to finish, or free one by deleting its chat`);
+    const worktree = slotDir(top, slot);
+    const registered = git(top, 'worktree', 'list', '--porcelain').split('\n').includes(`worktree ${worktree}`);
+    const exists = branchExists(top, branch);
+    if (!registered) git(top, 'worktree', 'add', '--detach', worktree, base);
+    if (git(worktree, 'branch', '--show-current') !== branch) {
+      git(worktree, 'reset', '--hard'); git(worktree, 'clean', '-fd');
+      git(worktree, 'checkout', ...(exists ? [branch] : ['-b', branch, base]));
+    }
+    fs.writeFileSync(markerOf(worktree), `${branch}\n`);
+    return { top, base, branch, worktree };
+  } catch (e) {
+    if (e instanceof ValidationError) throw e;
+    throw new ValidationError(`could not create the worktree: ${gitError(e)}`);
+  }
 }
 
-// After a successful run: commit what the agent left, merge into the base branch, remove the worktree.
+// Gives the slot back: discards leftover changes, detaches from the ticket branch (which is kept) onto the base branch's
+// commit, and removes the busy marker. Ignored files stay. Returns true if the slot is free now.
+export function releaseWorktree({ base, worktree }) {
+  try {
+    if (fs.existsSync(worktree)) {
+      git(worktree, 'reset', '--hard'); git(worktree, 'clean', '-fd');
+      git(worktree, 'checkout', '--detach', base);
+    }
+    fs.rmSync(markerOf(worktree), { force: true });
+    return true;
+  } catch { return false; }
+}
+
+// After a successful run: commit what the agent left, merge into the base branch, free the worktree slot.
 // On any problem nothing stays half-merged and the worktree is kept. Returns { merged } or { merged: false, error }.
 export function mergeWorktree({ top, base, branch, worktree }) {
   try {
@@ -81,7 +120,8 @@ export function mergeWorktree({ top, base, branch, worktree }) {
       return { merged: false, error: `the merge was refused: ${gitError(e)} Nothing was merged. ${kept}` };
     }
   } catch (e) { return { merged: false, error: gitError(e) }; }
-  try { git(top, 'worktree', 'remove', worktree); git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
+  releaseWorktree({ base, worktree });
+  try { git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
   return { merged: true };
 }
 
@@ -107,11 +147,12 @@ export function mergeRunOpts({ ticketsDir, projectDir }) {
   };
 }
 
-// After the conflict-resolving run: is the branch merged now? If so remove the worktree; otherwise leave nothing half-merged.
+// After the conflict-resolving run: is the branch merged now? If so free the worktree; otherwise leave nothing half-merged.
 export function completeMerge({ top, base, branch, worktree }) {
   let merged = false;
   try { git(top, 'merge-base', '--is-ancestor', branch, base); merged = true; } catch { /* not merged */ }
   if (!merged) { try { git(top, 'merge', '--abort'); } catch { /* no merge in progress */ } return { merged: false, error: `the conflict was not resolved by the agent; ${base} is unchanged, the branch ${branch} is kept` }; }
-  try { git(top, 'worktree', 'remove', worktree); git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
+  releaseWorktree({ base, worktree });
+  try { git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
   return { merged: true };
 }

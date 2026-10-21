@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createWorktree, implementPrompt, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge } from '../src/implement.js';
+import { createWorktree, releaseWorktree, implementPrompt, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge } from '../src/implement.js';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
@@ -41,6 +41,7 @@ test('createWorktree creates a worktree for an existing branch whose worktree is
   const first = createWorktree({ dir: top, id: '003' });
   git(first.worktree, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'earlier work');
   fs.rmSync(first.worktree, { recursive: true, force: true });
+  fs.rmSync(`${first.worktree}.busy`);
   const again = createWorktree({ dir: top, id: '003' });
   assert.ok(fs.existsSync(again.worktree));
   assert.equal(git(again.worktree, 'log', '-1', '--format=%s'), 'earlier work');
@@ -132,7 +133,7 @@ test('conflict path: a resolving agent (stubbed) completes the merge and the wor
   git(top, 'add', 'a.txt');
   git(top, 'commit', '-q', '--no-edit');
   assert.deepEqual(completeMerge(wt), { merged: true });
-  assert.ok(!fs.existsSync(wt.worktree));
+  assert.ok(!fs.existsSync(wt.worktree + '.busy'));
   assert.equal(fs.readFileSync(path.join(top, 'a.txt'), 'utf8'), 'main+branch\n');
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -156,4 +157,45 @@ test('the merge prompt offers resolving or blocking; its permissions cover the m
   assert.match(p, /not straightforward[^]*git merge --abort[^]*Blocked:[^]*status: blocked/);
   const o = mergeRunOpts({ ticketsDir: '/n/tickets', projectDir: '/repo' });
   assert.ok(o.allowedTools.includes('Edit(//repo/**)') && o.allowedTools.includes('Bash(git merge:*)'));
+});
+
+test('pool: tickets get distinct slots, and an exhausted pool is reported', () => {
+  const { root, top } = tempRepo();
+  const a = createWorktree({ dir: top, id: '010', poolSize: 2 });
+  const b = createWorktree({ dir: top, id: '011', poolSize: 2 });
+  assert.notEqual(a.worktree, b.worktree);
+  assert.match(a.worktree, /slot-\d+$/);
+  assert.throws(() => createWorktree({ dir: top, id: '012', poolSize: 2 }), /all 2 worktrees are busy/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('pool: a released slot is clean, free again and reused; ignored files stay', () => {
+  const { root, top } = tempRepo();
+  fs.writeFileSync(path.join(top, '.gitignore'), 'node_modules\n');
+  git(top, 'add', '-A'); git(top, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'ignore');
+  const a = createWorktree({ dir: top, id: '020', poolSize: 1 });
+  fs.mkdirSync(path.join(a.worktree, 'node_modules'));
+  fs.writeFileSync(path.join(a.worktree, 'node_modules', 'x'), 'dep');
+  fs.writeFileSync(path.join(a.worktree, 'scratch.txt'), 'junk');
+  fs.writeFileSync(path.join(a.worktree, '.gitignore'), 'changed');
+  assert.throws(() => createWorktree({ dir: top, id: '021', poolSize: 1 }), /busy/);
+  assert.equal(releaseWorktree(a), true);
+  assert.equal(git(a.worktree, 'status', '--porcelain'), '');
+  assert.equal(git(a.worktree, 'branch', '--show-current'), '');
+  const b = createWorktree({ dir: top, id: '021', poolSize: 1 });
+  assert.equal(b.worktree, a.worktree);
+  assert.equal(git(b.worktree, 'branch', '--show-current'), 'ticket-021');
+  assert.ok(fs.existsSync(path.join(b.worktree, 'node_modules', 'x')));
+  assert.ok(!fs.existsSync(path.join(b.worktree, 'scratch.txt')));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('pool: a merged run frees its slot with the worktree clean', () => {
+  const { root, top, wt } = branchWithChange('a.txt', 'branch\n');
+  assert.deepEqual(mergeWorktree(wt), { merged: true });
+  assert.ok(fs.existsSync(wt.worktree));
+  assert.ok(!fs.existsSync(`${wt.worktree}.busy`));
+  assert.equal(git(wt.worktree, 'status', '--porcelain'), '');
+  assert.equal(createWorktree({ dir: top, id: '030', poolSize: 1 }).worktree, wt.worktree);
+  fs.rmSync(root, { recursive: true, force: true });
 });
