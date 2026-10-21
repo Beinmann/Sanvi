@@ -151,6 +151,7 @@ function card(t, inText = false) {
     t.area && el('span', { class: 'chip' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
     agentOn && chatPage.refining(t.file) && el('span', { class: 'chip refining', title: 'Claude is refining this ticket' }, 'refining…'),
+    agentOn && chatPage.implementQueued(t.file) && el('span', { class: 'chip queued', title: 'Implementation starts when the refine run has finished' }, 'implementation queued'),
     agentOn && chatPage.implementing(t.file) && el('span', { class: 'chip refining', title: 'Claude is implementing this ticket' }, 'implementing…'),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
 }
@@ -824,6 +825,7 @@ function renderDetail({ fresh = false, edit = false } = {}) {
         disabled: chatPage.refining(D.file),
         onclick: () => refineTicket(D.file),
       }, chatPage.refining(D.file) ? 'Refining…' : 'Refine with Claude'),
+      agentOn && chatPage.implementQueued(D.file) && el('span', { id: 'impl-queued', class: 'chip queued', title: 'Implementation starts when the refine run has finished' }, 'implementation queued'),
       agentOn && chatPage.forTicket(D.loaded.id, D.loaded.project || '') && el('button', {
         type: 'button', id: 'chat-link', title: 'Open the latest Claude chat about this ticket',
         onclick: () => chatPage.open(chatPage.forTicket(D.loaded.id, D.loaded.project || '').id).catch((e) => toast(e.message)),
@@ -1125,7 +1127,7 @@ api('GET', 'agent').then((a) => {
   limitsUi.start();
   let lastKey = '';
   chatPage.onChange(() => { // repaint the board / detail when the set of tickets being refined changes
-    const key = S.tickets.filter((t) => chatPage.refining(t.file) || chatPage.implementing(t.file)).map((t) => t.file).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');
+    const key = S.tickets.filter((t) => chatPage.refining(t.file) || chatPage.implementing(t.file) || chatPage.implementQueued(t.file)).map((t) => `${t.file}:${+chatPage.refining(t.file)}${+chatPage.implementing(t.file)}${+chatPage.implementQueued(t.file)}`).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');
     if (key === lastKey) return;
     lastKey = key;
     if (document.querySelector('.board, .tablewrap')) renderBoard();

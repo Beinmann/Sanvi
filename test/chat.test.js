@@ -395,16 +395,20 @@ test('implement while refining is queued and starts after a clean refine; droppe
     const q = await (await post('implement', { file: '001-a.md' })).json();
     assert.equal(q.queued, true);
     assert.equal(f.calls.length, 1, 'no implement run yet');
+    const queued = () => fetch(`http://127.0.0.1:${port}/api/agent/queued`).then((r) => r.json());
+    assert.deepEqual(await queued(), ['001-a.md'], 'the queue is visible to the UI');
     fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: open\n---\n# A\nrefined\n');
     f.calls[0].end(); await tick();
     assert.equal(f.calls.length, 2, 'implement started after the refine');
     assert.match(f.calls[1].opts.cwd, /ticket-001$/);
+    assert.deepEqual(await queued(), [], 'queue emptied once the implementation started');
 
     // a refine that fails drops the queued implementation
     await post('refine', { file: '002-b.md' });
     assert.equal((await (await post('implement', { file: '002-b.md' })).json()).queued, true);
     f.calls[2].say('partial'); f.calls[2].end({ ok: false, error: 'boom' }); await tick(); // output so far: no fresh-session retry
     assert.equal(f.calls.length, 3, 'no implement run after a failed refine');
+    assert.deepEqual(await queued(), [], 'queue emptied when dropped');
   } finally { await app.close(); }
 });
 

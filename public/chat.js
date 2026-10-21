@@ -9,6 +9,7 @@ const store = {
 export function initChat({ el, show, api, toast, button, project = () => '' }) {
   let usage = {};     // cost per provider, e.g. { claude: { costUsd } }
   let chats = [];     // list entries: { id, title, state }
+  let queued = [];    // ticket files whose implementation waits for their refine run
   let chat = null;    // the open chat, as last fetched
   let drafts = {};    // unsent text per chat id
   let isOpen = false;
@@ -171,6 +172,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   async function refreshList() {
     chats = await api('GET', 'agent/chats');
     usage = await api('GET', 'agent/usage').catch(() => usage);
+    queued = await api('GET', 'agent/queued').catch(() => queued);
     paintButton();
     renderPicker();
     for (const fn of changed) fn();
@@ -323,6 +325,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   return {
     toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, implement, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && c.kind === 'refine' && active(c)),
+    implementQueued: (file) => queued.includes(file),
     // The most recent chat linked to a ticket (the list is newest first), or null.
     implementing: (file) => chats.some((c) => c.ticket === file && c.kind === 'implement' && active(c)),
     forTicket: (id, proj = '') => (id && chats.find((c) => c.ticketId === id && (c.project || '') === proj)) || null,
