@@ -15,7 +15,7 @@ import { buildInfo, commitsBehind } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 import { createChats, resolveDir } from './chat.js';
 import { createLimits } from './limits.js';
-import { implementPrompt, implementRunOpts, createWorktree, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge } from './implement.js';
+import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge } from './implement.js';
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
@@ -122,6 +122,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       }
       return m.merged ? { ok: true } : { ok: false, error: `${m.error}. Nothing was merged; the worktree is kept at ${wt.worktree} (branch ${wt.branch})` };
     },
+    abandon: (c) => { if (c.kind === 'implement' && c.meta?.wt) releaseWorktree(c.meta.wt); }, // deleting the chat frees its worktree slot
     projectInfo: (name) => projectInfo(dir, name),
     run: (opts) => { // every run reports the plan limits; keep them for the header
       const r = agentRun(opts);
@@ -166,7 +167,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     }
   }
 
-  // Implement runs in a new worktree of the project's repo and is merged into its current branch when it finishes cleanly.
+  // Implement runs in a pooled worktree of the project's repo and is merged into its current branch when it finishes cleanly.
   // While the ticket is being refined it is only queued: it starts after the refine run (see startQueuedImplements).
   function startImplement(file) {
     const t = readTicket(dir, file);
@@ -178,7 +179,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} already has an agent running`);
     const info = projectInfo(dir, t.project);
     if (!info.dir) throw new ValidationError(`project "${t.project || DEFAULT_LABEL}" has no directory: set the repository to implement in on the Projects page`);
-    const wt = createWorktree({ dir: resolveDir(info.dir), id: t.id });
+    const wt = createWorktree({ dir: resolveDir(info.dir), id: t.id, poolSize: Number(process.env.TK_WORKTREE_POOL) || undefined });
     // the agent finishes with `testing`; until then the board shows the ticket as being worked on
     if (['open', 'reopened'].includes(t.status) && readConfig(dir).statuses.includes('in-progress')) saveTicket(dir, file, { fields: { status: 'in-progress' } }, t.version);
     const chat = chats.create({ dir: wt.worktree, project: t.project, kind: 'implement', ticketId: t.id, meta: { file, wt }, title: `Implement #${t.id}: ${t.title}`.slice(0, 80), runOpts: implementRunOpts({ ticketsDir: dir, projectDir: resolveDir(info.dir) }) });

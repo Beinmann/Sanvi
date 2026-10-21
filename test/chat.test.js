@@ -315,7 +315,7 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
   try {
     const c1 = await (await post('001-a.md')).json();
     const wt1 = f.calls[0].opts.cwd;
-    assert.match(wt1, /ticket-001$/);
+    assert.match(wt1, /slot-\d+$/);
     assert.match(fs.readFileSync(path.join(dir, '001-a.md'), 'utf8'), /status: in-progress/, 'ticket goes in-progress on play');
     assert.match(f.calls[0].opts.prompt, /status: testing/);
     assert.ok(f.calls[0].opts.addDirs.includes(repo), 'notes repo readable');
@@ -326,16 +326,16 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     f.calls[0].end(); await tick();
     assert.equal((await chat(c1.id)).state, 'idle');
     assert.ok(fs.existsSync(path.join(repo, 'new.txt')), 'merged into main');
-    assert.ok(!fs.existsSync(wt1), 'worktree removed');
+    assert.ok(!fs.existsSync(wt1 + '.busy'), 'worktree slot freed');
 
     const c2 = await (await post('002-b.md')).json();
     const wt2 = f.calls[1].opts.cwd;
     fs.writeFileSync(path.join(wt2, 'other.txt'), 'y\n');
-    f.calls[1].end({ ok: false, error: 'boom' }); await tick();
+    f.calls[1].say('working'); f.calls[1].end({ ok: false, error: 'boom' }); await tick();
     const after = await chat(c2.id);
     assert.equal(after.state, 'failed');
     assert.ok(!fs.existsSync(path.join(repo, 'other.txt')), 'nothing merged');
-    assert.ok(fs.existsSync(wt2), 'worktree kept');
+    assert.ok(fs.existsSync(wt2 + '.busy'), 'worktree kept busy');
 
     // conflict: the same file changed on main and in the worktree
     fs.writeFileSync(path.join(dir, '003-c.md'), '---\nstatus: open\n---\n# C\n');
@@ -366,7 +366,7 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     f.calls[5].end(); await tick(); await tick();
     const resolved = await chat(c4.id);
     assert.equal(resolved.state, 'idle');
-    assert.ok(!fs.existsSync(wt4), 'worktree removed');
+    assert.ok(!fs.existsSync(wt4 + '.busy'), 'worktree slot freed');
     assert.equal(fs.readFileSync(path.join(repo, 'a.txt'), 'utf8'), 'both\n');
   } finally { await app.close(); }
 });
@@ -400,7 +400,7 @@ test('implement while refining is queued and starts after a clean refine; droppe
     fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: open\n---\n# A\nrefined\n');
     f.calls[0].end(); await tick();
     assert.equal(f.calls.length, 2, 'implement started after the refine');
-    assert.match(f.calls[1].opts.cwd, /ticket-001$/);
+    assert.match(f.calls[1].opts.cwd, /slot-\d+$/);
     assert.deepEqual(await queued(), [], 'queue emptied once the implementation started');
 
     // a refine that fails drops the queued implementation
