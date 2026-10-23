@@ -70,6 +70,9 @@ export function step(cols, pos, dir) {
   return { col: target, row: Math.min(row, cols[target].length - 1) };
 }
 
+/** Vim-like jump: `g` is the top of the page, `G` the bottom; any other key is not a jump (null). */
+export const jumpTop = (key, scrollHeight) => (key === 'g' ? 0 : key === 'G' ? scrollHeight : null);
+
 export const isTyping = (t) => !!t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
 
 export const HELP = [
@@ -82,7 +85,6 @@ export const HELP = [
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
     ['Ctrl+M / m', 'Quick note: free text saved to NOTES.md next to the tickets, not tied to any ticket (Ctrl+M also while typing; m outside fields)'],
-    ['g', 'Go to the Notes view (search, make a ticket from a note, delete)'],
     ['a', 'Claude chat (only with --agents): open full screen without focus; again: close'],
     ['h / l', 'With the chat open (outside fields): previous / next chat; the chat\'s j/k/g/G/i keys also work and win over the page keys'],
     ['+', 'Claude chat: open if needed and focus the message input'],
@@ -104,6 +106,7 @@ export const HELP = [
   ]],
   ['Ticket', [
     ['j / k', 'Scroll down / up (outside fields)'],
+    ['g / G', 'Scroll to the top / bottom (outside fields)'],
     ['c / Ctrl+Shift+Enter', 'Add a timestamped comment to this ticket (c outside fields, Ctrl+Shift+Enter also while typing; unsaved edits are kept)'],
     ['e / p', 'Edit / preview'],
     ['s', 'Set status (unsaved until you save)'],
@@ -535,7 +538,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Quick idea', hint: 'i / Ctrl+I', run: openIdea },
           { cmd: true, label: 'Quick note…', hint: 'm / Ctrl+M', run: openScratch },
           { cmd: true, label: 'Projects (directory, instructions)', hint: 'agent context', run: () => { location.hash = '#/projects'; } },
-          { cmd: true, label: 'Notes', hint: 'g', run: () => { location.hash = '#/notes'; } },
+          { cmd: true, label: 'Notes', run: () => { location.hash = '#/notes'; } },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
           ...(ctx.projects().mode === 'dropdown' ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
           { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
@@ -734,7 +737,7 @@ export function initKeys(ctx) {
       case 'b': location.hash = '#/'; break;
       case 'i': openIdea(); break;
       case 'm': openScratch(); break;
-      case 'g': location.hash = '#/notes'; break;
+      case 'g': case 'G': if (hashRoute() === 'detail') window.scrollTo({ top: jumpTop(e.key, document.documentElement.scrollHeight) }); else return; break;
       case 'a': if (ctx.agents?.()) ctx.chatHotkey(); else return; break;
       case '+': if (ctx.agents?.()) ctx.chatType(); else return; break;
       case 'P': if (ctx.projects().mode === 'dropdown') openPalette('project'); else return; break;

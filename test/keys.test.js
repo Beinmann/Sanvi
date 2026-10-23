@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matches, step, navigate, isTyping } from '../public/keys.js';
+import { matches, step, navigate, isTyping, jumpTop } from '../public/keys.js';
 
 test('matches: all tokens, case-insensitive, # ignored', () => {
   assert.ok(matches('#005 Keyboard-first workflow', '005 key'));
@@ -84,4 +84,10 @@ test('planStatusDelete: in use, unused, extra column and the last status', () =>
   const extra = planStatusDelete(['a', 'b'], ts, 'x');
   assert.equal(extra.inConfig, false); assert.equal(extra.users.length, 1); assert.equal(extra.error, null);
   assert.match(planStatusDelete(['a'], ts, 'a').error, /last/);
+});
+
+test('jumpTop: g is the top, G the bottom, other keys are no jump', () => {
+  assert.equal(jumpTop('g', 900), 0);
+  assert.equal(jumpTop('G', 900), 900);
+  assert.equal(jumpTop('j', 900), null);
 });
