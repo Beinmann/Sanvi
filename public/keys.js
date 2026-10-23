@@ -70,6 +70,9 @@ export function step(cols, pos, dir) {
   return { col: target, row: Math.min(row, cols[target].length - 1) };
 }
 
+/** "Mark as done" is offered only if the project has a `done` status and the ticket isn't there yet. */
+export const canMarkDone = (columns, status) => columns.includes('done') && status !== 'done';
+
 /** Vim-like jump: `g` is the top of the page, `G` the bottom; any other key is not a jump (null). */
 export const jumpTop = (key, scrollHeight) => (key === 'g' ? 0 : key === 'G' ? scrollHeight : null);
 
@@ -442,6 +445,9 @@ export function initKeys(ctx) {
     };
   }
 
+  const doneRows = (t) => (canMarkDone(ctx.columns(), fieldOf(t, 'status'))
+    ? [{ label: 'Mark as done', hint: 'status', cmd: true, run: () => (ctx.detail()?.file === t.file ? ctx.setDraftStatus('done') : ctx.moveTicket(t.file, 'done')) }] : []);
+
   function ticketLevel(t) {
     const hint = (f) => fieldOf(t, f) || '(none)';
     return {
@@ -451,6 +457,7 @@ export function initKeys(ctx) {
         ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', run: () => ctx.refine(t.file) }] : []),
         ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', run: () => ctx.implement(t.file) }] : []),
         { label: 'Change status…', hint: hint('status'), push: () => valueLevel(t, 'status') },
+        ...doneRows(t),
         { label: 'Change priority…', hint: hint('priority'), push: () => valueLevel(t, 'priority') },
         { label: 'Change project…', hint: hint('project'), push: () => valueLevel(t, 'project') },
         { label: 'Change area…', hint: hint('area'), push: () => valueLevel(t, 'area') },
@@ -524,7 +531,7 @@ export function initKeys(ctx) {
         const rows = [];
         if (q.trim().endsWith('?') && ctx.agents?.()) rows.push({ heading: 'Ask' }, { label: `Ask Claude: “${q.trim()}”`, hint: 'read-only', always: true, run: () => ctx.ask(q.trim()) });
         if (t) {
-          rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', cmd: true, push: () => ticketLevel(t) });
+          rows.push({ heading: 'This ticket' }, { label: `Ticket #${t.id} …`, hint: 'actions', cmd: true, push: () => ticketLevel(t) }, ...doneRows(t));
           if (ctx.agents?.()) {
             { const refining = ctx.isRefining(t.file); rows.push({ label: refining ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', cmd: true, run: () => { if (!refining) ctx.refine(t.file); } }); }
             rows.push({ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', cmd: true, run: () => ctx.implement(t.file) });

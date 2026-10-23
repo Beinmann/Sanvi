@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matches, step, navigate, isTyping, jumpTop } from '../public/keys.js';
+import { matches, step, navigate, isTyping, jumpTop, canMarkDone } from '../public/keys.js';
 
 test('matches: all tokens, case-insensitive, # ignored', () => {
   assert.ok(matches('#005 Keyboard-first workflow', '005 key'));
@@ -90,4 +90,10 @@ test('jumpTop: g is the top, G the bottom, other keys are no jump', () => {
   assert.equal(jumpTop('g', 900), 0);
   assert.equal(jumpTop('G', 900), 900);
   assert.equal(jumpTop('j', 900), null);
+});
+
+test('canMarkDone: needs a done column and a ticket not yet done', () => {
+  assert.ok(canMarkDone(['open', 'testing', 'done'], 'testing'));
+  assert.ok(!canMarkDone(['open', 'testing', 'done'], 'done'));
+  assert.ok(!canMarkDone(['open', 'closed'], 'open'));
 });
