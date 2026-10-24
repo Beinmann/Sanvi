@@ -95,6 +95,7 @@ export const HELP = [
     ['?', 'Show / hide this help'],
     ['n', 'New ticket'],
     ['b / gb', 'Go to the board'],
+    ['g?', 'Popup with just the g hotkeys of the current page, and a button to this full list'],
     ['gi', 'Open the ticket you edited last, in the editor'],
     ['gs', 'Go to the search box and clear its text (/ keeps it)'],
     ['gn', 'Go to the Notes page (NOTES.md)'],
@@ -278,6 +279,20 @@ export function initKeys(ctx) {
       el('h2', {}, 'Keyboard shortcuts'),
       HELP.map(([group, rows]) => el('section', {}, el('h3', {}, group),
         el('dl', {}, rows.map(([k, d]) => [el('dt', {}, el('kbd', {}, k)), el('dd', {}, d)])))));
+    openOverlay(box);
+  }
+
+  // `g?`: only the `g` rows of HELP that apply on this page (Everywhere plus the page's own group), with a way to the full list.
+  function openGHelp() {
+    const route = hashRoute();
+    const own = route === 'board' ? 'Board' : route === 'detail' ? 'Ticket' : null;
+    const groups = HELP.filter(([group]) => group === 'Everywhere' || group === own)
+      .map(([group, rows]) => [group, rows.filter(([k]) => k.split(' / ').some((x) => x.startsWith('g')))]).filter(([, rows]) => rows.length);
+    const box = el('div', { class: 'dialog help ghelp', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'g hotkeys', tabindex: '-1' },
+      el('h2', {}, 'g hotkeys'),
+      groups.map(([group, rows]) => el('section', {}, el('h3', {}, group),
+        el('dl', {}, rows.map(([k, d]) => [el('dt', {}, el('kbd', {}, k)), el('dd', {}, d)])))),
+      el('div', { class: 'buttons' }, el('button', { type: 'button', onclick: () => { closeOverlay(); openHelp(); } }, 'All shortcuts')));
     openOverlay(box);
   }
 
@@ -833,6 +848,7 @@ export function initKeys(ctx) {
         if (url) window.open(url, '_blank', 'noopener'); else ctx.toast('No link in this ticket');
       });
       case 'n': location.hash = '#/notes'; return true;
+      case '?': openGHelp(); return true;
       default: return false;
     }
   }

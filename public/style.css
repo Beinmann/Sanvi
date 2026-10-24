@@ -298,3 +298,4 @@ body.has-selection .selhint { display: none; }
 .slots .slot-detail { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding-left: 18px; }
 .slots .slot-branch { font-family: ui-monospace, monospace; word-break: break-all; }
 .slots .slot-detail small { color: var(--muted); font-size: 12px; }
+.ghelp .buttons { display: flex; margin-top: 14px; }
