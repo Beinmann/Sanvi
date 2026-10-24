@@ -362,3 +362,17 @@ test('the single-ticket read serves the last good copy of a ticket caught mid-sa
   assert.equal(readTicketSettled(dir, '001-sample-ticket.md').status, 'open', 'absent file');
   assert.throws(() => readTicketSettled(dir, '042-never-existed.md'), /no such ticket/);
 });
+
+test('needs: input is exposed, settable and clearable; unknown values are reported by validate', () => {
+  const dir = tmp();
+  const f = '001-sample-ticket.md';
+  assert.equal(readTicket(dir, f).needs, '');
+  let t = saveTicket(dir, f, { fields: { needs: 'input' } }, readTicket(dir, f).version);
+  assert.equal(t.needs, 'input');
+  assert.ok(!validate(dir).some((x) => x.file === f));
+  t = saveTicket(dir, f, { fields: { needs: 'maybe' } }, t.version);
+  assert.ok(validate(dir).some((x) => x.file === f && x.level === 'warn' && /maybe/.test(x.message)));
+  t = saveTicket(dir, f, { fields: { needs: null } }, t.version);
+  assert.equal(t.needs, '');
+  assert.ok(!/needs/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+});

@@ -55,6 +55,7 @@ change, but that comes later than `chats.json` and `server.log`, so don't rely o
 status: open        # any value; columns come from the config
 area: ui            # optional
 priority: high      # optional
+needs: input        # optional: waiting for an answer from the user; shown as a chip
 ---
 
 # Title
@@ -207,6 +208,7 @@ tk show <id|slug> [--json]
 tk idea "<text>"                         # quick capture, status design
 tk new "<title>" [--area A] [--status S] [--priority P]
 tk status <id|slug> <status>
+tk needs <id|slug> [clear]      # set or clear the "needs input" marker
 tk note <id|slug> "<text>"              # append a timestamped line to the ticket's ## Notes
 tk jot "<text>"                          # same as: tk note --scratch; appends to NOTES.md (no ticket); "tk jot" alone lists
 tk validate          # exit 1 on errors; closed tickets (`closed_statuses` in _config.yml, default done, discarded) skip the missing-section warnings, `--closed-warnings` shows them

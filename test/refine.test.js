@@ -8,3 +8,9 @@ test('refine prompt asks for a concise title replacing the placeholder', () => {
   assert.match(p, /concise name of a few words/);
   assert.match(p, /whole idea/);
 });
+
+test('refine prompt tells the agent to set and clear the needs marker', () => {
+  const p = refinePrompt({ ticketsDir: '/t', file: '001-a.md', today: '2026-01-01' });
+  assert.match(p, /needs: input/);
+  assert.match(p, /remove any "needs:" line/);
+});

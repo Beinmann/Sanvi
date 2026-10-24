@@ -10,7 +10,7 @@ import {
   register, unregister, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
 import {
-  listTickets, findTicket, saveTicket, addScratch, listScratch, createTicket, createIdea, addNote, deleteTicket, listTrash, restoreTicket, purgeTrash, validate, readConfig,
+  listTickets, findTicket, saveTicket, addScratch, listScratch, createTicket, createIdea, addNote, deleteTicket, listTrash, restoreTicket, purgeTrash, validate, readConfig, NEEDS_INPUT,
   ConflictError, NotFoundError, ValidationError,
 } from '../src/core.js';
 
@@ -29,6 +29,7 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   status <id|slug> <status>               change status in the frontmatter only
   review <id|slug>                        start an agent review of the ticket and its code; the findings go to a report file in
                                           .sanvi/reviews/ (needs a running instance started with --agents; the ticket page links the report)
+  needs <id|slug> [clear]                 mark the ticket as needing input from the user (frontmatter "needs: input"), or clear the mark
   rm <id|slug>                            move a ticket (and its images) to the trash (kept 30 days)
   trash                                   list deleted tickets with days left
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
@@ -173,6 +174,13 @@ async function main() {
       if (!rest[0]) throw new ValidationError('usage: tk new "<title>"');
       const t = createTicket(dir, { title: rest.join(' '), area: flags.area, project: flags.project, status: flags.status, priority: flags.priority });
       out(t, path.join(dir, t.file));
+      break;
+    }
+    case 'needs': {
+      if (!rest[0] || (rest[1] && rest[1] !== 'clear')) throw new ValidationError('usage: tk needs <id|slug> [clear]');
+      const cur = findTicket(dir, rest[0]);
+      const t = saveTicket(dir, cur.file, { fields: { needs: rest[1] ? null : NEEDS_INPUT } }, cur.version);
+      out(t, brief(t));
       break;
     }
     case 'status': {

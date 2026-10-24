@@ -10,7 +10,7 @@ export function refinePrompt({ ticketsDir, file, instructions = '', project = ''
 2. Rewrite the ticket in place: a clear "Problem / motivation", 1-4 concrete, verifiable acceptance criteria as "- [ ]" items, and a short "Proposed approach" if you can. Keep the user's original meaning and wording where it is clear; do not invent requirements.
 3. Replace the title (the "# " heading) with a concise name of a few words (ideally under 8) that summarises the whole idea, not just its first sentence. The current title is only a placeholder cut from the start of the idea; drop any trailing "…".
 4. Add a dated Note (${today}) under "## Notes" saying what you did and any assumption you made.
-5. If the idea is clear enough to work on, set "status: open" in the frontmatter. If a decision you cannot make is needed, write it as an open question in a Note and leave the status as it is.
+5. If the idea is clear enough to work on, set "status: open" in the frontmatter and remove any "needs:" line there. If a decision you cannot make is needed, write it as an open question in a Note, add the frontmatter line "needs: input" (it marks the ticket as waiting for the user) and leave the status as it is.
 
 Edit only ${ticket}. Do not touch any other file.${instructions ? `\n\nInstructions for project "${project}" (context for the ticket; they do not widen what you may edit):\n${instructions}` : ''}`;
 }

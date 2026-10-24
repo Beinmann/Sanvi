@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  IDEA_STATUS, listTickets, readTicket, readTicketSettled, listScratch, addScratch, deleteScratch, promoteScratch, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
+  IDEA_STATUS, NEEDS_INPUT, listTickets, readTicket, readTicketSettled, listScratch, addScratch, deleteScratch, promoteScratch, saveTicket, createTicket, createIdea, readConfig, addNote, deleteTicket, listTrash, restoreTicket, purgeTrashItem, purgeTrash, saveAsset, ASSET_DIR, ASSET_MIME, MAX_ASSET_BYTES,
   ConflictError, NotFoundError, ValidationError,
   writeStatuses,
 } from './core.js';
@@ -102,7 +102,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     try {
       const t = readTicket(dir, c.meta.file);
       if (t.version === c.meta.before) return { outcome: 'problems', warning: 'the ticket was not changed' };
-      if (t.status === IDEA_STATUS) return { outcome: 'questions', warning: 'refined, but the ticket is still in design: open questions are in its Notes' };
+      if (t.status === IDEA_STATUS || t.needs === NEEDS_INPUT) return { outcome: 'questions', warning: 'refined, but the ticket needs input: open questions are in its Notes' };
       return { outcome: 'ok' };
     } catch { return { outcome: 'problems', warning: 'the ticket could not be read afterwards' }; }
   }
@@ -227,7 +227,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
 
   function logEdit(before, after) {
     const changes = [];
-    for (const f of ['status', 'area', 'project', 'priority']) {
+    for (const f of ['status', 'area', 'project', 'priority', 'needs']) {
       if ((before[f] || '') !== (after[f] || '')) changes.push({ field: f, from: before[f] || null, to: after[f] || null });
     }
     const bodyChanged = before.body !== after.body;

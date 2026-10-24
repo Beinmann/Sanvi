@@ -99,6 +99,9 @@ function progressOf(body) {
   return { done: done.length, total: all.length };
 }
 
+// Frontmatter `needs: input` marks a ticket that waits for an answer from the user.
+export const NEEDS_INPUT = 'input';
+
 export function toTicket(file, raw, mtimeMs = 0) {
   const m = FILE_RE.exec(file);
   const { front, body } = splitDoc(raw);
@@ -114,6 +117,7 @@ export function toTicket(file, raw, mtimeMs = 0) {
     area: fields.area || '',
     project: fields.project || '',
     priority: fields.priority || '',
+    needs: fields.needs || '',
     fields,
     body,
     progress: progressOf(body),
@@ -583,6 +587,7 @@ export function validate(dir, { closedWarnings = false } = {}) {
     if (!t.hasFrontmatter) add(t.file, 'error', 'missing frontmatter');
     else if (!t.status) add(t.file, 'error', 'missing status');
     else if (!cfg.statuses.includes(t.status)) add(t.file, 'warn', `status "${t.status}" is not in ${cfg.statuses.join(' | ')}`);
+    if (t.needs && t.needs !== NEEDS_INPUT) add(t.file, 'warn', `needs "${t.needs}" is not "${NEEDS_INPUT}"`);
     if (!t.hasTitle) add(t.file, 'warn', 'no "# title" heading');
     if (closedWarnings || !cfg.closed.includes(t.status)) {
       if (!/^##\s+Problem/im.test(t.body)) add(t.file, 'warn', 'no "Problem / motivation" section');

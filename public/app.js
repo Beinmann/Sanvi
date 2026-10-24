@@ -150,11 +150,14 @@ function card(t, inText = false) {
     !project && t.project && el('span', { class: 'chip proj', title: 'Project' }, t.project),
     t.area && el('span', { class: 'chip' }, t.area),
     t.priority && el('span', { class: 'chip prio' }, t.priority),
+    t.needs && needsChip(t),
     agentOn && chatPage.refining(t.file) && el('span', { class: 'chip refining', title: 'Claude is refining this ticket' }, 'refining…'),
     agentOn && chatPage.implementQueued(t.file) && el('span', { class: 'chip queued', title: 'Implementation starts when the refine run has finished' }, 'implementation queued'),
     agentOn && chatPage.implementing(t.file) && el('span', { class: 'chip refining', title: 'Claude is implementing this ticket' }, 'implementing…'),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
 }
+
+const needsChip = (t) => el('span', { class: 'chip needs', title: 'Waiting for an answer from you (frontmatter "needs: input"); clear it on the ticket page or with tk needs <id> clear' }, 'needs input');
 
 // Reorder status columns by dragging a header; the order is saved in the config file so it is shared.
 async function moveColumn(from, to) {
@@ -491,7 +494,7 @@ function tableView() {
     el('thead', {}, el('tr', {}, head)),
     el('tbody', {}, rows.length ? rows.map((t) => el('tr', { class: changedOnDisk.has(t.file) ? 'changed' : '', onclick: () => open(t) },
       el('td', { class: 'id' }, `#${t.id}`),
-      el('td', {}, el('a', { href: `#/t/${encodeURIComponent(t.file)}`, 'data-file': t.file }, t.title)),
+      el('td', {}, el('a', { href: `#/t/${encodeURIComponent(t.file)}`, 'data-file': t.file }, t.title), t.needs && ' ', t.needs && needsChip(t)),
       el('td', {}, t.status),
       el('td', {}, t.area),
       el('td', {}, t.priority),
@@ -500,8 +503,8 @@ function tableView() {
 
 // --------------------------------------------------------------- detail
 
-const copyDraft = (t) => ({ status: t.status, area: t.area, project: t.project, priority: t.priority, body: t.body });
-const isDirty = () => !!D && !D.gone && ['status', 'area', 'project', 'priority', 'body'].some((k) => D.draft[k] !== D.loaded[k]);
+const copyDraft = (t) => ({ status: t.status, area: t.area, project: t.project, priority: t.priority, needs: t.needs, body: t.body });
+const isDirty = () => !!D && !D.gone && ['status', 'area', 'project', 'priority', 'needs', 'body'].some((k) => D.draft[k] !== D.loaded[k]);
 const titleOfDraft = () => /^#\s+(.+?)\s*#*\s*$/m.exec(D.draft.body)?.[1] || D.loaded.title;
 
 function updateState() {
@@ -532,7 +535,7 @@ async function save() {
   if (!D || !isDirty()) return true;
   const sent = { ...D.draft };
   const fields = {};
-  for (const k of ['status', 'area', 'project', 'priority']) if (sent[k] !== D.loaded[k]) fields[k] = sent[k];
+  for (const k of ['status', 'area', 'project', 'priority', 'needs']) if (sent[k] !== D.loaded[k]) fields[k] = sent[k];
   try {
     const t = await api('PUT', `tickets/${encodeURIComponent(D.file)}`, {
       version: D.loaded.version, fields, ...(sent.body !== D.loaded.body ? { body: sent.body } : {}),
@@ -676,7 +679,7 @@ function peekPopover(status) {
     href: `#/t/${encodeURIComponent(t.file)}`, role: 'menuitem', draggable: 'true', 'data-file': t.file,
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', t.file); e.dataTransfer.effectAllowed = 'move'; },
   }, el('span', { class: 'id' }, `#${t.id}`), el('span', { class: 'ttl' }, t.title),
-  el('span', { class: 'meta' }, t.priority && el('span', { class: 'chip prio' }, t.priority), t.area && el('span', { class: 'chip' }, t.area))))
+  el('span', { class: 'meta' }, t.priority && el('span', { class: 'chip prio' }, t.priority), t.needs && needsChip(t), t.area && el('span', { class: 'chip' }, t.area))))
     : el('p', { class: 'hint' }, total ? `No tickets in ${status || '(no status)'} match the filter.` : `No tickets in ${status || '(no status)'}.`));
 }
 // Clicking empty space clears the selection, like Esc (058). A drag or text selection is not a click.
@@ -814,11 +817,13 @@ function renderDetail({ fresh = false, edit = false } = {}) {
   show(view, el('div', { class: 'detail' },
     el('a', { href: '#/' }, '← Board'),
     el('h1', { id: 'title', tabindex: '-1' }),
+    d.needs && el('p', {}, needsChip(d)),
     el('div', { class: 'bar' },
       field('Status', select(S.cfg.statuses, d.status, (v) => { d.status = v; updateState(); }, 'f-status')),
       field('Area', el('input', { value: d.area, oninput: (e) => { d.area = e.target.value; updateState(); } })),
       field('Project', el('input', { value: d.project, oninput: (e) => { d.project = e.target.value; updateState(); } })),
       field('Priority', select(['', 'high', 'medium', 'low'], d.priority, (v) => { d.priority = v; updateState(); })),
+      field('Needs', select(['', 'input'], d.needs, (v) => { d.needs = v; updateState(); })),
       el('span', { class: 'spacer' }),
       agentOn && d.status === 'design' && el('button', {
         type: 'button', id: 'refine-btn', title: 'Let Claude rewrite this ticket (problem, criteria, approach) and move it to open',
