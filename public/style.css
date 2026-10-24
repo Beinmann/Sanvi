@@ -194,6 +194,7 @@ table.trash th, table.trash td { text-align: left; padding: 6px 10px; border-bot
 .dialog.form textarea { width: 100%; box-sizing: border-box; }
 .dialog.form .buttons { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .dialog.form .buttons .small { font-size: 12px; padding: 2px 8px; align-self: center; }
+.dialog.form .buttons .stack { display: flex; flex-direction: column; gap: 4px; align-self: center; }
 .dialog.form .hint { line-height: 1.45; }
 .dialog.form textarea { min-height: 7em; }
 .dialog.form h2 { font-size: 18px; }

@@ -328,8 +328,9 @@ export function initKeys(ctx) {
       el('p', { class: 'hint' }, `Saved as a ticket in the design column with an auto-derived title, for refinement later. Paste or drop images to attach them. Ctrl+Enter saves, Esc cancels.${agents ? ` Ctrl+Shift+Enter ${refineToo ? 'saves and refines' : '(not needed with --auto-refine)'}, Ctrl+Alt+Enter saves${refineToo ? ', refines' : ''} and implements.` : ''}`),
       ta, sel && el('label', { class: 'projpick' }, 'Project ', sel), pics.node, err,
       el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: () => save() }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel'),
-        refineToo && el('button', { class: 'small', type: 'button', title: 'Save the idea and let Claude refine it (Ctrl+Shift+Enter)', onclick: saveRefine }, 'Save and refine'),
-        agents && el('button', { class: 'small', type: 'button', title: `Save the idea${refineToo ? ', let Claude refine it' : ''} and queue the implementation (Ctrl+Alt+Enter)`, onclick: saveImplement }, 'Save, refine and implement')));
+        agents && el('div', { class: 'stack' },
+          refineToo && el('button', { class: 'small', type: 'button', title: 'Save the idea and let Claude refine it (Ctrl+Shift+Enter)', onclick: saveRefine }, 'Save and refine'),
+          el('button', { class: 'small', type: 'button', title: `Save the idea${refineToo ? ', let Claude refine it' : ''} and queue the implementation (Ctrl+Alt+Enter)`, onclick: saveImplement }, 'Save, refine and implement'))));
     openOverlay(box, { focus: ta });
   }
 
