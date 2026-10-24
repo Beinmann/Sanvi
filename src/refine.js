@@ -1,6 +1,7 @@
 // Refining a ticket with an agent: the prompt, and the permissions the run gets (read the repo, edit that one ticket).
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { reviewsDir } from './review.js';
 
 const TK = fileURLToPath(new URL('../bin/tk.js', import.meta.url));
 
@@ -29,6 +30,6 @@ export function refineRunOpts({ ticketsDir, file }) {
     permissionMode: 'default',
     tools: ['Read', 'Grep', 'Glob', 'Edit', 'Bash'], // Bash must be available for the allow rule below to matter (the default tool set has none)
     allowedTools: ['Read', 'Grep', 'Glob', `Edit(/${path.join(ticketsDir, file)})`, `Bash(node ${TK} new:*)`],
-    addDirs: [ticketsDir],
+    addDirs: [ticketsDir, reviewsDir(ticketsDir)], // reports of any ticket are readable when the user names one; there is no Edit rule for them
   };
 }

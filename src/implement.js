@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ValidationError } from './core.js';
+import { reviewsDir } from './review.js';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const gitError = (e) => String(e.stderr || e.stdout || e.message).trim().split('\n').slice(-3).join(' ');
@@ -26,6 +27,7 @@ export function implementPrompt({ ticketsDir, file, instructions = '', project =
 export function implementRunOpts({ ticketsDir, projectDir }) {
   let notes = ticketsDir;
   try { notes = git(ticketsDir, 'rev-parse', '--show-toplevel'); } catch { /* tickets are not in a git repo */ }
+  const reviews = reviewsDir(ticketsDir);
   const rule = (tool, p) => `${tool}(/${p}/**)`;
   const within = (p, root) => p === root || p.startsWith(`${root}/`);
   // never lock the agent out of its own ticket, even if the tickets live inside the project's checkout
@@ -34,8 +36,9 @@ export function implementRunOpts({ ticketsDir, projectDir }) {
     permissionMode: 'auto',
     tools: ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'],
     allowedTools: [rule('Edit', notes), rule('Write', notes), 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git add:*)', 'Bash(git commit:*)', 'Bash(git log:*)', 'Bash(npm test:*)', 'Bash(npm run test:*)', 'Bash(node --test:*)'],
-    disallowedTools: inside ? [rule('Edit', projectDir), rule('Write', projectDir)] : [],
-    addDirs: [notes],
+    // review reports (of any ticket) are readable, also when they lie outside the notes repo, but never writable
+    disallowedTools: [...(inside ? [rule('Edit', projectDir), rule('Write', projectDir)] : []), rule('Edit', reviews), rule('Write', reviews)],
+    addDirs: [notes, reviews],
     maxBudgetUsd: 5,
   };
 }

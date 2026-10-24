@@ -337,7 +337,7 @@ test('implement: runs in a worktree, merges into the base branch on success, kee
     assert.ok(f.calls[0].opts.addDirs.includes(repo), 'notes repo readable');
     assert.ok(f.calls[0].opts.allowedTools.some((r) => r.startsWith('Write(') && r.includes(repo)), 'notes repo writable');
     assert.ok(dir.startsWith(repo), 'the ticket is under the writable notes repo');
-    assert.deepEqual(f.calls[0].opts.disallowedTools, [], 'tickets inside the project checkout: no lock-out of the ticket');
+    assert.ok(f.calls[0].opts.disallowedTools.every((r) => r.includes('/.sanvi/reviews/')), 'tickets inside the project checkout: no lock-out of the ticket');
     fs.writeFileSync(path.join(wt1, 'new.txt'), 'x\n'); // left uncommitted: the server commits it
     f.calls[0].end(); await tick();
     assert.equal((await chat(c1.id)).state, 'idle');
@@ -460,8 +460,9 @@ test('implement permissions: main checkout off limits unless the tickets live in
   fs.mkdirSync(path.join(notes, 'tickets')); fs.mkdirSync(path.join(notes, 'code'));
   const o = implementRunOpts({ ticketsDir: path.join(notes, 'tickets'), projectDir: path.join(notes, 'code') });
   assert.ok(o.allowedTools.includes(`Edit(/${notes}/**)`));
-  assert.deepEqual(o.disallowedTools, [`Edit(/${notes}/code/**)`, `Write(/${notes}/code/**)`]);
-  assert.deepEqual(o.addDirs, [notes]);
+  const reviews = path.join(notes, '.sanvi', 'reviews');
+  assert.deepEqual(o.disallowedTools, [`Edit(/${notes}/code/**)`, `Write(/${notes}/code/**)`, `Edit(/${reviews}/**)`, `Write(/${reviews}/**)`]);
+  assert.deepEqual(o.addDirs, [notes, reviews]);
   assert.equal(o.permissionMode, 'auto');
 });
 
@@ -565,4 +566,19 @@ test('worktree slots: overview, persistent pool size, resize refused while a run
     assert.equal(o.repos[0].slots[0].chat, 'failed');
     assert.equal((await call('PUT', 'slots', { poolSize: 3 })).status, 400, 'a failed run still holds its slot');
   } finally { await app.close(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('implement and refine runs can read the reviews dir but not write it', async () => {
+  const { implementRunOpts } = await import('../src/implement.js');
+  const { refineRunOpts } = await import('../src/refine.js');
+  const { reviewsDir } = await import('../src/review.js');
+  const tickets = path.join(os.tmpdir(), 'tk-rv-notes', 'tickets');
+  const reviews = reviewsDir(tickets);
+  const impl = implementRunOpts({ ticketsDir: tickets, projectDir: null });
+  const refine = refineRunOpts({ ticketsDir: tickets, file: '001-a.md' });
+  for (const o of [impl, refine]) {
+    assert.ok(o.addDirs.includes(reviews), 'reviews dir readable');
+    assert.ok(!o.allowedTools.some((r) => /^(Edit|Write)\(/.test(r) && r.includes(reviews)), 'no write allow rule');
+  }
+  assert.ok(impl.disallowedTools.includes(`Edit(/${reviews}/**)`) && impl.disallowedTools.includes(`Write(/${reviews}/**)`));
 });
