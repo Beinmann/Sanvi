@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createWorktree, releaseWorktree, implementPrompt, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge } from '../src/implement.js';
+import { createWorktree, releaseWorktree, implementPrompt, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge, readMarker, slotOverview, resizePool, STALE_MS } from '../src/implement.js';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
@@ -197,5 +197,60 @@ test('pool: a merged run frees its slot with the worktree clean', () => {
   assert.ok(!fs.existsSync(`${wt.worktree}.busy`));
   assert.equal(git(wt.worktree, 'status', '--porcelain'), '');
   assert.equal(createWorktree({ dir: top, id: '030', poolSize: 1 }).worktree, wt.worktree);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('slots: the marker records when the slot was taken; an old one-line marker counts from its mtime', () => {
+  const { root, top } = tempRepo();
+  const a = createWorktree({ dir: top, id: '040', poolSize: 2, now: Date.parse('2026-01-01T00:00:00Z') });
+  const lines = fs.readFileSync(`${a.worktree}.busy`, 'utf8').split('\n');
+  assert.deepEqual(lines.slice(0, 2), ['ticket-040', '2026-01-01T00:00:00.000Z']);
+  fs.writeFileSync(`${a.worktree}.busy`, 'ticket-040\n');
+  assert.equal(readMarker(a.worktree).branch, 'ticket-040');
+  assert.ok(Math.abs(readMarker(a.worktree).taken - Date.now()) < 5000);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('slots: a slot older than 24 h is freed before refusing, unless its run is active; the branch is kept', () => {
+  const { root, top } = tempRepo();
+  const t0 = Date.parse('2026-01-01T00:00:00Z');
+  const a = createWorktree({ dir: top, id: '050', poolSize: 1, now: t0 });
+  fs.writeFileSync(path.join(a.worktree, 'junk.txt'), 'x');
+  const later = t0 + STALE_MS + 1000;
+  assert.throws(() => createWorktree({ dir: top, id: '051', poolSize: 1, now: t0 + STALE_MS - 1000 }), /all 1 worktrees are busy \(slot-1: ticket-050 \(\d+ (min|h)\)\)/);
+  assert.throws(() => createWorktree({ dir: top, id: '051', poolSize: 1, now: later, isActive: (b) => b === 'ticket-050' }), /busy/);
+  const b = createWorktree({ dir: top, id: '051', poolSize: 1, now: later });
+  assert.equal(b.worktree, a.worktree);
+  assert.equal(git(top, 'branch', '--list', 'ticket-050'), 'ticket-050');
+  assert.ok(!fs.existsSync(path.join(b.worktree, 'junk.txt')));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('slots: releasing with a branch does nothing if the slot now belongs to another ticket', () => {
+  const { root, top } = tempRepo();
+  const a = createWorktree({ dir: top, id: '060', poolSize: 1 });
+  assert.equal(releaseWorktree(a), true);
+  const b = createWorktree({ dir: top, id: '061', poolSize: 1 });
+  assert.equal(releaseWorktree(a), false); // stale handle of the first run
+  assert.equal(git(b.worktree, 'branch', '--show-current'), 'ticket-061');
+  assert.ok(fs.existsSync(`${b.worktree}.busy`));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('slots: resizePool grows and shrinks only while all slots are free, touching just the removed slots', () => {
+  const { root, top } = tempRepo();
+  resizePool({ top, from: 1, to: 3 });
+  assert.ok(fs.existsSync(`${top}-worktrees/slot-3`));
+  const keep = `${top}-worktrees/unrelated`;
+  fs.mkdirSync(keep, { recursive: true });
+  createWorktree({ dir: top, id: '070', poolSize: 3 });
+  assert.throws(() => resizePool({ top, from: 3, to: 1 }), /busy/);
+  releaseWorktree({ base: 'main', worktree: `${top}-worktrees/slot-1` });
+  resizePool({ top, from: 3, to: 1 });
+  assert.ok(fs.existsSync(`${top}-worktrees/slot-1`));
+  assert.ok(!fs.existsSync(`${top}-worktrees/slot-2`) && !fs.existsSync(`${top}-worktrees/slot-3`));
+  assert.ok(fs.existsSync(keep));
+  assert.equal(git(top, 'worktree', 'list').split('\n').length, 2);
+  assert.deepEqual(slotOverview(top, 2).map((o) => o.busy), [false, false]);
   fs.rmSync(root, { recursive: true, force: true });
 });

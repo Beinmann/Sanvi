@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matches, step, navigate, isTyping, jumpTop, canMarkDone, neighbourAfterLeave } from '../public/keys.js';
+import { matches, step, navigate, isTyping, jumpTop, canMarkDone, neighbourAfterLeave, formatAge } from '../public/keys.js';
 
 test('matches: all tokens, case-insensitive, # ignored', () => {
   assert.ok(matches('#005 Keyboard-first workflow', '005 key'));
@@ -105,4 +105,11 @@ test('neighbourAfterLeave: the card below, else above, else nothing', () => {
   assert.equal(neighbourAfterLeave(cols, 'c'), 'b');
   assert.equal(neighbourAfterLeave(cols, 'd'), null);
   assert.equal(neighbourAfterLeave(cols, 'zzz'), null);
+});
+
+test('formatAge: minutes, hours, days', () => {
+  assert.equal(formatAge(30e3), '1 min');
+  assert.equal(formatAge(10 * 60e3), '10 min');
+  assert.equal(formatAge(5 * 3600e3), '5 h');
+  assert.equal(formatAge(72 * 3600e3), '3 d');
 });

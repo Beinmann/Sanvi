@@ -47,6 +47,35 @@ export const DEFAULT_POOL_SIZE = 4;
 // lives outside the worktree (so `git clean` never touches it) and on disk (so a restart does not lose it).
 const slotDir = (top, n) => `${top}-worktrees/slot-${n}`;
 const markerOf = (worktree) => `${worktree}.busy`;
+export const MAX_POOL_SIZE = 10;
+export const STALE_MS = 24 * 60 * 60 * 1000; // typical runs take minutes, the longest seen ~15; a day is stuck
+
+// A marker is the branch on line 1 and, on line 2, when the slot was taken (ISO). Older markers have no second
+// line; they count as taken at the file's mtime.
+export function readMarker(worktree) {
+  const file = markerOf(worktree);
+  try {
+    const [branch, stamp] = fs.readFileSync(file, 'utf8').split('\n');
+    const t = Date.parse(stamp);
+    return { branch: branch.trim(), taken: Number.isFinite(t) ? t : fs.statSync(file).mtimeMs };
+  } catch { return null; }
+}
+
+export function repoTop(dir) {
+  try { return git(dir, 'rev-parse', '--show-toplevel'); } catch { return null; }
+}
+
+/** Every slot of the repo's pool: `{ n, name, worktree, busy, branch, taken }` (branch/taken only when busy). */
+export function slotOverview(top, size) {
+  return Array.from({ length: size }, (_, i) => {
+    const n = i + 1;
+    const worktree = slotDir(top, n);
+    const m = readMarker(worktree);
+    return { n, name: `slot-${n}`, worktree, busy: !!m, branch: m?.branch || null, taken: m ? new Date(m.taken).toISOString() : null };
+  });
+}
+
+const ago = (ms) => (ms < 3600e3 ? `${Math.max(1, Math.round(ms / 60e3))} min` : ms < 48 * 3600e3 ? `${Math.round(ms / 3600e3)} h` : `${Math.round(ms / 86400e3)} d`);
 
 function branchExists(top, branch) {
   try { git(top, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`); return true; } catch { return false; }
@@ -54,7 +83,8 @@ function branchExists(top, branch) {
 
 // Takes a free slot and checks out branch `ticket-<id>` in it (created from the current branch, or continued if a
 // leftover exists). A slot already busy with this ticket is reused. Returns where it is and what to merge into.
-export function createWorktree({ dir, id, poolSize = DEFAULT_POOL_SIZE }) {
+// Slots held longer than `staleMs` are freed first, except those `isActive(branch)` says still have a run in this server.
+export function createWorktree({ dir, id, poolSize = DEFAULT_POOL_SIZE, isActive = () => false, staleMs = STALE_MS, now = Date.now() }) {
   let top;
   try { top = git(dir, 'rev-parse', '--show-toplevel'); } catch { throw new ValidationError(`not inside a git repository: ${dir}`); }
   const base = git(top, 'branch', '--show-current');
@@ -63,13 +93,20 @@ export function createWorktree({ dir, id, poolSize = DEFAULT_POOL_SIZE }) {
   const size = Math.max(1, Math.floor(Number(poolSize)) || DEFAULT_POOL_SIZE);
   try {
     git(top, 'worktree', 'prune');
+    for (let n = 1; n <= size; n++) { // stale sweep: before looking for a free slot, hence also before refusing
+      const m = readMarker(slotDir(top, n));
+      if (m && now - m.taken > staleMs && !isActive(m.branch)) releaseWorktree({ base, worktree: slotDir(top, n), branch: m.branch });
+    }
     const marked = (n) => fs.existsSync(markerOf(slotDir(top, n)));
     let slot = 0;
     for (let n = 1; n <= size && !slot; n++) { // this ticket's own slot from an earlier attempt
-      if (marked(n) && fs.readFileSync(markerOf(slotDir(top, n)), 'utf8').trim() === branch) slot = n;
+      if (readMarker(slotDir(top, n))?.branch === branch) slot = n;
     }
     for (let n = 1; n <= size && !slot; n++) if (!marked(n)) slot = n;
-    if (!slot) throw new ValidationError(`all ${size} worktrees are busy; wait for a run to finish, or free one by deleting its chat`);
+    if (!slot) {
+      const held = slotOverview(top, size).map((o) => `${o.name}: ${o.branch} (${ago(now - Date.parse(o.taken))})`).join(', ');
+      throw new ValidationError(`all ${size} worktrees are busy (${held}); wait for a run to finish, free one by deleting its chat, or increase the slot count`);
+    }
     const worktree = slotDir(top, slot);
     const registered = git(top, 'worktree', 'list', '--porcelain').split('\n').includes(`worktree ${worktree}`);
     const exists = branchExists(top, branch);
@@ -78,7 +115,7 @@ export function createWorktree({ dir, id, poolSize = DEFAULT_POOL_SIZE }) {
       git(worktree, 'reset', '--hard'); git(worktree, 'clean', '-fd');
       git(worktree, 'checkout', ...(exists ? [branch] : ['-b', branch, base]));
     }
-    fs.writeFileSync(markerOf(worktree), `${branch}\n`);
+    fs.writeFileSync(markerOf(worktree), `${branch}\n${new Date(now).toISOString()}\n`);
     return { top, base, branch, worktree };
   } catch (e) {
     if (e instanceof ValidationError) throw e;
@@ -87,9 +124,12 @@ export function createWorktree({ dir, id, poolSize = DEFAULT_POOL_SIZE }) {
 }
 
 // Gives the slot back: discards leftover changes, detaches from the ticket branch (which is kept) onto the base branch's
-// commit, and removes the busy marker. Ignored files stay. Returns true if the slot is free now.
-export function releaseWorktree({ base, worktree }) {
+// commit, and removes the busy marker. Ignored files stay. Returns true if the slot is free now. With `branch`, nothing
+// happens if the marker names another branch (the slot was taken by someone else meanwhile); then it returns false.
+export function releaseWorktree({ base, worktree, branch }) {
   try {
+    const m = readMarker(worktree);
+    if (branch && m && m.branch !== branch) return false;
     if (fs.existsSync(worktree)) {
       git(worktree, 'reset', '--hard'); git(worktree, 'clean', '-fd');
       git(worktree, 'checkout', '--detach', base);
@@ -97,6 +137,26 @@ export function releaseWorktree({ base, worktree }) {
     fs.rmSync(markerOf(worktree), { force: true });
     return true;
   } catch { return false; }
+}
+
+// Resizes the pool of one repo between `from` and `to` slots, only while every slot of it is free. Growing adds
+// detached worktrees; shrinking removes just the removed slots, by exact `slot-<n>` name, and only if git lists the
+// path as a worktree of this repo under `<repo>-worktrees/`.
+export function resizePool({ top, from, to }) {
+  const base = git(top, 'branch', '--show-current') || 'HEAD';
+  if (slotOverview(top, Math.max(from, to, MAX_POOL_SIZE)).some((o) => o.busy)) throw new ValidationError('a worktree slot is busy; the slot count can only change while all slots are free');
+  git(top, 'worktree', 'prune');
+  const listed = () => git(top, 'worktree', 'list', '--porcelain').split('\n');
+  for (let n = from + 1; n <= to; n++) {
+    const worktree = slotDir(top, n);
+    if (!fs.existsSync(worktree) && !listed().includes(`worktree ${worktree}`)) git(top, 'worktree', 'add', '--detach', worktree, base);
+  }
+  for (let n = to + 1; n <= Math.max(from, MAX_POOL_SIZE); n++) {
+    const worktree = slotDir(top, n);
+    if (path.dirname(worktree) !== `${top}-worktrees` || path.basename(worktree) !== `slot-${n}`) continue;
+    if (listed().includes(`worktree ${worktree}`)) git(top, 'worktree', 'remove', '--force', worktree);
+    fs.rmSync(markerOf(worktree), { force: true });
+  }
 }
 
 // After a successful run: commit what the agent left, merge into the base branch, free the worktree slot.
@@ -120,7 +180,7 @@ export function mergeWorktree({ top, base, branch, worktree }) {
       return { merged: false, error: `the merge was refused: ${gitError(e)} Nothing was merged. ${kept}` };
     }
   } catch (e) { return { merged: false, error: gitError(e) }; }
-  releaseWorktree({ base, worktree });
+  releaseWorktree({ base, worktree, branch });
   try { git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
   return { merged: true };
 }
@@ -152,7 +212,7 @@ export function completeMerge({ top, base, branch, worktree }) {
   let merged = false;
   try { git(top, 'merge-base', '--is-ancestor', branch, base); merged = true; } catch { /* not merged */ }
   if (!merged) { try { git(top, 'merge', '--abort'); } catch { /* no merge in progress */ } return { merged: false, error: `the conflict was not resolved by the agent; ${base} is unchanged, the branch ${branch} is kept` }; }
-  releaseWorktree({ base, worktree });
+  releaseWorktree({ base, worktree, branch });
   try { git(top, 'branch', '-d', branch); } catch { /* merged anyway; leftovers are harmless */ }
   return { merged: true };
 }

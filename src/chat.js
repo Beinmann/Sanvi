@@ -228,6 +228,6 @@ export function createChats({ cwd, file, check, sessionReuse = sessionReuseFromE
     // Cost recorded by Sanvi per provider; only Claude exists today, another provider adds a key.
     usage: () => ({ claude: { costUsd: [...chats.values()].reduce((sum, c) => sum + (c.costUsd || 0), 0), chats: chats.size } }),
     get: (id) => view(get(id)),
-    list: () => [...chats.values()].map(({ id, title, state, created, kind, outcome, meta, ticketId, project }) => ({ id, title, state, created, kind: kind || 'chat', outcome: outcome || null, ticket: meta?.file || null, ticketId: ticketId || null, project: project || '' })).sort((a, b) => b.created.localeCompare(a.created)),
+    list: () => [...chats.values()].map(({ id, title, state, created, kind, outcome, meta, ticketId, project }) => ({ id, title, state, created, kind: kind || 'chat', outcome: outcome || null, ticket: meta?.file || null, ticketId: ticketId || null, project: project || '', branch: meta?.wt?.branch || null, worktree: meta?.wt?.worktree || null })).sort((a, b) => b.created.localeCompare(a.created)),
   };
 }

@@ -495,3 +495,43 @@ test('a missing session falls back to a fresh one without failing the run', asyn
   await runOne(chats, f, 'refine', { sid: 'new' });
   assert.equal(f.calls[3].opts.resume, 'new');
 });
+
+test('worktree slots: overview, persistent pool size, resize refused while a run is active', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const g = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-slots-')));
+  const repo = path.join(root, 'repo');
+  fs.mkdirSync(repo);
+  g(repo, 'init', '-q', '-b', 'main');
+  g(repo, 'config', 'user.email', 't@example.com'); g(repo, 'config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'a\n');
+  g(repo, 'add', '-A'); g(repo, 'commit', '-qm', 'init');
+  const dir = path.join(repo, 'tickets');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, '001-a.md'), '---\nstatus: open\n---\n# A\n');
+  fs.mkdirSync(path.join(dir, '_projects'));
+  fs.writeFileSync(path.join(dir, '_projects', '_default.md'), `---\nname: ""\ndir: ${repo}\n---\n`);
+  const f = fakeRunner();
+  const app = createTicketServer({ dir, agents: true, agentRun: f.run, chatsFile: null });
+  const { port } = await app.listen(0);
+  const call = (method, p, body) => fetch(`http://127.0.0.1:${port}/api/agent/${p}`, { method, headers: { 'content-type': 'application/json' }, body: body && JSON.stringify(body) });
+  try {
+    let o = await (await call('GET', 'slots')).json();
+    assert.equal(o.poolSize, 4);
+    assert.deepEqual(o.repos[0].slots.map((s) => s.busy), [false, false, false, false]);
+    assert.equal((await call('PUT', 'slots', { poolSize: 99 })).status, 400);
+    assert.equal((await call('PUT', 'slots', { poolSize: 2 })).status, 200);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(repo, '.sanvi', 'slots.json'), 'utf8')).poolSize, 2);
+    assert.equal((await (await call('GET', 'slots')).json()).repos[0].slots.length, 2);
+    await call('POST', 'implement', { file: '001-a.md' });
+    o = await (await call('GET', 'slots')).json();
+    assert.deepEqual([o.repos[0].slots[0].busy, o.repos[0].slots[0].chat, o.repos[0].slots[0].branch], [true, 'running', 'ticket-001']);
+    const r = await call('PUT', 'slots', { poolSize: 3 });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /active/);
+    f.calls[0].end({ ok: false, error: 'boom' }); await tick();
+    o = await (await call('GET', 'slots')).json();
+    assert.equal(o.repos[0].slots[0].chat, 'failed');
+    assert.equal((await call('PUT', 'slots', { poolSize: 3 })).status, 400, 'a failed run still holds its slot');
+  } finally { await app.close(); fs.rmSync(root, { recursive: true, force: true }); }
+});

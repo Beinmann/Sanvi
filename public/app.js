@@ -1042,7 +1042,8 @@ window.addEventListener('beforeunload', (e) => { if (isDirty()) e.preventDefault
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
-initKeys({
+let slotInfo = null; // last known worktree pool size, for the count picker
+const keysApi = initKeys({
   S, el, columns, toast, moveTicket, setTab, pick: () => pick, setPick, boardHash: hashForState, deleteTicket, peekClose: () => { if (peek === null) return false; closePeek({ refocus: true }); return true; }, peekOpen, stripSelected: () => stripSel, selectStrip: setStripSel, hiddenColumns: () => columns().filter((c) => hidden.has(c)), hiddenCount: (status) => scopedTickets(status).length, selected: () => selected, lastSelected: () => lastSelected, select: setSelected, addStatus, deleteStatus, toggleColumn, isHidden,
   // `done` is kept by the overlay across retries: the ticket is created once, images are stored once.
   saveIdea: async (text, images = [], done = {}, ideaProject = newProjectValue()) => {
@@ -1075,7 +1076,10 @@ initKeys({
   chatClose: () => { if (!agentOn || !chatPage.isOpen()) return false; chatPage.close(); return true; },
   refine: refineTicket,
   review: (file) => chatPage.review(file).catch((e) => toast(`Review failed: ${e.message}`)),
-  implement: (file) => chatPage.implement(file).catch((e) => toast(`Implement failed: ${e.message}`)),
+  implement: (file) => chatPage.implement(file).catch((e) => (/worktrees are busy/.test(e.message) ? keysApi.warnSlotsBusy(e.message) : toast(`Implement failed: ${e.message}`))),
+  slots: async () => (slotInfo = await api('GET', 'agent/slots')),
+  slotCount: () => slotInfo?.poolSize, slotMax: () => slotInfo?.max,
+  setSlots: async (n) => { slotInfo = await api('PUT', 'agent/slots', { poolSize: n }); },
   refineAll: () => chatPage.refineAll().catch((e) => toast(`Refine failed: ${e.message}`)),
   ask: (q) => chatPage.ask(q).catch((e) => toast(`Ask failed: ${e.message}`)),
   isRefining: (file) => chatPage.refining(file),

@@ -81,6 +81,9 @@ export function neighbourAfterLeave(cols, file) {
 /** "Mark as done" is offered only if the project has a `done` status and the ticket isn't there yet. */
 export const canMarkDone = (columns, status) => columns.includes('done') && status !== 'done';
 
+/** Age for the slot overview: "5 min", "3 h", "2 d". */
+export const formatAge = (ms) => (ms < 3600e3 ? `${Math.max(1, Math.round(ms / 60e3))} min` : ms < 48 * 3600e3 ? `${Math.round(ms / 3600e3)} h` : `${Math.round(ms / 86400e3)} d`);
+
 /** Vim-like jump: `g` is the top of the page, `G` the bottom; any other key is not a jump (null). */
 export const jumpTop = (key, scrollHeight) => (key === 'g' ? 0 : key === 'G' ? scrollHeight : null);
 
@@ -526,6 +529,44 @@ export function initKeys(ctx) {
     const row = (label, value, hint) => ({ label: `${prefix}${label}`, hint: value === current ? 'current' : hint, ...(prefix ? { cmd: true } : {}), run: () => ctx.setProject(value) });
     return [row('All projects', '', ''), ...names.map((n) => row(n, n, recent.includes(n) ? 'recent' : '')), row('No project', none, '')];
   }
+  // Worktree slots of the implement runs: overview, and the pool size (stored in the project's .sanvi dir).
+  async function openSlots() {
+    let data;
+    try { data = await ctx.slots(); } catch (e) { ctx.toast(`Slots: ${e.message}`); return; }
+    const chatText = { running: 'chat running', failed: 'chat failed', finished: 'finished, not merged', gone: 'chat gone' };
+    const box = el('div', { class: 'dialog slots', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Worktree slots', tabindex: '-1' },
+      el('h2', {}, `Worktree slots (${data.poolSize} per repository)`),
+      data.repos.length ? data.repos.map((r) => el('section', {}, el('h3', {}, r.name),
+        el('ul', { class: 'slot-list' }, r.slots.map((o) => el('li', { class: o.busy ? 'busy' : 'free' },
+          el('strong', {}, o.name), ' ',
+          o.busy ? el('span', {}, `busy: ${o.branch}, taken ${new Date(o.taken).toLocaleString()} (${formatAge(o.ageMs)} ago), ${chatText[o.chat]}`) : el('span', {}, 'free')))))) : el('p', { class: 'hint' }, 'No project has a repository directory yet.'),
+      el('p', { class: 'hint' }, 'A slot held for over 24 h by a run that is not active is freed automatically when the next slot is taken.'),
+      el('div', { class: 'buttons' },
+        el('button', { type: 'button', onclick: () => { closeOverlay(); openPalette('slots'); } }, 'Change slot count…'),
+        el('button', { type: 'button', class: 'primary', onclick: closeOverlay }, 'Close')));
+    openOverlay(box);
+  }
+
+  function slotCountLevel() {
+    ctx.slots().catch(() => {}); // learn the current count for the hint
+    return {
+      placeholder: 'Worktree slot count (only while all slots are free)…',
+      rows: () => Array.from({ length: ctx.slotMax?.() || 10 }, (_, i) => i + 1).map((n) => ({ label: `${n} slot${n > 1 ? 's' : ''}`, hint: n === ctx.slotCount?.() ? 'current' : '', always: true, run: () => ctx.setSlots(n).then(() => ctx.toast(`Worktree slots: ${n}`)).catch((e) => ctx.toast(`Slot count not changed: ${e.message}`)) })),
+    };
+  }
+
+  // Shown when starting an implement run found every slot busy: says so and offers to raise the count.
+  function warnSlotsBusy(message) {
+    const box = el('div', { class: 'dialog form', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'All worktree slots are busy' },
+      el('h2', {}, 'All worktree slots are busy'),
+      el('p', {}, message),
+      el('div', { class: 'buttons' },
+        el('button', { type: 'button', onclick: closeOverlay }, 'Close'),
+        el('button', { type: 'button', onclick: () => { closeOverlay(); openSlots(); } }, 'Show slots'),
+        el('button', { type: 'button', class: 'primary', onclick: () => { closeOverlay(); openPalette('slots'); } }, 'Increase slot count…')));
+    openOverlay(box);
+  }
+
   function projectLevel() {
     return { placeholder: 'Switch project…', rows: () => projectRows() };
   }
@@ -574,6 +615,8 @@ export function initKeys(ctx) {
           ...(ctx.agents?.() ? [
             { cmd: true, label: 'Chat with Claude', hint: 'a', run: () => $('#chat-btn').click() },
             { cmd: true, label: 'Refresh Claude limits (5-hour, weekly)', hint: 'agent', run: () => ctx.refreshLimits() },
+            { cmd: true, label: 'Worktree slots (overview)', hint: 'agent', run: openSlots },
+            { cmd: true, label: 'Set worktree slot count…', hint: 'agent', push: slotCountLevel },
             { cmd: true, label: 'Refine all design tickets', hint: 'agent', run: () => ctx.refineAll() },
             { cmd: true, label: 'Ask Claude about the board…', hint: 'agent', run: () => ctx.ask('') },
           ] : []),
@@ -591,7 +634,7 @@ export function initKeys(ctx) {
     const t = file && S.tickets.find((x) => x.file === file);
     if (mode === 'status' && !t) { ctx.toast('No ticket selected'); return; }
     expanded = false;
-    const stack = [mode === 'status' ? valueLevel(t, 'status') : mode === 'project' ? projectLevel() : rootLevel()];
+    const stack = [mode === 'status' ? valueLevel(t, 'status') : mode === 'slots' ? slotCountLevel() : mode === 'project' ? projectLevel() : rootLevel()];
     let shown = [], sel = 0;
     const input = el('input', {
       type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'cmd-list', 'aria-autocomplete': 'list',
@@ -804,4 +847,5 @@ export function initKeys(ctx) {
 
   $('#help-btn')?.addEventListener('click', openHelp);
   $('#cmd-btn')?.addEventListener('click', () => openPalette());
+  return { warnSlotsBusy };
 }

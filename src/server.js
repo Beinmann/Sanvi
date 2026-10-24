@@ -16,7 +16,7 @@ import { buildInfo, commitsBehind } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 import { createChats, resolveDir } from './chat.js';
 import { createLimits } from './limits.js';
-import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge } from './implement.js';
+import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge, DEFAULT_POOL_SIZE, MAX_POOL_SIZE, repoTop, slotOverview, resizePool } from './implement.js';
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
@@ -180,6 +180,48 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     }
   }
 
+  // The pool size is kept in `.sanvi/slots.json` (read on every use, so a change applies without a restart);
+  // without it `TK_WORKTREE_POOL` and then the default apply.
+  const slotsFile = () => path.join(dataDir(dir), 'slots.json');
+  function poolSize() {
+    try {
+      const n = JSON.parse(fs.readFileSync(slotsFile(), 'utf8')).poolSize;
+      if (Number.isInteger(n) && n >= 1 && n <= MAX_POOL_SIZE) return n;
+    } catch { /* nothing stored */ }
+    return Number(process.env.TK_WORKTREE_POOL) || DEFAULT_POOL_SIZE;
+  }
+  // The git repos of all projects that have a directory: each has its own pool of slots.
+  const projectRepos = () => [...new Set(projectView(dir).filter((p) => p.dir).map((p) => repoTop(resolveDir(p.dir))).filter(Boolean))];
+  const runActive = (c) => c.state === 'running' || c.state === 'queued';
+
+  function slotsPayload() {
+    const size = poolSize();
+    const list = chats.list();
+    const now = Date.now();
+    return {
+      poolSize: size, max: MAX_POOL_SIZE,
+      repos: projectRepos().map((top) => ({
+        name: path.basename(top),
+        slots: slotOverview(top, size).map((o) => {
+          const c = o.busy && list.find((x) => x.kind === 'implement' && x.worktree === o.worktree && x.branch === o.branch);
+          const chat = !o.busy ? null : !c ? 'gone' : runActive(c) ? 'running' : c.outcome === 'ok' ? 'finished' : 'failed';
+          return { ...o, ageMs: o.taken ? now - Date.parse(o.taken) : null, chat, chatId: c?.id || null, ticket: c?.ticketId || null };
+        }),
+      })),
+    };
+  }
+
+  function setPoolSize(value) {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_POOL_SIZE) throw new ValidationError(`the slot count must be a whole number from 1 to ${MAX_POOL_SIZE}`);
+    if (chats.list().some(runActive)) throw new ValidationError('an agent run is active; change the slot count when all runs have finished');
+    const from = poolSize();
+    for (const top of projectRepos()) resizePool({ top, from, to: n }); // refuses while any slot is busy
+    fs.mkdirSync(path.dirname(slotsFile()), { recursive: true });
+    fs.writeFileSync(slotsFile(), JSON.stringify({ poolSize: n }, null, 2));
+    return slotsPayload();
+  }
+
   // Implement runs in a pooled worktree of the project's repo and is merged into its current branch when it finishes cleanly.
   // While the ticket is being refined it is only queued: it starts after the refine run (see startQueuedImplements).
   function startImplement(file) {
@@ -192,7 +234,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} already has an agent running`);
     const info = projectInfo(dir, t.project);
     if (!info.dir) throw new ValidationError(`project "${t.project || DEFAULT_LABEL}" has no directory: set the repository to implement in on the Projects page`);
-    const wt = createWorktree({ dir: resolveDir(info.dir), id: t.id, poolSize: Number(process.env.TK_WORKTREE_POOL) || undefined });
+    const wt = createWorktree({ dir: resolveDir(info.dir), id: t.id, poolSize: poolSize(), isActive: (branch) => chats.list().some((c) => c.kind === 'implement' && c.branch === branch && runActive(c)) });
     // the agent finishes with `testing`; until then the board shows the ticket as being worked on
     if (['open', 'reopened'].includes(t.status) && readConfig(dir).statuses.includes('in-progress')) saveTicket(dir, file, { fields: { status: 'in-progress' } }, t.version);
     const chat = chats.create({ dir: wt.worktree, project: t.project, kind: 'implement', ticketId: t.id, meta: { file, wt }, title: `Implement #${t.id}: ${t.title}`.slice(0, 80), runOpts: implementRunOpts({ ticketsDir: dir, projectDir: resolveDir(info.dir) }) });
@@ -281,6 +323,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir }) });
       if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
       if (parts[1] === 'usage' && parts.length === 2 && method === 'GET') return send(res, 200, chats.usage());
+      if (parts[1] === 'slots' && parts.length === 2 && method === 'GET') return send(res, 200, slotsPayload());
+      if (parts[1] === 'slots' && parts.length === 2 && method === 'PUT') return send(res, 200, setPoolSize((await readJson(req)).poolSize));
       if (parts[1] === 'queued' && parts.length === 2 && method === 'GET') return send(res, 200, [...implementAfterRefine]);
       if (parts[1] === 'limits' && parts.length === 2 && method === 'GET') return send(res, 200, await limits.get(url.searchParams.get('refresh') === '1'));
       if (parts[1] === 'refine-all' && parts.length === 2 && method === 'POST') return send(res, 200, startRefineAll());
