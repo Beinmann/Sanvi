@@ -861,9 +861,24 @@ function renderDetail({ fresh = false, edit = false } = {}) {
       el('button', { type: 'button', class: 'comment-btn', title: 'Add a timestamped comment (c)', onclick: () => document.dispatchEvent(new CustomEvent('add-note', { detail: D.file })) }, 'Comment')),
     el('div', { id: 'content' }),
     el('div', { id: 'reviews' })));
+  // put the known reports back at once so the page keeps its height (and scroll position) until the list is re-read
+  const known = [...reviewNodes].filter(([k]) => k.startsWith(`${D.loaded.id}|`)).map(([, n]) => n);
+  if (known.length) $('#reviews').replaceChildren(el('h2', {}, 'Reviews'), ...known);
   renderTab(edit); paintReviews(); updateBanner(); updateState();
   if (ed && D.tab === 'edit') { const t = $('.editor'); t.focus(); t.setSelectionRange(...sel); }
   else if (fresh && !edit) $('#title').focus();
+}
+
+// Report nodes of the open ticket by "id|name": a repaint reuses them, so open reports stay open (and loaded) on live updates.
+let reviewNodes = new Map();
+function reviewNode(r) {
+  const doc = el('div', { class: 'doc' });
+  const det = el('details', { class: 'review', 'data-name': r.name }, el('summary', {}, `${r.name} · ${r.created.slice(0, 16).replace('T', ' ')}`), doc);
+  det.addEventListener('toggle', async () => {
+    if (!det.open || doc.dataset.loaded) return;
+    try { doc.innerHTML = renderMarkdown((await api('GET', `reviews/${encodeURIComponent(r.name)}`)).text); doc.dataset.loaded = '1'; } catch (e) { doc.textContent = e.message; }
+  });
+  return det;
 }
 
 // Review reports of the open ticket, read-only; nothing is added to the page when there are none.
@@ -876,15 +891,9 @@ async function paintReviews() {
     if (D?.file !== file || !$('#reviews')) return;
     const rb = $('#review-report-btn');
     if (rb) { rb.hidden = !list.length; rb.textContent = list.length > 1 ? `📋 Review report (${list.length})` : '📋 Review report'; }
-    box.replaceChildren(...(list.length ? [el('h2', {}, 'Reviews'), ...list.map((r) => {
-      const doc = el('div', { class: 'doc' });
-      const det = el('details', { class: 'review', 'data-name': r.name }, el('summary', {}, `${r.name} · ${r.created.slice(0, 16).replace('T', ' ')}`), doc);
-      det.addEventListener('toggle', async () => {
-        if (!det.open || doc.dataset.loaded) return;
-        try { doc.innerHTML = renderMarkdown((await api('GET', `reviews/${encodeURIComponent(r.name)}`)).text); doc.dataset.loaded = '1'; } catch (e) { doc.textContent = e.message; }
-      });
-      return det;
-    })] : []));
+    const keep = new Map([...reviewNodes].filter(([k]) => k.startsWith(`${D.loaded.id}|`)));
+    reviewNodes = new Map(list.map((r) => { const k = `${D.loaded.id}|${r.name}`; return [k, keep.get(k) || reviewNode(r)]; }));
+    box.replaceChildren(...(list.length ? [el('h2', {}, 'Reviews'), ...reviewNodes.values()] : []));
   } catch { box.replaceChildren(); const rb = $('#review-report-btn'); if (rb) rb.hidden = true; }
 }
 
