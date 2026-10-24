@@ -94,7 +94,12 @@ export const HELP = [
     ['Ctrl+K', 'Command menu: commands, jump to a ticket by title; type #20 for that ticket\'s actions (status, priority, area, comment, delete); Esc or Backspace on empty input goes one step back'],
     ['?', 'Show / hide this help'],
     ['n', 'New ticket'],
-    ['b', 'Go to the board'],
+    ['b / gb', 'Go to the board'],
+    ['gi', 'Open the ticket you edited last, in the editor'],
+    ['gs', 'Go to the search box and clear its text (/ keeps it)'],
+    ['gn', 'Go to the Notes page (NOTES.md)'],
+    ['ga', 'Open the Claude chat of the selected / open ticket (only with --agents)'],
+    ['gw', 'Worktree slot overview (only with --agents)'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
@@ -110,6 +115,8 @@ export const HELP = [
   ['Board', [
     ['j / k', 'Select next / previous card in the column (with nothing selected: the last selected card, else the first)'],
     ['h / l', 'Previous / next column'],
+    ['g1 - g9', 'Select the first card of column n (numbered as the column badges; a hidden column selects its strip entry)'],
+    ['gh', 'Select the "Hidden: ..." strip'],
     ['Enter', 'Open the selected ticket'],
     ['Space / Ctrl+Space', 'Pick up the selected (or hovered, if none) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
     ['c', 'Add a timestamped comment to the selected (or hovered, if none) ticket; ☰ on a card opens its menu'],
@@ -122,6 +129,10 @@ export const HELP = [
   ['Ticket', [
     ['j / k', 'Scroll down / up (outside fields)'],
     ['gg / G', 'Scroll to the top / bottom (outside fields)'],
+    ['gt / gT', 'Next / previous ticket in board order'],
+    ['gc', 'Jump to the Notes at the bottom of the ticket'],
+    ['gr', 'Open the newest review report of the ticket'],
+    ['gx', 'Open the first link of the ticket in a new tab'],
     ['c / Ctrl+Shift+Enter', 'Add a timestamped comment to this ticket (c outside fields, Ctrl+Shift+Enter also while typing; unsaved edits are kept)'],
     ['e / p', 'Edit / preview'],
     ['s', 'Set status (unsaved until you save)'],
@@ -713,11 +724,14 @@ export function initKeys(ctx) {
   // Focus the board's search box from any view. Off the board this navigates first (keeping the current
   // query), through the normal hash route, so the guard against discarding an unsaved edit applies; if
   // the user declines, we never reach the board and nothing is focused.
-  async function focusSearch() {
+  async function focusSearch(clear = false) {
     if (hashRoute() !== 'board') location.hash = ctx.boardHash();
     for (let i = 0; i < 30; i++) {
       const input = hashRoute() === 'board' && $('#search');
-      if (input) { input.focus(); input.select(); return; }
+      if (input) {
+        if (clear && input.value) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
+        input.focus(); input.select(); return;
+      }
       await new Promise((r) => setTimeout(r, 50));
     }
   }
@@ -742,7 +756,57 @@ export function initKeys(ctx) {
   window.addEventListener('blur', stopHold);
 
   // ---- global keys
-  let pendingG = false; // a first `g` was just pressed (`gg` scrolls to the top)
+  let pendingG = false; // a first `g` was just pressed (`gg` scrolls to the top, `g` + letter is a "go to" key)
+  // Second key after `g`; true when it was one of ours. Anything else cancels the prefix and is handled as a normal key.
+  function gKey(key) {
+    const route = hashRoute();
+    const board = route === 'board';
+    const detail = route === 'detail' && ctx.detail();
+    const agents = !!ctx.agents?.();
+    const needDetail = (fn) => { if (!detail) return false; fn(); return true; };
+    if (/^[1-9]$/.test(key)) { // column n of the board, numbered as the column badges are (visual order)
+      if (!board) return false;
+      const status = ctx.columns().filter(Boolean)[Number(key) - 1];
+      if (status === undefined) { ctx.toast(`No column ${key}`); return true; }
+      if (ctx.isHidden(status)) { ctx.selectStrip(status); return true; }
+      const first = boardCols()[ctx.columns().indexOf(status)]?.[0];
+      if (first) { ctx.select(first.dataset.file); scrollToCard(first.dataset.file); } else ctx.toast('That column is empty');
+      return true;
+    }
+    switch (key) {
+      case 'g': return needDetail(() => window.scrollTo({ top: jumpTop('gg', document.documentElement.scrollHeight) }));
+      case 'i': { const f = ctx.lastEdited?.(); if (f) ctx.openEdit(f); else ctx.toast('No ticket edited yet'); return true; }
+      case 'b': location.hash = '#/'; return true;
+      case 't': case 'T': return needDetail(() => { const f = ctx.neighbour(detail.file, key === 't' ? 1 : -1); if (f) location.hash = `#/t/${encodeURIComponent(f)}`; else ctx.toast(key === 't' ? 'Last ticket' : 'First ticket'); });
+      case 'c': return needDetail(() => { // the Notes section at the bottom, else the very bottom
+        ctx.setTab('view');
+        const h = [...document.querySelectorAll('#content h2')].reverse().find((x) => /^notes\b/i.test(x.textContent.trim()));
+        if (h) h.scrollIntoView({ block: 'start' }); else window.scrollTo({ top: document.documentElement.scrollHeight });
+      });
+      case 'r': return needDetail(() => { const b = $('#review-report-btn'); if (b && !b.hidden) b.click(); else ctx.toast('No review report for this ticket'); });
+      case 'h': {
+        if (!board) return false;
+        const hid = ctx.hiddenColumns?.() ?? [];
+        if (!hid.length) ctx.toast('No hidden columns'); else ctx.selectStrip(hid.find((x) => ctx.hiddenCount(x) > 0) ?? hid[0]);
+        return true;
+      }
+      case 'a': {
+        if (!agents) return false;
+        const f = contextFile();
+        if (f) ctx.openTicketChat(f); else ctx.toast('Select or open a ticket first');
+        return true;
+      }
+      case 'w': if (!agents) return false; openSlots(); return true;
+      case 's': focusSearch(true); return true;
+      case 'x': return needDetail(() => {
+        const body = ctx.detail().draft?.body ?? ctx.detail().loaded.body ?? '';
+        const url = /\]\((https?:\/\/[^)\s]+)\)/.exec(body)?.[1] ?? /https?:\/\/[^\s)<>\]]+/.exec(body)?.[0];
+        if (url) window.open(url, '_blank', 'noopener'); else ctx.toast('No link in this ticket');
+      });
+      case 'n': location.hash = '#/notes'; return true;
+      default: return false;
+    }
+  }
   document.addEventListener('keydown', (e) => {
     if (e.isComposing || e.defaultPrevented) return;
     const mod = e.ctrlKey || e.metaKey;
@@ -825,6 +889,7 @@ export function initKeys(ctx) {
       e.preventDefault(); // j/k/n/i/s...: swallowed until the card is dropped or Esc
       return;
     }
+    if (gPending && gKey(e.key)) { e.preventDefault(); return; }
     switch (e.key) {
       case '?': openHelp(); break;
       case '/': focusSearch(); break;
@@ -833,9 +898,9 @@ export function initKeys(ctx) {
       case 'i': openIdea(); break;
       case 'm': openScratch(); break;
       case 'g': case 'G':
+        if (e.key === 'g') { pendingG = true; break; } // first `g`: wait for the second key (a second `g` was taken by gKey)
         if (hashRoute() !== 'detail') return;
-        if (e.key === 'g' && !gPending) { pendingG = true; break; } // first `g`: wait for the second
-        window.scrollTo({ top: jumpTop(e.key === 'g' ? 'gg' : 'G', document.documentElement.scrollHeight) });
+        window.scrollTo({ top: jumpTop('G', document.documentElement.scrollHeight) });
         break;
       case 'a': if (ctx.agents?.()) ctx.chatHotkey(); else return; break;
       case '+': if (ctx.agents?.()) ctx.chatType(); else return; break;

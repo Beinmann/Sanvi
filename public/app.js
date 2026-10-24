@@ -548,6 +548,7 @@ async function save() {
     });
     ownVersions.add(t.version);
     D.loaded = t;
+    S.lastEdited = D.file;
     D.stale = null; D.conflict = false;
     for (const k of Object.keys(sent)) if (D.draft[k] === sent[k]) D.draft[k] = t[k];
     updateBanner(); updateState();
@@ -1108,6 +1109,20 @@ const keysApi = initKeys({
   },
   about: () => api('GET', 'about'),
   agents: () => agentOn,
+  lastEdited: () => S.lastEdited ?? null,
+  openEdit: (file) => { if (location.hash === `#/t/${encodeURIComponent(file)}`) setTab('edit'); else { pendingTab = 'edit'; location.hash = `#/t/${encodeURIComponent(file)}`; } },
+  // Next (+1) / previous (-1) ticket in board order: columns left to right, shown before hidden ones, each as listed on the board.
+  neighbour: (file, step) => {
+    const cols = columns();
+    const order = [...cols.filter((c) => !hidden.has(c)), ...cols.filter((c) => hidden.has(c))].flatMap((st) => scopedTickets(st).filter((t) => matchTicket(t, Q.parsed)).sort(byBoardOrder));
+    const i = order.findIndex((t) => t.file === file);
+    return i < 0 ? null : order[i + step]?.file ?? null;
+  },
+  openTicketChat: (file) => {
+    const t = S.tickets.find((x) => x.file === file);
+    const c = t && chatPage.forTicket(t.id, t.project || '');
+    if (c) chatPage.open(c.id).catch((e) => toast(e.message)); else toast('No Claude chat for this ticket yet');
+  },
   autoRefine: () => autoRefine,
   refreshLimits: () => limitsUi.refresh(),
   chatHotkey: () => chatPage.hotkey(),
