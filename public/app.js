@@ -833,7 +833,7 @@ function renderDetail({ fresh = false, edit = false } = {}) {
       }, chatPage.refining(D.file) ? 'Refining…' : 'Refine with Claude'),
       el('button', {
         type: 'button', id: 'review-report-btn', hidden: true, title: 'Jump to the newest review report below',
-        onclick: () => { const det = $('#reviews details.review'); if (!det) return; det.open = true; det.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+        onclick: () => { const det = $('#reviews details.review'); if (det) showReport(det); },
       }),
       agentOn && el('button', {
         type: 'button', id: 'review-btn', title: 'Let Claude review this ticket and its code; the findings are written to a report file shown below',
@@ -879,6 +879,20 @@ async function paintReviews() {
       return det;
     })] : []));
   } catch { box.replaceChildren(); const rb = $('#review-report-btn'); if (rb) rb.hidden = true; }
+}
+
+// Opens a report and scrolls its start to the top. The page keeps growing after the click (the report loads, images
+// arrive), so the position is re-applied while the layout changes, until the user scrolls themselves or ~2 s pass.
+function showReport(det) {
+  det.open = true;
+  const align = () => det.scrollIntoView({ block: 'start' });
+  align();
+  const ro = new ResizeObserver(align);
+  const stop = () => { ro.disconnect(); clearTimeout(timer); for (const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) removeEventListener(ev, stop, true); };
+  const timer = setTimeout(stop, 2000);
+  for (const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) addEventListener(ev, stop, { capture: true, passive: true });
+  ro.observe(document.body);
+  requestAnimationFrame(align);
 }
 
 async function openTicket(file, tab = 'view') {
