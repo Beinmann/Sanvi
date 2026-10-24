@@ -649,7 +649,9 @@ function togglePeek(status) {
 function peekOpen(status, file) {
   if (peek !== status) togglePeek(status);
   const items = [...view.querySelectorAll('.peekpop a')];
-  (items.find((a) => a.dataset.file === file) ?? items[0])?.focus({ preventScroll: true });
+  const hit = items.find((a) => a.dataset.file === file); // absent when the filter hides the ticket: the first entry then
+  (hit ?? items[0])?.focus({ preventScroll: true });
+  hit?.scrollIntoView({ block: 'nearest' }); // focus({ preventScroll }) leaves a long list unscrolled
 }
 function peekStep(dir) {
   const list = columns().filter((c) => hidden.has(c));
