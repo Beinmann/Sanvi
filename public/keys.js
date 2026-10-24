@@ -120,7 +120,8 @@ export const HELP = [
   ['Board', [
     ['j / k', 'Select next / previous card in the column (with nothing selected: the last selected card, else the first)'],
     ['h / l', 'Previous / next column'],
-    ['g1 - g9', 'Select the first card of column n (numbered as the column badges; a hidden column selects its strip entry)'],
+    ['g1 - g9', 'Select the first card of column n (numbered as the column badges; a hidden column selects its strip entry); acts after a pause of about 0.7 s'],
+    ['g<number>', 'Two or more digits, then a pause of about 0.7 s: select the card of that ticket (g201, g0201); more digits restart the pause, any other key cancels'],
     ['gh', 'Select the "Hidden: ..." strip'],
     ['Enter', 'Open the selected ticket'],
     ['Space / Ctrl+Space', 'Pick up the selected (or hovered, if none) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
@@ -766,6 +767,8 @@ export function initKeys(ctx) {
   // ---- global keys
   let pendingGA = false; // `ga` was just pressed (agents only): the next key picks the agent action
   let gCount = ''; // digits typed after `g` on the ticket page (`g10j`)
+  let gTimer = null; // board: `g<digits>` runs after a short pause (column n for one digit, ticket number for more)
+  const G_PAUSE = 700;
   let pendingG = false; // a first `g` was just pressed (`gg` scrolls to the top, `g` + letter is a "go to" key)
   // Second key after `ga`; true when it was one of ours. Anything else cancels the prefix and is handled as a normal key.
   function agentKey(key) {
@@ -779,6 +782,14 @@ export function initKeys(ctx) {
       case 's': openSlots(); return true;
       default: return false;
     }
+  }
+  // Digits typed after `g` on the board: one digit is column n, more are a ticket number (leading zeros ignored).
+  function gDigits(digits) {
+    if (digits.length === 1) { gKey(digits); return; }
+    const t = S.tickets.find((x) => Number(x.id) === Number(digits));
+    if (!t) { ctx.toast(`No ticket ${digits}`); return; }
+    if (ctx.isHidden(t.status)) { ctx.selectStrip(t.status); ctx.toast(`#${t.id} is in a hidden column`); return; }
+    ctx.select(t.file); scrollToCard(t.file);
   }
   // Second key after `g`; true when it was one of ours. Anything else cancels the prefix and is handled as a normal key.
   function gKey(key) {
@@ -887,6 +898,7 @@ export function initKeys(ctx) {
     if (mod || e.altKey || isTyping(e.target)) return;
     if (e.key === 'Shift') return; // a bare modifier does not break a pending `gg`
     const gPending = pendingG, gaPending = pendingGA, gN = gCount; pendingG = false; pendingGA = false; gCount = '';
+    clearTimeout(gTimer);
 
     const board = hashRoute() === 'board';
     // Keyboard pick-up (034): while a card is picked up only these keys act, so the board is never half-held.
@@ -908,6 +920,11 @@ export function initKeys(ctx) {
       return;
     }
     if (gaPending && ctx.agents?.() && agentKey(e.key)) { e.preventDefault(); return; }
+    if (gPending && board && /^\d$/.test(e.key) && (gN || e.key !== '0')) { // board: g<digits> + pause
+      pendingG = true; gCount = gN + e.key; e.preventDefault();
+      gTimer = setTimeout(() => { const n = gCount; pendingG = false; gCount = ''; gDigits(n); }, G_PAUSE);
+      return;
+    }
     if (gPending && hashRoute() === 'detail') { // ticket page: g<n>j / g<n>k scroll n/30 of the viewport, gj / gk a few lines
       if (/^\d$/.test(e.key) && (gN || e.key !== '0')) { pendingG = true; gCount = gN + e.key; e.preventDefault(); return; }
       if (e.key === 'j' || e.key === 'k') {
