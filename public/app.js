@@ -3,7 +3,7 @@ import { insertNote } from './notes.js';
 import { compact } from './util.js';
 import { serialQueue, coalesce, isTransient, describeFailure } from './queue.js';
 import { planStatusDelete, parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
-import { initKeys } from './keys.js';
+import { initKeys, neighbourFile } from './keys.js';
 import { attachVim } from './vim.js';
 import { initChat } from './chat.js';
 import { initLimits } from './limits.js';
@@ -1126,8 +1126,7 @@ const keysApi = initKeys({
   neighbour: (file, step) => {
     const cols = columns();
     const order = [...cols.filter((c) => !hidden.has(c)), ...cols.filter((c) => hidden.has(c))].flatMap((st) => scopedTickets(st).filter((t) => matchTicket(t, Q.parsed)).sort(byBoardOrder));
-    const i = order.findIndex((t) => t.file === file);
-    return i < 0 ? null : order[i + step]?.file ?? null;
+    return neighbourFile(order, file, step);
   },
   openTicketChat: (file) => {
     const t = S.tickets.find((x) => x.file === file);

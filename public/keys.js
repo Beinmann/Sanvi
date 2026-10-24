@@ -87,6 +87,20 @@ export const formatAge = (ms) => (ms < 3600e3 ? `${Math.max(1, Math.round(ms / 6
 /** Vim-like jump: `g` is the top of the page, `G` the bottom; any other key is not a jump (null). */
 export const jumpTop = (key, scrollHeight) => (key === 'gg' ? 0 : key === 'G' ? scrollHeight : null);
 
+/** `g1`-`g9`: the status of column n in visual order (hidden `null` slots skipped); null for any other key, undefined if there is no such column. */
+export function gColumn(key, columns) {
+  return /^[1-9]$/.test(key) ? columns.filter(Boolean)[Number(key) - 1] : null;
+}
+
+/** `g<number>`: the ticket with that number (leading zeros ignored), else undefined. */
+export const gTicket = (tickets, digits) => tickets.find((x) => Number(x.id) === Number(digits));
+
+/** `gt` / `gT`: the file `step` places after `file` in the ordered list of tickets, or null at either end / if unknown. */
+export function neighbourFile(order, file, step) {
+  const i = order.findIndex((t) => t.file === file);
+  return i < 0 ? null : order[i + step]?.file ?? null;
+}
+
 export const isTyping = (t) => !!t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
 
 export const HELP = [
@@ -139,9 +153,8 @@ export const HELP = [
     ['gj / gk', 'Scroll down / up a few lines (about 5)'],
     ['g<n>j / g<n>k', 'Scroll down / up n/30 of the window height: g10j about a third of a page, g30j a full page'],
     ['gt / gT', 'Next / previous ticket in board order'],
-    ['gc', 'Jump to the Notes at the bottom of the ticket'],
+    ['gc', 'Jump to the Notes at the bottom of the ticket (the page bottom if there are none)'],
     ['gr', 'Open the newest review report of the ticket'],
-    ['gx', 'Open the first link of the ticket in a new tab'],
     ['c / Ctrl+Shift+Enter', 'Add a timestamped comment to this ticket (c outside fields, Ctrl+Shift+Enter also while typing; unsaved edits are kept)'],
     ['e / p', 'Edit / preview'],
     ['s', 'Set status (unsaved until you save)'],
@@ -805,7 +818,7 @@ export function initKeys(ctx) {
   // Digits typed after `g` on the board: one digit is column n, more are a ticket number (leading zeros ignored).
   function gDigits(digits) {
     if (digits.length === 1) { gKey(digits); return; }
-    const t = S.tickets.find((x) => Number(x.id) === Number(digits));
+    const t = gTicket(S.tickets, digits);
     if (!t) { ctx.toast(`No ticket ${digits}`); return; }
     if (ctx.isHidden(t.status)) { ctx.selectStrip(t.status); ctx.toast(`#${t.id} is in a hidden column`); return; }
     ctx.select(t.file); scrollToCard(t.file);
@@ -819,7 +832,7 @@ export function initKeys(ctx) {
     const needDetail = (fn) => { if (!detail) return false; fn(); return true; };
     if (/^[1-9]$/.test(key)) { // column n of the board, numbered as the column badges are (visual order)
       if (!board) return false;
-      const status = ctx.columns().filter(Boolean)[Number(key) - 1];
+      const status = gColumn(key, ctx.columns());
       if (status === undefined) { ctx.toast(`No column ${key}`); return true; }
       if (ctx.isHidden(status)) { ctx.selectStrip(status); return true; }
       const first = boardCols()[ctx.columns().indexOf(status)]?.[0];
@@ -829,7 +842,7 @@ export function initKeys(ctx) {
     switch (key) {
       case 'g': return needDetail(() => window.scrollTo({ top: jumpTop('gg', document.documentElement.scrollHeight) }));
       case 'i': { const f = ctx.lastEdited?.(); if (f) ctx.openEdit(f); else ctx.toast('No ticket edited yet'); return true; }
-      case 'b': location.hash = '#/'; return true;
+      case 'b': location.hash = ctx.boardHash(); return true;
       case 't': case 'T': return needDetail(() => { const f = ctx.neighbour(detail.file, key === 't' ? 1 : -1); if (f) location.hash = `#/t/${encodeURIComponent(f)}`; else ctx.toast(key === 't' ? 'Last ticket' : 'First ticket'); });
       case 'c': return needDetail(() => { // the Notes section at the bottom, else the very bottom
         ctx.setTab('view');
@@ -846,11 +859,6 @@ export function initKeys(ctx) {
       case 'a': if (!agents) return false; pendingGA = true; return true; // prefix of the agent keys (gaa gac gai gar gav gas)
       case 'w': if (!agents) return false; openSlots(); return true;
       case 's': focusSearch(true); return true;
-      case 'x': return needDetail(() => {
-        const body = ctx.detail().draft?.body ?? ctx.detail().loaded.body ?? '';
-        const url = /\]\((https?:\/\/[^)\s]+)\)/.exec(body)?.[1] ?? /https?:\/\/[^\s)<>\]]+/.exec(body)?.[0];
-        if (url) window.open(url, '_blank', 'noopener'); else ctx.toast('No link in this ticket');
-      });
       case 'n': location.hash = '#/notes'; return true;
       case '?': openGHelp(); return true;
       default: return false;

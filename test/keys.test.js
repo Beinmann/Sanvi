@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matches, step, navigate, isTyping, jumpTop, canMarkDone, neighbourAfterLeave, formatAge } from '../public/keys.js';
+import { gColumn, gTicket, neighbourFile, matches, step, navigate, isTyping, jumpTop, canMarkDone, neighbourAfterLeave, formatAge } from '../public/keys.js';
 
 test('matches: all tokens, case-insensitive, # ignored', () => {
   assert.ok(matches('#005 Keyboard-first workflow', '005 key'));
@@ -113,4 +113,35 @@ test('formatAge: minutes, hours, days', () => {
   assert.equal(formatAge(10 * 60e3), '10 min');
   assert.equal(formatAge(5 * 3600e3), '5 h');
   assert.equal(formatAge(72 * 3600e3), '3 d');
+});
+
+test('gColumn: g1-g9 count columns in visual order, other keys fall through', () => {
+  const cols = ['open', null, 'design', 'done'];
+  assert.equal(gColumn('1', cols), 'open');
+  assert.equal(gColumn('2', cols), 'design');
+  assert.equal(gColumn('3', cols), 'done');
+  assert.equal(gColumn('4', cols), undefined);
+  for (const k of ['0', 'x', 'g', '10', '']) assert.equal(gColumn(k, cols), null);
+});
+
+test('gTicket: finds by number, leading zeros ignored', () => {
+  const ts = [{ id: '201', file: 'a' }, { id: '0007', file: 'b' }];
+  assert.equal(gTicket(ts, '201').file, 'a');
+  assert.equal(gTicket(ts, '007').file, 'b');
+  assert.equal(gTicket(ts, '99'), undefined);
+});
+
+test('neighbourFile: gt / gT follow the given order and stop at the ends', () => {
+  const order = [{ file: 'a' }, { file: 'b' }, { file: 'c' }];
+  assert.equal(neighbourFile(order, 'a', 1), 'b');
+  assert.equal(neighbourFile(order, 'b', -1), 'a');
+  assert.equal(neighbourFile(order, 'c', 1), null);
+  assert.equal(neighbourFile(order, 'a', -1), null);
+  assert.equal(neighbourFile(order, 'zz', 1), null);
+});
+
+test('jumpTop: gg is the top, G the bottom, others no jump', () => {
+  assert.equal(jumpTop('gg', 500), 0);
+  assert.equal(jumpTop('G', 500), 500);
+  assert.equal(jumpTop('gx', 500), null);
 });
