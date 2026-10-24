@@ -98,7 +98,12 @@ export const HELP = [
     ['gi', 'Open the ticket you edited last, in the editor'],
     ['gs', 'Go to the search box and clear its text (/ keeps it)'],
     ['gn', 'Go to the Notes page (NOTES.md)'],
-    ['ga', 'Open the Claude chat of the selected / open ticket (only with --agents)'],
+    ['gaa', 'Claude chat: open full screen / close (same as a; only with --agents, as all ga keys)'],
+    ['gac', 'Open the Claude chat of the selected / open ticket'],
+    ['gai', 'Implement the selected / open ticket with Claude (queued behind a running refine)'],
+    ['gar', 'Refine the selected / open ticket with Claude'],
+    ['gav', 'Review the selected / open ticket with Claude'],
+    ['gas', 'Worktree slot overview (same as gw)'],
     ['gw', 'Worktree slot overview (only with --agents)'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
@@ -759,8 +764,22 @@ export function initKeys(ctx) {
   window.addEventListener('blur', stopHold);
 
   // ---- global keys
+  let pendingGA = false; // `ga` was just pressed (agents only): the next key picks the agent action
   let gCount = ''; // digits typed after `g` on the ticket page (`g10j`)
   let pendingG = false; // a first `g` was just pressed (`gg` scrolls to the top, `g` + letter is a "go to" key)
+  // Second key after `ga`; true when it was one of ours. Anything else cancels the prefix and is handled as a normal key.
+  function agentKey(key) {
+    const withFile = (fn) => { const f = contextFile(); if (f) fn(f); else ctx.toast('Select or open a ticket first'); return true; };
+    switch (key) {
+      case 'a': ctx.chatHotkey(); return true;
+      case 'c': return withFile((f) => ctx.openTicketChat(f));
+      case 'i': return withFile((f) => ctx.implement(f));
+      case 'r': return withFile((f) => { if (!ctx.isRefining(f)) ctx.refine(f); });
+      case 'v': return withFile((f) => ctx.review(f));
+      case 's': openSlots(); return true;
+      default: return false;
+    }
+  }
   // Second key after `g`; true when it was one of ours. Anything else cancels the prefix and is handled as a normal key.
   function gKey(key) {
     const route = hashRoute();
@@ -794,12 +813,7 @@ export function initKeys(ctx) {
         if (!hid.length) ctx.toast('No hidden columns'); else ctx.selectStrip(hid.find((x) => ctx.hiddenCount(x) > 0) ?? hid[0]);
         return true;
       }
-      case 'a': {
-        if (!agents) return false;
-        const f = contextFile();
-        if (f) ctx.openTicketChat(f); else ctx.toast('Select or open a ticket first');
-        return true;
-      }
+      case 'a': if (!agents) return false; pendingGA = true; return true; // prefix of the agent keys (gaa gac gai gar gav gas)
       case 'w': if (!agents) return false; openSlots(); return true;
       case 's': focusSearch(true); return true;
       case 'x': return needDetail(() => {
@@ -872,7 +886,7 @@ export function initKeys(ctx) {
     }
     if (mod || e.altKey || isTyping(e.target)) return;
     if (e.key === 'Shift') return; // a bare modifier does not break a pending `gg`
-    const gPending = pendingG, gN = gCount; pendingG = false; gCount = '';
+    const gPending = pendingG, gaPending = pendingGA, gN = gCount; pendingG = false; pendingGA = false; gCount = '';
 
     const board = hashRoute() === 'board';
     // Keyboard pick-up (034): while a card is picked up only these keys act, so the board is never half-held.
@@ -893,6 +907,7 @@ export function initKeys(ctx) {
       e.preventDefault(); // j/k/n/i/s...: swallowed until the card is dropped or Esc
       return;
     }
+    if (gaPending && ctx.agents?.() && agentKey(e.key)) { e.preventDefault(); return; }
     if (gPending && hashRoute() === 'detail') { // ticket page: g<n>j / g<n>k scroll n/30 of the viewport, gj / gk a few lines
       if (/^\d$/.test(e.key) && (gN || e.key !== '0')) { pendingG = true; gCount = gN + e.key; e.preventDefault(); return; }
       if (e.key === 'j' || e.key === 'k') {
