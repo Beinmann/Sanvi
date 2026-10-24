@@ -86,8 +86,9 @@ test('planStatusDelete: in use, unused, extra column and the last status', () =>
   assert.match(planStatusDelete(['a'], ts, 'a').error, /last/);
 });
 
-test('jumpTop: g is the top, G the bottom, other keys are no jump', () => {
-  assert.equal(jumpTop('g', 900), 0);
+test('jumpTop: gg is the top, G the bottom, other keys (and a single g) are no jump', () => {
+  assert.equal(jumpTop('gg', 900), 0);
+  assert.equal(jumpTop('g', 900), null);
   assert.equal(jumpTop('G', 900), 900);
   assert.equal(jumpTop('j', 900), null);
 });
