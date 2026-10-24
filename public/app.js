@@ -887,18 +887,28 @@ async function paintReviews() {
   } catch { box.replaceChildren(); const rb = $('#review-report-btn'); if (rb) rb.hidden = true; }
 }
 
-// Opens a report and scrolls its start to the top. The page keeps growing after the click (the report loads, images
-// arrive), so the position is re-applied while the layout changes, until the user scrolls themselves or ~2 s pass.
+// Opens a report and scrolls its start to the top: a short eased scroll (~250 ms, instant with prefers-reduced-motion)
+// that re-reads the target every frame. The page keeps growing after the click (the report loads, images arrive), so
+// the position is then re-applied while the layout changes, until the user scrolls themselves or ~2 s pass.
 function showReport(det) {
   det.open = true;
   const align = () => det.scrollIntoView({ block: 'start' });
-  align();
-  const ro = new ResizeObserver(align);
-  const stop = () => { ro.disconnect(); clearTimeout(timer); for (const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) removeEventListener(ev, stop, true); };
+  const DUR = 250, ease = (t) => 1 - (1 - t) ** 3;
+  let animating = !matchMedia('(prefers-reduced-motion: reduce)').matches, raf = 0, t0 = 0, prev = 0;
+  const step = (now) => {
+    t0 ||= now;
+    const t = Math.min(1, (now - t0) / DUR);
+    const gap = det.getBoundingClientRect().top - (parseFloat(getComputedStyle(det).scrollMarginTop) || 0);
+    scrollBy(0, gap * ((ease(t) - prev) / (1 - prev)));
+    prev = ease(t);
+    if (t < 1) raf = requestAnimationFrame(step); else { animating = false; align(); }
+  };
+  const ro = new ResizeObserver(() => { if (!animating) align(); });
+  const stop = () => { animating = false; cancelAnimationFrame(raf); ro.disconnect(); clearTimeout(timer); for (const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) removeEventListener(ev, stop, true); };
   const timer = setTimeout(stop, 2000);
   for (const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) addEventListener(ev, stop, { capture: true, passive: true });
   ro.observe(document.body);
-  requestAnimationFrame(align);
+  if (animating) raf = requestAnimationFrame(step); else { align(); requestAnimationFrame(align); }
 }
 
 // Like the "Review report" button, for a freshly opened ticket: waits for the report list, then shows the first one.
