@@ -30,6 +30,15 @@ export function listReviews(ticketsDir, id) {
     .map((name) => ({ name, created: fs.statSync(path.join(reviewsDir(ticketsDir), name)).mtime.toISOString() }));
 }
 
+// Number of reports per ticket id, from one directory read: Map id -> count.
+export function countReviews(ticketsDir) {
+  const counts = new Map();
+  let names = [];
+  try { names = fs.readdirSync(reviewsDir(ticketsDir)); } catch { return counts; }
+  for (const n of names) { const id = NAME.exec(n)?.[1]; if (id) counts.set(id, (counts.get(id) || 0) + 1); }
+  return counts;
+}
+
 export function readReview(ticketsDir, name) {
   if (!NAME.test(name)) throw new ValidationError('invalid report name');
   try { return { name, text: fs.readFileSync(path.join(reviewsDir(ticketsDir), name), 'utf8') }; } catch { throw new NotFoundError(`no such report: ${name}`); }

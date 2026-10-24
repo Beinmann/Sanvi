@@ -21,7 +21,7 @@ import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mer
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
-import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, readReview, checkReview } from './review.js';
+import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, countReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
@@ -450,7 +450,11 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       changelog.log({ ticket: item.id, action: 'delete', before: version });
       return send(res, 200, item);
     }
-    if (parts.length === 1 && method === 'GET') return send(res, 200, url.searchParams.get('bodies') === '1' ? listTickets(dir) : listTickets(dir).map(summary));
+    if (parts.length === 1 && method === 'GET') {
+      const counts = countReviews(dir); // `reviews`: number of review reports, for the badge on the cards
+      const list = listTickets(dir).map((t) => ({ ...t, reviews: counts.get(String(t.id)) || 0 }));
+      return send(res, 200, url.searchParams.get('bodies') === '1' ? list : list.map(summary));
+    }
     if (parts.length === 1 && method === 'POST') {
       const { title, area, project, status, priority } = await readJson(req);
       const t = createTicket(dir, { title, area, project, status, priority });

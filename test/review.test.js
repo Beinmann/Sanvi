@@ -51,6 +51,7 @@ test('review endpoint starts a review chat; reports are listed and served read-o
   const j = (m, p, b) => fetch(`http://127.0.0.1:${port}${p}`, { method: m, headers: { 'content-type': 'application/json' }, body: m === 'GET' ? undefined : JSON.stringify(b ?? {}) });
   try {
     assert.deepEqual(await (await j('GET', '/api/reviews?id=001')).json(), []);
+    assert.equal((await (await j('GET', '/api/tickets')).json()).find((t) => t.id === '001').reviews, 0);
     const r = await j('POST', '/api/agent/review', { file: '001-a.md' });
     assert.equal(r.status, 201);
     assert.equal((await r.json()).kind, 'review');
@@ -59,6 +60,7 @@ test('review endpoint starts a review chat; reports are listed and served read-o
     assert.equal((await j('POST', '/api/agent/review', { file: 'nope.md' })).status, 404);
     fs.writeFileSync(path.join(dir, '..', '.sanvi', 'reviews', '001-20260101-000000.md'), '# done');
     const list = await (await j('GET', '/api/reviews?id=001')).json();
+    assert.equal((await (await j('GET', '/api/tickets')).json()).find((t) => t.id === '001').reviews, 1);
     assert.equal(list.length, 1);
     assert.equal((await (await j('GET', `/api/reviews/${list[0].name}`)).json()).text, '# done');
     assert.equal((await j('GET', '/api/reviews/..%2Fx.md')).status, 400);

@@ -155,6 +155,11 @@ function card(t, inText = false) {
     agentOn && chatPage.implementQueued(t.file) && el('span', { class: 'chip queued', title: 'Implementation starts when the refine run has finished' }, 'implementation queued'),
     agentOn && chatPage.implementing(t.file) && el('span', { class: 'chip refining', title: 'Claude is implementing this ticket' }, 'implementing…'),
     agentOn && chatPage.reviewing(t.file) && el('span', { class: 'chip refining', title: 'Claude is reviewing this ticket' }, 'reviewing…'),
+    t.reviews > 0 && el('button', {
+      type: 'button', class: 'chip report', 'aria-label': 'Open the review report',
+      title: `${t.reviews === 1 ? 'A review report exists' : `${t.reviews} review reports exist`} for this ticket; click to open the ticket at the report`,
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); pendingReport = true; if (location.hash === `#/t/${encodeURIComponent(t.file)}`) route(); else location.hash = `#/t/${encodeURIComponent(t.file)}`; },
+    }, t.reviews > 1 ? `📋 ${t.reviews}` : '📋'),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
 }
 
@@ -895,6 +900,13 @@ function showReport(det) {
   requestAnimationFrame(align);
 }
 
+// Like the "Review report" button, for a freshly opened ticket: waits for the report list, then shows the first one.
+async function openFirstReport() {
+  await paintReviews();
+  const det = $('#reviews details.review');
+  if (det) showReport(det);
+}
+
 async function openTicket(file, tab = 'view') {
   try {
     const t = await api('GET', `tickets/${encodeURIComponent(file)}`);
@@ -1029,6 +1041,7 @@ function paintNotes() {
 // --------------------------------------------------------------- routing
 
 let pendingTab = null;
+let pendingReport = false; // set by the report badge on a card: scroll to the report once the ticket is open
 let currentHash = '';
 let ignoreHash = false;
 
@@ -1037,7 +1050,10 @@ async function route() {
   if (h.startsWith('#/t/')) {
     const tab = pendingTab || 'view';
     pendingTab = null;
+    const toReport = pendingReport;
+    pendingReport = false;
     await openTicket(decodeURIComponent(h.slice(4)), tab);
+    if (toReport) await openFirstReport();
   } else {
     D = null;
     peek = null;
@@ -1187,7 +1203,7 @@ api('GET', 'agent').then((a) => {
     const key = S.tickets.filter((t) => chatPage.refining(t.file) || chatPage.implementing(t.file) || chatPage.implementQueued(t.file) || chatPage.reviewing(t.file)).map((t) => `${t.file}:${+chatPage.refining(t.file)}${+chatPage.implementing(t.file)}${+chatPage.implementQueued(t.file)}${+chatPage.reviewing(t.file)}`).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');
     if (key === lastKey) return;
     lastKey = key;
-    if (document.querySelector('.board, .tablewrap')) renderBoard();
+    if (document.querySelector('.board, .tablewrap')) refreshAll(); // also picks up the report count of a finished review
     else if (D && !isDirty()) renderDetail();
   });
 }).catch(() => {});

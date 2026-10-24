@@ -256,6 +256,8 @@ body.has-selection .selhint { display: none; }
 .muted { color: var(--muted); }
 .chip.needs { background: var(--danger-bg); color: var(--danger); }
 .chip.refining { background: var(--accent-soft); color: var(--accent); }
+.chip.report { background: #dbeafe; color: #1e40af; border: 0; font: inherit; cursor: pointer; }
+@media (prefers-color-scheme: dark) { .chip.report { background: #1e3a5f; color: #bfdbfe; } }
 .chip.queued { background: transparent; color: var(--accent); border: 1px dashed var(--accent); }
 .project { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); padding: 8px 14px 12px; margin: 12px 0; } .project.warn { border-color: var(--warn); } .project h2 { margin: 4px 0; font-size: 16px; } .project label { display: grid; gap: 4px; margin: 8px 0; font-size: 13px; color: var(--muted); } .project input, .project textarea { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--bg); width: 100%; }
 .dirrow { display: grid; grid-template-columns: auto 1fr; gap: 6px; align-items: center; font-size: 12px; } .dirrow input { padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--r); background: var(--bg); min-width: 0; }
