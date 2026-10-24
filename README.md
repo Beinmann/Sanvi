@@ -224,6 +224,12 @@ under `$TK_STATE_DIR`, else `$XDG_STATE_HOME/sanvi`, else
 must span all projects). An entry is only trusted if its PID is alive and (on
 Linux) is a `tk.js` process.
 
+Only one server may serve a tickets dir: it holds `.sanvi/server.lock`
+(`{ pid, port }`). A second `serve`/`start` there fails naming the running
+pid and port. A lock left by a crashed process is detected (pid gone) and
+replaced automatically; for a false positive delete the file or pass
+`--force`.
+
 Everything else lives in the project's `<tickets dir>/../.sanvi/`: `layout.json`,
 `changes.log`, `chats.json` (chat history, incl. costs) and `server.log`
 (background `tk start` output). Chats and logs from the old per-user location

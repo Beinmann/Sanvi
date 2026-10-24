@@ -32,6 +32,43 @@ function projectFile(dir, name, oldRel) {
 export const chatsPath = (dir) => projectFile(dir, 'chats.json', (k) => path.join('chats', `${k}.json`));
 export const logPath = (dir) => projectFile(dir, 'server.log', (k) => path.join('logs', `${k}.log`));
 
+// One server per tickets dir: `.sanvi/server.lock` holds `{ pid, port }`. A lock whose process is gone is
+// stale (crash) and replaced; a live one makes `acquireLock` throw an Error with `.lock` set unless `force`.
+export const lockPath = (dir) => path.join(dataDir(dir), 'server.lock');
+
+export function acquireLock(dir, { force = false } = {}) {
+  const file = lockPath(dir);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  for (let tries = 0; tries < 3; tries++) {
+    try {
+      fs.writeFileSync(file, JSON.stringify({ pid: process.pid }), { flag: 'wx' });
+      return file;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+    }
+    let cur = null;
+    try { cur = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* unreadable: stale */ }
+    if (!force && cur && Number.isInteger(cur.pid) && cur.pid !== process.pid && isTkProcess(cur.pid)) {
+      const err = new Error(`another Sanvi instance is already serving this dir (pid ${cur.pid}${cur.port ? `, port ${cur.port}` : ''}). Stop it with \`tk stop\`, or if that is wrong (e.g. the pid was reused), delete ${file} or start with --force.`);
+      err.lock = cur;
+      throw err;
+    }
+    try { fs.unlinkSync(file); } catch { /* raced with another cleanup */ }
+  }
+  throw new Error(`could not take the lock ${file}; delete it or start with --force`);
+}
+
+export function updateLock(dir, info) {
+  try { fs.writeFileSync(lockPath(dir), JSON.stringify({ pid: process.pid, ...info })); } catch { /* best effort */ }
+}
+
+export function releaseLock(dir) {
+  const file = lockPath(dir);
+  try {
+    if (JSON.parse(fs.readFileSync(file, 'utf8')).pid === process.pid) fs.unlinkSync(file);
+  } catch { /* gone or not ours */ }
+}
+
 export function isTkProcess(pid) {
   try { process.kill(pid, 0); } catch (e) { if (e.code !== 'EPERM') return false; }
   try {

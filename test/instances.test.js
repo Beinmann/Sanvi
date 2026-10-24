@@ -81,3 +81,35 @@ test('chatsPath and logPath live in the project .sanvi dir; old per-user files a
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('server lock: live holder refuses, stale lock is replaced, --force overrides, release removes', async () => {
+  const { spawn, spawnSync } = await import('node:child_process');
+  const { root, mk, tk } = setup();
+  const d = mk('lock');
+  const lock = path.join(root, 'lock', '.sanvi', 'server.lock');
+  const { acquireLock, releaseLock } = await import('../src/instances.js');
+  // a live process whose command line contains tk.js stands in for another instance
+  const holder = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 20000)', 'tk.js'], { stdio: 'ignore' });
+  try {
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, JSON.stringify({ pid: holder.pid, port: 4999 }));
+    assert.throws(() => acquireLock(d), (e) => /pid \d+, port 4999/.test(e.message) && e.message.includes('server.lock') && e.message.includes('--force'));
+    const r = spawnSync(process.execPath, [TK, '--dir', d, 'serve', '--port', '0'], { encoding: 'utf8', env: { ...process.env, TK_STATE_DIR: path.join(root, 'state') } });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr + r.stdout, /already serving/);
+    // dead holder: stale, replaced
+    fs.writeFileSync(lock, JSON.stringify({ pid: 2147483646, port: 1 }));
+    acquireLock(d);
+    assert.equal(JSON.parse(fs.readFileSync(lock, 'utf8')).pid, process.pid);
+    releaseLock(d);
+    assert.ok(!fs.existsSync(lock));
+    // force over a live holder
+    fs.writeFileSync(lock, JSON.stringify({ pid: holder.pid }));
+    acquireLock(d, { force: true });
+    releaseLock(d);
+  } finally {
+    holder.kill();
+    tk('stop', '--all');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
