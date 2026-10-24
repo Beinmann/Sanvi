@@ -427,6 +427,7 @@ function renderBoard() {
   if (pick && !S.tickets.some((t) => t.file === pick.file)) { pick = null; document.body.classList.remove('moving'); } // the ticket is gone
   const hadFocus = document.activeElement?.id === 'search';
   const caret = hadFocus ? document.activeElement.selectionStart : 0;
+  const caretEnd = hadFocus ? document.activeElement.selectionEnd : 0; // a selected text (gs) stays selected
   const a0 = document.activeElement;
   const focusFree = !a0 || a0 === document.body || !!a0.closest?.('.card'); // not typing in a field, overlay or list
   if (pendingFocus) selected = pendingFocus;
@@ -452,7 +453,7 @@ function renderBoard() {
   if (Q.view === 'table') {
     show(view, filterBar(), tableView());
     restore();
-    if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
+    if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caretEnd); }
     return;
   }
   let num = 0;
@@ -480,7 +481,7 @@ function renderBoard() {
   }), el('div', { class: 'addcol' }, el('button', { type: 'button', title: 'Add a status column', onclick: () => document.dispatchEvent(new Event('add-status')) }, '+ Status'))]));
   restore();
   if (peekFile) view.querySelector(`.peekpop a[data-file="${CSS.escape(peekFile)}"]`)?.focus({ preventScroll: true });
-  if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caret); }
+  if (hadFocus) { const i = $('#search'); i.focus({ preventScroll: true }); i.setSelectionRange(caret, caretEnd); }
   const focusEl = target && [...view.querySelectorAll('.card')].find((c) => c.dataset.file === target);
   if (Date.now() < revealUntil) revealSelected();
   if (focusEl && focusFree && !peekFile) { focusEl.focus({ preventScroll: true }); } // never scroll here: a move or live refresh keeps the view; j/k/h/l scroll themselves
