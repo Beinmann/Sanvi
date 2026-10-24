@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { newReportPath, listReviews, readReview, reviewPrompt, reviewRunOpts } from '../src/review.js';
+import { newReportPath, listReviews, readReview, reviewPrompt, reviewRunOpts, reviewStartedMessage } from '../src/review.js';
 import { createTicketServer } from '../src/server.js';
+import { execFileSync } from 'node:child_process';
+
+const TK = path.resolve(import.meta.dirname, '../bin/tk.js');
 
 const setup = () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-review-'));
@@ -66,4 +69,32 @@ test('review endpoint starts a review chat; reports are listed and served read-o
     const r = await fetch(`http://127.0.0.1:${p2}/api/agent/review`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"file":"001-a.md"}' });
     assert.equal(r.status, 403);
   } finally { await off.close(); }
+});
+
+test('review run: report writable as Write and Edit, git is read-only in fact', () => {
+  const o = reviewRunOpts({ ticketsDir: '/t', report: '/r/001-x.md' });
+  assert.ok(o.allowedTools.includes('Edit(//r/001-x.md)'));
+  assert.ok(!o.allowedTools.some((r) => /^Bash\(git branch:/.test(r)), 'no prefix rule that allows branch -D or creating branches');
+  assert.ok(o.allowedTools.includes('Bash(git branch --list:*)'));
+  assert.ok(o.disallowedTools.includes('Bash(git * --output*)'));
+  assert.ok(!o.allowedTools.some((r) => /^Bash\((?!git (status|diff|log|show|branch))/.test(r)), 'only read-only git commands');
+});
+
+test('review started message names the real report, else the pattern', () => {
+  const m = reviewStartedMessage({ id: '001', title: 'T', report: '001-20260101-000000.md' }, '/x/tickets', 'http://h');
+  assert.match(m, /review of #001 started: T/);
+  assert.match(m, /reviews\/001-20260101-000000\.md/);
+  assert.match(reviewStartedMessage({ id: '001', title: 'T' }, '/x/tickets', 'http://h'), /reviews\/001-\*\.md/);
+});
+
+test('tk review says what is missing: no instance, or agents off', () => {
+  const dir = setup();
+  const env = { ...process.env, TK_STATE_DIR: path.join(path.dirname(dir), 'state') };
+  const tk = (...a) => { try { return execFileSync(process.execPath, [TK, '--dir', dir, ...a], { env, encoding: 'utf8', stdio: 'pipe' }); } catch (e) { return `${e.stdout}${e.stderr}`; } };
+  try {
+    assert.match(tk('review', '001'), /no running instance.*--agents/);
+    tk('start', '--port', '0');
+    assert.match(tk('review', '001'), /agent features off.*--agents/);
+    assert.match(tk('review'), /usage: tk review/);
+  } finally { tk('stop'); }
 });

@@ -71,7 +71,7 @@ export function createChats({ cwd, file, check, sessionReuse = sessionReuseFromE
     if (!c) throw new NotFoundError(`no such chat: ${id}`);
     return c;
   };
-  const view = (c) => ({ id: c.id, title: c.title, kind: c.kind || 'chat', outcome: c.outcome || null, warning: c.warning || null, cwd: c.cwd, state: c.state, error: c.error, costUsd: c.costUsd, messages: c.messages, created: c.created });
+  const view = (c) => ({ id: c.id, title: c.title, kind: c.kind || 'chat', outcome: c.outcome || null, warning: c.warning || null, cwd: c.cwd, state: c.state, error: c.error, costUsd: c.costUsd, messages: c.messages, created: c.created, report: c.meta?.report || null });
 
   // `dir` is explicit; otherwise the project's directory (from its project object); otherwise the default.
   // The project's instructions go to the agent with the first message.

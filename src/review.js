@@ -53,7 +53,22 @@ export function reviewRunOpts({ ticketsDir, report }) {
   return {
     permissionMode: 'default',
     tools: ['Read', 'Grep', 'Glob', 'Write', 'Bash'],
-    allowedTools: ['Read', 'Grep', 'Glob', `Write(/${report})`, 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git branch:*)'],
+    // The report is allowed as Write and as Edit: Claude Code matches file rules under the Edit name, and a Write-only rule was denied in a real run.
+    // `git branch` is listing only (no -D / creating); `--output=<file>` (diff, log, show) would write files, so it is denied for every git command.
+    allowedTools: ['Read', 'Grep', 'Glob', `Write(/${report})`, `Edit(/${report})`, 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)',
+      'Bash(git branch --list:*)', 'Bash(git branch --show-current)', 'Bash(git branch -a)', 'Bash(git branch -r)', 'Bash(git branch -v)', 'Bash(git branch -vv)'],
+    disallowedTools: ['Bash(git * --output*)', 'Bash(git diff --output:*)'],
     addDirs: [ticketsDir, path.dirname(report)],
   };
+}
+
+// After a review run: the report file must exist and have content, otherwise the run did not deliver (e.g. the Write was denied).
+export function checkReview(ticketsDir, report) {
+  try { if (fs.statSync(path.join(reviewsDir(ticketsDir), report)).size > 0) return { outcome: 'ok' }; } catch { /* missing */ }
+  return { outcome: 'problems', warning: `no report was written (${report}); the findings are only in this chat` };
+}
+
+// What `tk review` prints once the review has started; `meta.report` is the real report name, else a pattern.
+export function reviewStartedMessage({ id, title, report }, ticketsDir, url) {
+  return `review of #${id} started: ${title}\nreport: ${path.join(reviewsDir(ticketsDir), report || `${id}-*.md`)}\nfollow it at ${url}`;
 }
