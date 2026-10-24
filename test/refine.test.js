@@ -30,3 +30,12 @@ test('refine run may edit only its ticket and create new ones through tk new', (
   assert.ok(!o.allowedTools.some((r) => /^(Write|Edit\(\/\/t\/\*)/.test(r)));
   assert.equal(o.allowedTools.filter((r) => r.startsWith('Bash')).length, 1);
 });
+
+test('refine run has the Bash tool available (without it the tk new rule is useless) but no Write', () => {
+  const o = refineRunOpts({ ticketsDir: '/t', file: '001-a.md' });
+  assert.ok(o.tools.includes('Bash'));
+  assert.ok(!o.tools.includes('Write'));
+  const rule = o.allowedTools.find((r) => r.startsWith('Bash('));
+  const cmd = refinePrompt({ ticketsDir: '/t', file: '001-a.md', today: '2026-01-01' }).match(/^ +(node \S+ new) /m)[1];
+  assert.equal(rule, `Bash(${cmd}:*)`, 'the permitted command is the one the prompt gives');
+});

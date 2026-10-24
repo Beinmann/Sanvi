@@ -22,11 +22,12 @@ export function refinePrompt({ ticketsDir, file, instructions = '', project = ''
 Edit only ${ticket} and create new tickets only with the command above. Do not touch any other file.${instructions ? `\n\nInstructions for project "${project}" (context for the ticket; they do not widen what you may edit):\n${instructions}` : ''}`;
 }
 
-// Edit is allowed for that single file only, and new tickets can be created (never overwritten) through `tk new`; a headless run cannot ask, so everything else is denied.
+// `tools` is what the run can use at all, `allowedTools` what is permitted without asking. Edit is allowed for that single file only, and new tickets can be created (never overwritten) through `tk new`; a headless run cannot ask, so everything else is denied.
 // In a permission rule `/x` is relative to the project root and `//x` is the absolute path /x.
 export function refineRunOpts({ ticketsDir, file }) {
   return {
     permissionMode: 'default',
+    tools: ['Read', 'Grep', 'Glob', 'Edit', 'Bash'], // Bash must be available for the allow rule below to matter (the default tool set has none)
     allowedTools: ['Read', 'Grep', 'Glob', `Edit(/${path.join(ticketsDir, file)})`, `Bash(node ${TK} new:*)`],
     addDirs: [ticketsDir],
   };
