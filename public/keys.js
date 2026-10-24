@@ -136,7 +136,7 @@ export const HELP = [
     ['j / k', 'Select next / previous card in the column (with nothing selected: the last selected card, else the first)'],
     ['h / l', 'Previous / next column'],
     ['g1 - g9', 'Select the first card of column n (numbered as the column badges; a hidden column selects its strip entry); acts after a pause of about 0.7 s'],
-    ['g<number>', 'Two or more digits, then a pause of about 0.7 s: select the card of that ticket (g201, g0201); more digits restart the pause, any other key cancels'],
+    ['g<number>', 'Two or more digits, then a pause of about 0.7 s: select the card of that ticket (g201, g0201); in a hidden column its peek list opens with the ticket focused; more digits restart the pause, any other key cancels'],
     ['gh', 'Select the "Hidden: ..." strip'],
     ['Enter', 'Open the selected ticket'],
     ['Space / Ctrl+Space', 'Pick up the selected (or hovered, if none) card; h / l choose among shown columns, j / k switch to the hidden ones and back, Space or Enter drops, Esc cancels'],
@@ -820,7 +820,7 @@ export function initKeys(ctx) {
     if (digits.length === 1) { gKey(digits); return; }
     const t = gTicket(S.tickets, digits);
     if (!t) { ctx.toast(`No ticket ${digits}`); return; }
-    if (ctx.isHidden(t.status)) { ctx.selectStrip(t.status); ctx.toast(`#${t.id} is in a hidden column`); return; }
+    if (ctx.isHidden(t.status)) { ctx.selectStrip(t.status); ctx.peekOpen(t.status, t.file); return; }
     ctx.select(t.file); scrollToCard(t.file);
   }
   // Second key after `g`; true when it was one of ours. Anything else cancels the prefix and is handled as a normal key.

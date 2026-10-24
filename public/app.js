@@ -644,8 +644,11 @@ function togglePeek(status) {
   if (peek) view.querySelector('.peekpop a')?.focus({ preventScroll: true });
 }
 // Enter on a selected strip entry: open (or re-enter) its list. h/l inside the list switch status.
-function peekOpen(status) {
-  if (peek !== status) togglePeek(status); else view.querySelector('.peekpop a')?.focus({ preventScroll: true });
+// `file` focuses that ticket's entry instead of the first one.
+function peekOpen(status, file) {
+  if (peek !== status) togglePeek(status);
+  const items = [...view.querySelectorAll('.peekpop a')];
+  (items.find((a) => a.dataset.file === file) ?? items[0])?.focus({ preventScroll: true });
 }
 function peekStep(dir) {
   const list = columns().filter((c) => hidden.has(c));
