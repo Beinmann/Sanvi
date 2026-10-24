@@ -393,11 +393,12 @@ function filterBar() {
   const input = el('input', {
     id: 'search', type: 'search', value: Q.text, placeholder: 'Search… e.g. migrate -area:research status:open,blocked',
     oninput: (e) => setFilter(e.target.value),
-    onkeydown: (e) => { // Enter on an id query (#33, 033, 33) opens that ticket, hidden column or not
+    onkeydown: (e) => { // Enter on an id query (#33, 033, 33) opens that ticket, hidden column or not; any other Enter leaves the box
       if (e.key !== 'Enter' || e.isComposing) return;
       const n = idQuery(Q.parsed);
       const hits = n === null ? [] : S.tickets.filter((t) => Number(t.id) === n);
       if (hits.length === 1) { e.preventDefault(); location.hash = `#/t/${encodeURIComponent(hits[0].file)}`; }
+      else { e.preventDefault(); e.target.blur(); } // the filter is live, so Enter just hands the keys back to the board
     },
   });
   const tab = (v, label) => el('button', { type: 'button', class: Q.view === v ? 'active' : '', 'aria-pressed': String(Q.view === v), onclick: () => setView(v) }, label);

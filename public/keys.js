@@ -114,7 +114,7 @@ export const HELP = [
     ['a', 'Claude chat (only with --agents): open full screen without focus; again: close'],
     ['h / l', 'With the chat open (outside fields): previous / next chat; the chat\'s j/k/g/G/i keys also work and win over the page keys'],
     ['+', 'Claude chat: open if needed and focus the message input'],
-    ['/', 'Go to the search box (from any view; goes to the board first)'],
+    ['/', 'Go to the search box (from any view; goes to the board first); Enter or Esc there leaves it again (Enter on an id like #12 opens that ticket)'],
     ['Ctrl+/ or Ctrl+E', 'Same, also while typing; an unsaved edit asks before it is left'],
     ['Esc', 'Close overlay, leave a field, go back to the board, then clear the card selection'],
   ]],
