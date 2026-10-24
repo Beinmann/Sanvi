@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matches, step, navigate, isTyping, jumpTop, canMarkDone } from '../public/keys.js';
+import { matches, step, navigate, isTyping, jumpTop, canMarkDone, neighbourAfterLeave } from '../public/keys.js';
 
 test('matches: all tokens, case-insensitive, # ignored', () => {
   assert.ok(matches('#005 Keyboard-first workflow', '005 key'));
@@ -96,4 +96,13 @@ test('canMarkDone: needs a done column and a ticket not yet done', () => {
   assert.ok(canMarkDone(['open', 'testing', 'done'], 'testing'));
   assert.ok(!canMarkDone(['open', 'testing', 'done'], 'done'));
   assert.ok(!canMarkDone(['open', 'closed'], 'open'));
+});
+
+test('neighbourAfterLeave: the card below, else above, else nothing', () => {
+  const cols = [['a', 'b', 'c'], ['d'], []];
+  assert.equal(neighbourAfterLeave(cols, 'a'), 'b');
+  assert.equal(neighbourAfterLeave(cols, 'b'), 'c');
+  assert.equal(neighbourAfterLeave(cols, 'c'), 'b');
+  assert.equal(neighbourAfterLeave(cols, 'd'), null);
+  assert.equal(neighbourAfterLeave(cols, 'zzz'), null);
 });

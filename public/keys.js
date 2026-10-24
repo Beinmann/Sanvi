@@ -70,6 +70,14 @@ export function step(cols, pos, dir) {
   return { col: target, row: Math.min(row, cols[target].length - 1) };
 }
 
+/** The card to select once `file` leaves its column: the one below it, else the one above, else null. */
+export function neighbourAfterLeave(cols, file) {
+  const col = cols.find((c) => c.includes(file));
+  if (!col) return null;
+  const i = col.indexOf(file);
+  return col[i + 1] ?? col[i - 1] ?? null;
+}
+
 /** "Mark as done" is offered only if the project has a `done` status and the ticket isn't there yet. */
 export const canMarkDone = (columns, status) => columns.includes('done') && status !== 'done';
 
@@ -446,8 +454,15 @@ export function initKeys(ctx) {
     };
   }
 
+  // The selected card leaves its column, so the selection moves on to its neighbour (below, else above) once the board is redrawn.
+  async function markDone(t) {
+    if (ctx.detail()?.file === t.file) return ctx.setDraftStatus('done');
+    const next = selectedFile() === t.file ? neighbourAfterLeave(boardCols().map((c) => [...c].map((x) => x.dataset.file)), t.file) : null;
+    await ctx.moveTicket(t.file, 'done');
+    if (next && [t.file, null].includes(selectedFile()) && S.tickets.some((x) => x.file === next)) { ctx.select(next); scrollToCard(next); }
+  }
   const doneRows = (t) => (canMarkDone(ctx.columns(), fieldOf(t, 'status'))
-    ? [{ label: 'Mark as done', hint: 'status', cmd: true, run: () => (ctx.detail()?.file === t.file ? ctx.setDraftStatus('done') : ctx.moveTicket(t.file, 'done')) }] : []);
+    ? [{ label: 'Mark as done', hint: 'status', cmd: true, run: () => markDone(t) }] : []);
 
   function ticketLevel(t) {
     const hint = (f) => fieldOf(t, f) || '(none)';
