@@ -291,8 +291,12 @@ export function initKeys(ctx) {
     const box = el('div', { class: 'dialog help ghelp', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'g hotkeys', tabindex: '-1' },
       el('h2', {}, 'g hotkeys'),
       groups.map(([group, rows]) => el('section', {}, el('h3', {}, group),
-        el('dl', {}, rows.map(([k, d]) => [el('dt', {}, el('kbd', {}, k)), el('dd', {}, d)])))),
-      el('div', { class: 'buttons' }, el('button', { type: 'button', onclick: () => { closeOverlay(); openHelp(); } }, 'All shortcuts')));
+        el('dl', {}, rows.flatMap(([k, d], i) => {
+          const sub = /^ga\w$/.test(k); // gaa..gas hang under a `ga` prefix row, only in this popup
+          const row = [el('dt', { class: sub ? 'sub' : '' }, el('kbd', {}, k)), el('dd', { class: sub ? 'sub' : '' }, d)];
+          return sub && !/^ga\w$/.test(rows[i - 1]?.[0] ?? '') ? [el('dt', {}, el('kbd', {}, 'ga')), el('dd', {}, 'Claude chat and agent keys (only with --agents)'), ...row] : row;
+        })))),
+      el('div', { class: 'buttons' }, el('button', { type: 'button', class: 'allkeys', onclick: () => { closeOverlay(); openHelp(); } }, '⌨️ All shortcuts')));
     openOverlay(box);
   }
 
