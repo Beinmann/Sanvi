@@ -275,6 +275,19 @@ body.has-selection .selhint { display: none; }
 #reviews details { border: 1px solid var(--border, #8884); border-radius: var(--r); padding: 6px 12px; margin-bottom: 8px; }
 #reviews summary { cursor: pointer; }
 
-.slots .slot-list { list-style: none; margin: 4px 0 10px; padding: 0; }
-.slots .slot-list li { padding: 3px 0; }
-.slots .slot-list li.free { color: var(--muted, #888); }
+.slots section { margin: 14px 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.slots h2 { margin-bottom: 4px; }
+.slots h3 { margin: 0 0 8px; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.slots .hint { margin: 12px 0; }
+.slots .buttons { margin-top: 16px; }
+.slots .slot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.slots .slot { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 8px 12px; background: var(--panel2); border: 1px solid var(--border); border-left: 3px solid var(--slot-c); border-radius: var(--r); --slot-c: var(--ok); }
+.slots .slot.busy { --slot-c: var(--accent); }
+.slots .slot.stale { --slot-c: var(--warn); }
+.slots .slot.failed { --slot-c: var(--danger); }
+.slots .slot .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--slot-c); flex: none; }
+.slots .slot.free .slot-name { color: var(--muted); font-weight: 500; }
+.slots .slot-state { margin-left: auto; font-size: 11px; color: var(--slot-c); }
+.slots .slot-detail { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding-left: 18px; }
+.slots .slot-branch { font-family: ui-monospace, monospace; word-break: break-all; }
+.slots .slot-detail small { color: var(--muted); font-size: 12px; }

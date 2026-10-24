@@ -534,12 +534,23 @@ export function initKeys(ctx) {
     let data;
     try { data = await ctx.slots(); } catch (e) { ctx.toast(`Slots: ${e.message}`); return; }
     const chatText = { running: 'chat running', failed: 'chat failed', finished: 'finished, not merged', gone: 'chat gone' };
+    // Free: green; busy with a live chat: accent; failed / gone / finished-but-held: stale (warn or danger).
+    const slotState = (o) => !o.busy ? ['free', 'free'] : o.chat === 'running' ? ['busy', 'busy'] : o.chat === 'failed' ? ['failed', 'failed'] : ['stale', 'stale'];
+    const slotRow = (o) => {
+      const [cls, label] = slotState(o);
+      return el('li', { class: `slot ${cls}` },
+        el('span', { class: 'dot', 'aria-hidden': 'true' }),
+        el('strong', { class: 'slot-name' }, o.name),
+        el('span', { class: `chip slot-state ${cls}` }, label),
+        o.busy ? el('div', { class: 'slot-detail' },
+          el('span', { class: 'slot-branch' }, o.branch),
+          el('small', { title: new Date(o.taken).toLocaleString() }, `${formatAge(o.ageMs)} ago`),
+          el('small', {}, chatText[o.chat] || o.chat)) : null);
+    };
     const box = el('div', { class: 'dialog slots', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Worktree slots', tabindex: '-1' },
       el('h2', {}, `Worktree slots (${data.poolSize} per repository)`),
       data.repos.length ? data.repos.map((r) => el('section', {}, el('h3', {}, r.name),
-        el('ul', { class: 'slot-list' }, r.slots.map((o) => el('li', { class: o.busy ? 'busy' : 'free' },
-          el('strong', {}, o.name), ' ',
-          o.busy ? el('span', {}, `busy: ${o.branch}, taken ${new Date(o.taken).toLocaleString()} (${formatAge(o.ageMs)} ago), ${chatText[o.chat]}`) : el('span', {}, 'free')))))) : el('p', { class: 'hint' }, 'No project has a repository directory yet.'),
+        el('ul', { class: 'slot-list' }, r.slots.map(slotRow)))) : el('p', { class: 'hint' }, 'No project has a repository directory yet.'),
       el('p', { class: 'hint' }, 'A slot held for over 24 h by a run that is not active is freed automatically when the next slot is taken.'),
       el('div', { class: 'buttons' },
         el('button', { type: 'button', onclick: () => { closeOverlay(); openPalette('slots'); } }, 'Change slot count…'),
