@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { versionLine } from '../src/about.js';
+import { reviewStartedMessage } from '../src/review.js';
 import {
   register, unregister, acquireLock, updateLock, releaseLock, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
@@ -147,7 +148,7 @@ async function main() {
       const r = await call('POST', 'agent/review', { file: t.file });
       const data = await r.json();
       if (!r.ok) throw new ValidationError(data.error || `review failed (${r.status})`);
-      out(data, `review of #${t.id} started: ${data.title}\nreport: ${path.join(path.dirname(dir), '.sanvi', 'reviews', data.meta?.report || `${t.id}-*.md`)}\nfollow it at ${inst.url}`);
+      out(data, reviewStartedMessage({ id: t.id, title: data.title, report: data.report }, dir, inst.url));
       break;
     }
     case 'rm': {

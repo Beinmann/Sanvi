@@ -219,6 +219,22 @@ async function refineSetup(files) {
   return { dir, f, app, j, port, list: async () => (await fetch(`http://127.0.0.1:${port}/api/agent/chats`)).json() };
 }
 
+test('review outcome: a finished run without a report file is a problem, with one it is ok', async () => {
+  const s = await refineSetup([['001-a.md', 'testing'], ['002-b.md', 'testing']]);
+  try {
+    const a = await (await s.j('POST', '/api/agent/review', { file: '001-a.md' })).json();
+    assert.match(a.report, /^001-\d{8}-\d{6}\.md$/); // the start response names the report
+    const b = await (await s.j('POST', '/api/agent/review', { file: '002-b.md' })).json();
+    fs.writeFileSync(path.join(s.dir, '..', '.sanvi', 'reviews', b.report), '# Review\n');
+    s.f.calls[0].end(); s.f.calls[1].end(); await tick(); await tick();
+    const by = Object.fromEntries((await s.list()).map((c) => [c.ticket, c.outcome]));
+    assert.equal(by['001-a.md'], 'problems');
+    assert.equal(by['002-b.md'], 'ok');
+    const detail = await (await fetch(`http://127.0.0.1:${s.port}/api/agent/chats/${a.id}`)).json();
+    assert.match(detail.warning, /no report was written/);
+  } finally { await s.app.close(); }
+});
+
 test('refine outcome: unchanged ticket is a problem, still-design means questions, opened is ok; denials warn', async () => {
   const s = await refineSetup([['001-a.md', 'design'], ['002-b.md', 'design'], ['003-c.md', 'design']]);
   try {

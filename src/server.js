@@ -20,7 +20,7 @@ import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mer
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
-import { reviewPrompt, reviewRunOpts, newReportPath, listReviews, readReview } from './review.js';
+import { reviewPrompt, reviewRunOpts, newReportPath, listReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
@@ -98,6 +98,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   const broadcast = (obj) => { for (const c of clients) c.write(`data: ${JSON.stringify(obj)}\n\n`); };
   // After a refine run: did the ticket change, and is it out of `design`?
   function checkRefine(c) {
+    if (c.kind === 'review') return checkReview(dir, c.meta.report);
     if (c.kind !== 'refine') return null;
     try {
       const t = readTicket(dir, c.meta.file);
