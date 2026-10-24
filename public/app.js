@@ -825,6 +825,10 @@ function renderDetail({ fresh = false, edit = false } = {}) {
         disabled: chatPage.refining(D.file),
         onclick: () => refineTicket(D.file),
       }, chatPage.refining(D.file) ? 'Refining…' : 'Refine with Claude'),
+      agentOn && el('button', {
+        type: 'button', id: 'review-btn', title: 'Let Claude review this ticket and its code; the findings are written to a report file shown below',
+        onclick: () => chatPage.review(D.file).catch((e) => toast(`Review failed: ${e.message}`)),
+      }, 'Review with Claude'),
       agentOn && chatPage.implementQueued(D.file) && el('span', { id: 'impl-queued', class: 'chip queued', title: 'Implementation starts when the refine run has finished' }, 'implementation queued'),
       agentOn && chatPage.forTicket(D.loaded.id, D.loaded.project || '') && el('button', {
         type: 'button', id: 'chat-link', title: 'Open the latest Claude chat about this ticket',
@@ -837,10 +841,31 @@ function renderDetail({ fresh = false, edit = false } = {}) {
       el('button', { type: 'button', 'data-tab': 'view', onclick: () => setTab('view') }, 'Preview'),
       el('button', { type: 'button', 'data-tab': 'edit', onclick: () => setTab('edit') }, 'Edit'),
       el('button', { type: 'button', class: 'comment-btn', title: 'Add a timestamped comment (c)', onclick: () => document.dispatchEvent(new CustomEvent('add-note', { detail: D.file })) }, 'Comment')),
-    el('div', { id: 'content' })));
-  renderTab(edit); updateBanner(); updateState();
+    el('div', { id: 'content' }),
+    el('div', { id: 'reviews' })));
+  renderTab(edit); paintReviews(); updateBanner(); updateState();
   if (ed && D.tab === 'edit') { const t = $('.editor'); t.focus(); t.setSelectionRange(...sel); }
   else if (fresh && !edit) $('#title').focus();
+}
+
+// Review reports of the open ticket, read-only; nothing is added to the page when there are none.
+async function paintReviews() {
+  const box = $('#reviews');
+  const file = D?.file;
+  if (!box) return;
+  try {
+    const list = await api('GET', `reviews?id=${encodeURIComponent(D.loaded.id)}`);
+    if (D?.file !== file || !$('#reviews')) return;
+    box.replaceChildren(...(list.length ? [el('h2', {}, 'Reviews'), ...list.map((r) => {
+      const doc = el('div', { class: 'doc' });
+      const det = el('details', { class: 'review', 'data-name': r.name }, el('summary', {}, `${r.name} · ${r.created.slice(0, 16).replace('T', ' ')}`), doc);
+      det.addEventListener('toggle', async () => {
+        if (!det.open || doc.dataset.loaded) return;
+        try { doc.innerHTML = renderMarkdown((await api('GET', `reviews/${encodeURIComponent(r.name)}`)).text); doc.dataset.loaded = '1'; } catch (e) { doc.textContent = e.message; }
+      });
+      return det;
+    })] : []));
+  } catch { box.replaceChildren(); }
 }
 
 async function openTicket(file, tab = 'view') {
@@ -1044,6 +1069,7 @@ initKeys({
   chatType: () => chatPage.focusTyping(),
   chatClose: () => { if (!agentOn || !chatPage.isOpen()) return false; chatPage.close(); return true; },
   refine: refineTicket,
+  review: (file) => chatPage.review(file).catch((e) => toast(`Review failed: ${e.message}`)),
   implement: (file) => chatPage.implement(file).catch((e) => toast(`Implement failed: ${e.message}`)),
   refineAll: () => chatPage.refineAll().catch((e) => toast(`Refine failed: ${e.message}`)),
   ask: (q) => chatPage.ask(q).catch((e) => toast(`Ask failed: ${e.message}`)),
@@ -1166,7 +1192,7 @@ es.onerror = () => $('#live').classList.remove('on');
 es.onmessage = (e) => {
   let msg = {};
   try { msg = JSON.parse(e.data); } catch { /* treat as a file change */ }
-  if (msg.type === 'chat') return chatPage.onEvent(msg);
+  if (msg.type === 'chat') { if (D) paintReviews(); return chatPage.onEvent(msg); }
   if (msg.type === 'notice') return toast(msg.message);
   clearTimeout(refreshTimer); refreshTimer = setTimeout(refreshAll, 100);
 };

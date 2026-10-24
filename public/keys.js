@@ -382,6 +382,7 @@ export function initKeys(ctx) {
     menu = el('div', { class: 'cardmenu', role: 'menu', 'data-file': file },
       entry('Add comment', 'c', () => openNote(file)),
       ...(refinable ? [entry(refining ? 'Claude is refining this ticket…' : 'Refine with Claude', 'agent', () => { if (!refining) ctx.refine(file); })] : []),
+      ...(ctx.agents?.() ? [entry('Review with Claude', 'agent', () => ctx.review(file))] : []),
       ...(ctx.agents?.() ? [entry(refining ? 'Queue implementation with Claude' : 'Implement with Claude', 'agent', () => ctx.implement(file))] : []),
       entry('Delete…', 'd', () => openConfirmDelete(file)));
     document.body.append(menu);
@@ -455,6 +456,7 @@ export function initKeys(ctx) {
       rows: () => [
         { label: 'Open', hint: 'Enter', run: () => { location.hash = `#/t/${encodeURIComponent(t.file)}`; } },
         ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', run: () => ctx.refine(t.file) }] : []),
+        ...(ctx.agents?.() ? [{ label: 'Review with Claude', hint: 'agent', run: () => ctx.review(t.file) }] : []),
         ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', run: () => ctx.implement(t.file) }] : []),
         { label: 'Change status…', hint: hint('status'), push: () => valueLevel(t, 'status') },
         ...doneRows(t),
@@ -535,6 +537,7 @@ export function initKeys(ctx) {
           if (ctx.agents?.()) {
             { const refining = ctx.isRefining(t.file); rows.push({ label: refining ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', cmd: true, run: () => { if (!refining) ctx.refine(t.file); } }); }
             rows.push({ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', cmd: true, run: () => ctx.implement(t.file) });
+            rows.push({ label: 'Review with Claude', hint: 'agent', cmd: true, run: () => ctx.review(t.file) });
             const chats = ctx.chatsFor(t);
             if (chats.length === 1) rows.push({ label: 'Go to chat', hint: chats[0].kind, cmd: true, run: () => ctx.openChat(chats[0].id) });
             else if (chats.length > 1) rows.push({ label: 'Go to chat…', hint: `${chats.length} chats`, cmd: true, push: () => chatsLevel(t, chats) });

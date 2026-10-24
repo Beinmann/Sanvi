@@ -20,6 +20,7 @@ import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mer
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
+import { reviewPrompt, reviewRunOpts, newReportPath, listReviews, readReview } from './review.js';
 import { createRunner } from './runner.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
@@ -141,6 +142,16 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} is already being refined`);
     const chat = chats.create({ project: t.project, kind: 'refine', ticketId: t.id, meta: { file, before: t.version }, title: `Refine #${t.id}: ${t.title}`.slice(0, 80), runOpts: refineRunOpts({ ticketsDir: dir, file }) });
     chats.send(chat.id, `Refine ticket #${t.id} (${file}): rewrite it into problem, acceptance criteria and approach.`, { prompt: refinePrompt({ ticketsDir: dir, file, project: t.project, instructions: projectInfo(dir, t.project).instructions }), queue: true });
+    return chat;
+  }
+
+  // Review runs in the project's directory as its own chat; the findings go to a new report file under .sanvi/reviews.
+  function startReview(file) {
+    const t = readTicket(dir, file);
+    if (activeRuns(file).length) throw new ValidationError(`#${t.id} already has an agent running`);
+    const report = newReportPath(dir, t.id);
+    const chat = chats.create({ project: t.project, kind: 'review', ticketId: t.id, meta: { file, report: path.basename(report) }, title: `Review #${t.id}: ${t.title}`.slice(0, 80), runOpts: reviewRunOpts({ ticketsDir: dir, report }) });
+    chats.send(chat.id, `Review ticket #${t.id} (${file}); the report is written to ${path.basename(report)}.`, { prompt: reviewPrompt({ ticketsDir: dir, file, report, project: t.project, instructions: projectInfo(dir, t.project).instructions }), queue: true });
     return chat;
   }
 
@@ -275,6 +286,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts[1] === 'refine-all' && parts.length === 2 && method === 'POST') return send(res, 200, startRefineAll());
       if (parts[1] === 'ask' && parts.length === 2 && method === 'POST') return send(res, 201, startAsk((await readJson(req)).question));
       if (parts[1] === 'implement' && parts.length === 2 && method === 'POST') return send(res, 201, startImplement((await readJson(req)).file));
+      if (parts[1] === 'review' && parts.length === 2 && method === 'POST') return send(res, 201, startReview((await readJson(req)).file));
       if (parts[1] === 'refine' && parts.length === 2 && method === 'POST') return send(res, 201, startRefine((await readJson(req)).file));
       if (parts[1] !== 'chats') return send(res, 404, { error: 'not found' });
       if (parts.length === 2 && method === 'GET') return send(res, 200, chats.list());
@@ -288,6 +300,10 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       }
       if (parts.length === 4 && parts[3] === 'cancel' && method === 'POST') return send(res, 200, chats.cancel(parts[2]));
       return send(res, 404, { error: 'not found' });
+    }
+    if (parts[0] === 'reviews' && method === 'GET') { // reports are plain files: readable without --agents
+      if (parts.length === 1) return send(res, 200, listReviews(dir, String(url.searchParams.get('id') || '')));
+      if (parts.length === 2) return send(res, 200, readReview(dir, decodeURIComponent(parts[1])));
     }
     if (parts[0] === 'dirs' && parts.length === 1 && method === 'GET') { // directory picker: names of the machine's directories, so only with agents
       if (!chats) return send(res, 403, { error: 'the directory picker needs the server to be started with --agents' });

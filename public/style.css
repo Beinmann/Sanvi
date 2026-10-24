@@ -270,3 +270,6 @@ body.has-selection .selhint { display: none; }
 #menu[hidden], #menu button[hidden] { display: none; }
 #menu button { text-align: left; }
 .chatinput button.danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); font-weight: 600; }
+#reviews h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin: 24px 0 6px; color: var(--muted); }
+#reviews details { border: 1px solid var(--border, #8884); border-radius: var(--r); padding: 6px 12px; margin-bottom: 8px; }
+#reviews summary { cursor: pointer; }

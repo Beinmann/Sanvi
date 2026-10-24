@@ -98,8 +98,8 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   const trigger = el('button', { type: 'button', class: 'pickbtn', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': 'Chat', onclick: () => setPick(!pickOpen) });
   const popup = el('div', { class: 'pickpop', role: 'listbox', tabindex: '0', 'aria-label': 'Chats', hidden: true });
   const picker = el('div', { class: 'chatpick' }, trigger, popup);
-  const kindOf = (c) => (c.kind === 'refine' ? 'Refine' : c.kind === 'implement' ? 'Implement' : c.kind === 'ask' ? 'Ask' : 'Chat');
-  const rowTitle = (c) => c.title.replace(/^(Refine|Implement) #\S+?:\s*/, '');
+  const kindOf = (c) => (c.kind === 'refine' ? 'Refine' : c.kind === 'implement' ? 'Implement' : c.kind === 'review' ? 'Review' : c.kind === 'ask' ? 'Ask' : 'Chat');
+  const rowTitle = (c) => c.title.replace(/^(Refine|Implement|Review) #\S+?:\s*/, '');
   const stateWord = (c) => (c.state === 'running' ? 'running' : c.state === 'queued' ? 'queued' : c.state === 'failed' ? 'failed' : c.kind === 'refine' && c.outcome === 'problems' ? 'problems' : c.kind === 'refine' && c.outcome === 'questions' ? 'questions' : c.state === 'idle' ? '' : 'done');
   function pickRow(c) {
     const word = stateWord(c);
@@ -203,6 +203,12 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     const c = await api('POST', 'agent/refine', { file });
     await refreshList();
     toast(`Refining: ${c.title}`);
+  }
+
+  async function review(file) {
+    const c = await api('POST', 'agent/review', { file });
+    await refreshList();
+    toast(`Reviewing: ${c.title}`);
   }
 
   async function implement(file) {
@@ -323,7 +329,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
 
   button.addEventListener('click', () => toggle());
   return {
-    toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, implement, refineAll, onChange: (fn) => changed.push(fn),
+    toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, review, implement, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && c.kind === 'refine' && active(c)),
     implementQueued: (file) => queued.includes(file),
     // The most recent chat linked to a ticket (the list is newest first), or null.

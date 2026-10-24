@@ -247,3 +247,5 @@ Use `--json` for machine-readable output. Nothing requires going through it.
 A save checks the file's content hash and then renames a temp file over it.
 A write by another process in the few microseconds between check and rename
 would be lost; this is accepted for a local single-user tool.
+
+**Review with Claude** (needs `--agents`): `tk review <id|slug>` (talks to the running instance), the "Review with Claude" button on a ticket, or the same entry in the card menu and command palette starts a read-only agent review of the ticket and its code (git log/diff, tests). The agent writes its findings to a new file `<tickets dir>/../.sanvi/reviews/<id>-<YYYYMMDD-HHMMSS>.md`; an earlier report is never overwritten. The ticket page lists the reports of that ticket under "Reviews" and shows them read-only (`GET /api/reviews?id=N`, `GET /api/reviews/<name>`; no `--agents` needed to read). Tickets without a report look unchanged. `.sanvi` is local, so add it to `.gitignore` or commit it as you prefer.

@@ -27,6 +27,8 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   new "<title>" [--area A] [--project P] [--status S] [--priority P]
                                           create the next ticket from the standard template
   status <id|slug> <status>               change status in the frontmatter only
+  review <id|slug>                        start an agent review of the ticket and its code; the findings go to a report file in
+                                          .sanvi/reviews/ (needs a running instance started with --agents; the ticket page links the report)
   rm <id|slug>                            move a ticket (and its images) to the trash (kept 30 days)
   trash                                   list deleted tickets with days left
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
@@ -128,6 +130,20 @@ async function main() {
       const f = findTicket(dir, rest[0]);
       const t = addNote(dir, f.file, rest.slice(1).join(' '), f.version);
       out(t, brief(t));
+      break;
+    }
+    case 'review': {
+      if (!rest[0]) throw new ValidationError('usage: tk review <id|slug>');
+      const t = findTicket(dir, rest[0]);
+      const inst = findInstance(dir);
+      const fail = 'tk review needs the agent setup: start the UI with "tk start --agents" (or "tk serve --agents") for this tickets dir';
+      if (!inst) throw new ValidationError(`no running instance for this tickets dir. ${fail}`);
+      const call = (method, p, body) => fetch(`${inst.url}/api/${p}`, { method, headers: { 'content-type': 'application/json' }, body: body && JSON.stringify(body) });
+      if (!(await (await call('GET', 'agent')).json()).enabled) throw new ValidationError(`the running instance (${inst.url}) has the agent features off. ${fail}`);
+      const r = await call('POST', 'agent/review', { file: t.file });
+      const data = await r.json();
+      if (!r.ok) throw new ValidationError(data.error || `review failed (${r.status})`);
+      out(data, `review of #${t.id} started: ${data.title}\nreport: ${path.join(path.dirname(dir), '.sanvi', 'reviews', data.meta?.report || `${t.id}-*.md`)}\nfollow it at ${inst.url}`);
       break;
     }
     case 'rm': {
