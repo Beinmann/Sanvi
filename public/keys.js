@@ -111,7 +111,7 @@ export const HELP = [
     ['b / gb', 'Go to the board'],
     ['g?', 'Popup with just the g hotkeys of the current page, and a button to this full list'],
     ['gi', 'Open the ticket you edited last, in the editor'],
-    ['gs', 'Go to the search box and clear its text (/ keeps it)'],
+    ['gs', 'Go to the search box (same as /; the text is kept and selected)'],
     ['gn', 'Go to the Notes page (NOTES.md)'],
     ['gaa', 'Claude chat: open full screen / close (same as a; only with --agents, as all ga keys)'],
     ['gac', 'Open the Claude chat of the selected / open ticket'],
@@ -765,12 +765,11 @@ export function initKeys(ctx) {
   // Focus the board's search box from any view. Off the board this navigates first (keeping the current
   // query), through the normal hash route, so the guard against discarding an unsaved edit applies; if
   // the user declines, we never reach the board and nothing is focused.
-  async function focusSearch(clear = false) {
+  async function focusSearch() {
     if (hashRoute() !== 'board') location.hash = ctx.boardHash();
     for (let i = 0; i < 30; i++) {
       const input = hashRoute() === 'board' && $('#search');
       if (input) {
-        if (clear && input.value) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
         input.focus(); input.select(); return;
       }
       await new Promise((r) => setTimeout(r, 50));
@@ -858,7 +857,7 @@ export function initKeys(ctx) {
       }
       case 'a': if (!agents) return false; pendingGA = true; return true; // prefix of the agent keys (gaa gac gai gar gav gas)
       case 'w': if (!agents) return false; openSlots(); return true;
-      case 's': focusSearch(true); return true;
+      case 's': focusSearch(); return true;
       case 'n': location.hash = '#/notes'; return true;
       case '?': openGHelp(); return true;
       default: return false;
