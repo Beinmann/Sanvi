@@ -140,7 +140,7 @@ tk --dir /path/to/tickets serve [--port 4321]
 - Ticket page: rendered Markdown, editable status/area/priority and body.
   **Ctrl+S** (or Save) writes the file.
 - **+ Idea** (or `i`, or **Ctrl+I** from anywhere, even mid-edit; your edit is kept): quick capture
-  in one overlay. Type one or a few sentences, no title; **Ctrl+Enter** saves, **Esc** cancels. Each idea becomes
+  in one overlay. Type one or a few sentences, no title; **Ctrl+Enter** saves, **Esc** cancels. With `--agents` the overlay also has smaller buttons: **Save and refine** (Ctrl+Shift+Enter; hidden with `--auto-refine`, which refines every idea anyway) and **Save, refine and implement** (Ctrl+Alt+Enter; queues the implementation behind the refine run). Each idea becomes
   a normal ticket with `status: design`, a placeholder title taken from the
   first sentence, your text verbatim under *Problem / motivation* and a note
   saying it is unrefined. A later session (human or AI) can list

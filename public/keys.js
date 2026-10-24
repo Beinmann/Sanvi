@@ -98,6 +98,7 @@ export const HELP = [
     ['P', 'Switch the current project (the project new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
     ['i', 'Quick idea (same as Ctrl+I, outside fields)'],
+    ['Ctrl+Shift+Enter / Ctrl+Alt+Enter', 'In the Quick idea dialog (only with --agents; the refine part is hidden with --auto-refine): save and refine / save, refine and queue the implementation'],
     ['Ctrl+M / m', 'Quick note: free text saved to NOTES.md next to the tickets, not tied to any ticket (Ctrl+M also while typing; m outside fields)'],
     ['a', 'Claude chat (only with --agents): open full screen without focus; again: close'],
     ['h / l', 'With the chat open (outside fields): previous / next chat; the chat\'s j/k/g/G/i keys also work and win over the page keys'],
@@ -293,19 +294,31 @@ export function initKeys(ctx) {
     const sel = names.length ? el('select', { 'aria-label': 'Project', id: 'idea-project' },
       el('option', { value: '' }, 'No project'), ...(fresh && !names.includes(fresh) ? [fresh, ...names] : names).map((n) => el('option', { value: n }, n))) : null;
     if (sel) sel.value = fresh;
-    const save = async () => {
+    // `then`: what to do with the saved ticket (refine / queue the implementation); only with --agents.
+    const save = async (then) => {
       const text = ta.value.trim();
       if (!text) return;
-      try { await ctx.saveIdea(text, pics.images, done, sel ? sel.value : fresh); pics.release(); closeOverlay(); } catch (e) { err.textContent = e.message; ctx.toast(e.message); }
+      let t;
+      try { t = await ctx.saveIdea(text, pics.images, done, sel ? sel.value : fresh); pics.release(); closeOverlay(); } catch (e) { err.textContent = e.message; ctx.toast(e.message); return; }
+      if (then) await then(t);
     };
+    const agents = !!ctx.agents?.();
+    const refineToo = agents && !ctx.autoRefine?.(); // with --auto-refine the server refines every new idea itself
+    const saveRefine = () => save((t) => ctx.refine(t.file));
+    const saveImplement = () => save(async (t) => { if (refineToo) await ctx.refine(t.file); await ctx.implement(t.file); }); // implement queues behind the running refine
     for (const f of [ta, sel]) f?.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+      if (!e.shiftKey && !e.altKey) { e.preventDefault(); save(); }
+      else if (agents && e.shiftKey && !e.altKey) { e.preventDefault(); if (refineToo) saveRefine(); } // Ctrl+Shift+Enter
+      else if (agents && e.altKey && !e.shiftKey) { e.preventDefault(); saveImplement(); } // Ctrl+Alt+Enter
     });
     const box = el('div', { class: 'dialog form', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quick idea' },
       el('h2', {}, 'Quick idea'),
-      el('p', { class: 'hint' }, 'Saved as a ticket in the design column with an auto-derived title, for refinement later. Paste or drop images to attach them. Ctrl+Enter saves, Esc cancels.'),
+      el('p', { class: 'hint' }, `Saved as a ticket in the design column with an auto-derived title, for refinement later. Paste or drop images to attach them. Ctrl+Enter saves, Esc cancels.${agents ? ` Ctrl+Shift+Enter ${refineToo ? 'saves and refines' : '(not needed with --auto-refine)'}, Ctrl+Alt+Enter saves${refineToo ? ', refines' : ''} and implements.` : ''}`),
       ta, sel && el('label', { class: 'projpick' }, 'Project ', sel), pics.node, err,
-      el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: save }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel')));
+      el('div', { class: 'buttons' }, el('button', { class: 'primary', type: 'button', onclick: () => save() }, 'Save idea'), ' ', el('button', { type: 'button', onclick: closeOverlay }, 'Cancel'),
+        refineToo && el('button', { class: 'small', type: 'button', title: 'Save the idea and let Claude refine it (Ctrl+Shift+Enter)', onclick: saveRefine }, 'Save and refine'),
+        agents && el('button', { class: 'small', type: 'button', title: `Save the idea${refineToo ? ', let Claude refine it' : ''} and queue the implementation (Ctrl+Alt+Enter)`, onclick: saveImplement }, 'Save, refine and implement')));
     openOverlay(box, { focus: ta });
   }
 

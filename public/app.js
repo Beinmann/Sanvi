@@ -1108,6 +1108,7 @@ const keysApi = initKeys({
   },
   about: () => api('GET', 'about'),
   agents: () => agentOn,
+  autoRefine: () => autoRefine,
   refreshLimits: () => limitsUi.refresh(),
   chatHotkey: () => chatPage.hotkey(),
   chatType: () => chatPage.focusTyping(),
@@ -1187,6 +1188,7 @@ async function paintProjectsBadge() { // the button carries the number of projec
 }
 document.addEventListener('projects-changed', paintProjectsBadge);
 let agentOn = false; // server started with --agents
+let autoRefine = false; // ... and with --auto-refine
 async function refineTicket(file) {
   try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
 }
@@ -1194,6 +1196,7 @@ const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), projec
 const limitsUi = initLimits({ el, api, toast, node: $('#limits') });
 api('GET', 'agent').then((a) => {
   agentOn = a.enabled;
+  autoRefine = !!a.autoRefine;
   $('#chat-btn').hidden = !a.enabled;
   if (!a.enabled) return;
   chatPage.start();
