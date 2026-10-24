@@ -106,6 +106,13 @@ test('create uses next id, slug and first status', () => {
   assert.throws(() => createTicket(dir, { title: '  ' }), ValidationError);
 });
 
+test('create builds the standard sections from single-line parts', () => {
+  const dir = tmp();
+  const t = createTicket(dir, { title: 'Split', problem: 'Why.', criteria: ['one', 'two'], notes: ['Split off from 001.'] });
+  assert.match(t.body, /^\n# Split\n\n## Problem \/ motivation\n\nWhy\.\n\n## Acceptance criteria\n\n- \[ \] one\n- \[ \] two\n\n## Notes\n\n- \d{4}-\d\d-\d\d \d\d:\d\d: Split off from 001\.\n$/);
+  assert.deepEqual(validate(dir).filter((x) => x.file === t.file && x.level === 'error'), []);
+});
+
 test('findTicket by id, number and slug', () => {
   const dir = tmp();
   for (const ref of ['001', '1', 'sample-ticket', '001-sample-ticket']) assert.equal(findTicket(dir, ref).id, '001');

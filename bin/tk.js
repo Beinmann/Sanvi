@@ -25,6 +25,7 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   note --scratch "<text>"  (or: jot)      append to NOTES.md, the scratchpad not tied to any ticket
   jot                                     with no text: list the scratch notes
   new "<title>" [--area A] [--project P] [--status S] [--priority P] [--body "<markdown>"]
+      [--problem "<text>"] [--criterion "<text>"]... [--note "<text>"]...
                                           create the next ticket from the standard template
   status <id|slug> <status>               change status in the frontmatter only
   review <id|slug>                        start an agent review of the ticket and its code; the findings go to a report file in
@@ -60,6 +61,7 @@ function parseArgs(argv) {
     else if (a === '--agents') flags.agents = true;
     else if (a === '--auto-refine') flags['auto-refine'] = true;
     else if (a === '--allow-agents-on-network') flags['allow-agents-on-network'] = true;
+    else if (a === '--criterion' || a === '--note') (flags[a.slice(2)] ||= []).push(argv[++i]); // repeatable
     else if (a.startsWith('--')) flags[a.slice(2)] = argv[++i];
     else pos.push(a);
   }
@@ -173,7 +175,7 @@ async function main() {
     }
     case 'new': {
       if (!rest[0]) throw new ValidationError('usage: tk new "<title>"');
-      const t = createTicket(dir, { title: rest.join(' '), area: flags.area, project: flags.project, status: flags.status, priority: flags.priority, body: flags.body && `\n${flags.body.replace(/^\n+/, '')}` });
+      const t = createTicket(dir, { title: rest.join(' '), area: flags.area, project: flags.project, status: flags.status, priority: flags.priority, problem: flags.problem, criteria: flags.criterion, notes: flags.note, body: flags.body && `\n${flags.body.replace(/^\n+/, '')}` });
       out(t, path.join(dir, t.file));
       break;
     }

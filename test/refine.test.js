@@ -18,7 +18,9 @@ test('refine prompt tells the agent to set and clear the needs marker', () => {
 test('refine prompt explains how to split a ticket with tk new', () => {
   const p = refinePrompt({ ticketsDir: '/t', file: '001-a.md', project: 'p', today: '2026-01-01' });
   assert.match(p, /independently-shippable/);
-  assert.match(p, /bin\/tk\.js new "<title>" --dir \/t --project p --body/);
+  assert.match(p, /bin\/tk\.js new "<title>" --dir \/t --project p --problem "<one-line problem>" --criterion/);
+  assert.match(p, /--note "Split off from 001-a\.md\."/);
+  assert.doesNotMatch(p, /--body/);
   assert.match(p, /split off from 001-a\.md/);
   assert.match(p, /naming the new ticket ids/);
 });

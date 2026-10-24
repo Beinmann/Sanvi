@@ -321,7 +321,14 @@ function claimId(dir) {
   throw new Error('could not allocate a ticket id');
 }
 
-export function createTicket(dir, { title, area = '', project = '', status, priority = '', body: customBody } = {}) {
+// Standard ticket body from single-line parts, so callers need no multi-line text: criteria become "- [ ]" items, notes get a timestamp.
+function sectionedBody(title, { problem = '', criteria = [], notes = [] }) {
+  const crit = (criteria.length ? criteria : ['']).map((c) => `- [ ] ${c}`.trimEnd() + (c ? '' : ' ')).join('\n');
+  const noteSec = notes.length ? `\n\n## Notes\n\n${notes.map((n) => formatNote(n)).join('\n')}` : '';
+  return `\n# ${title}\n\n## Problem / motivation\n\n${problem}\n\n## Acceptance criteria\n\n${crit}${noteSec}\n`;
+}
+
+export function createTicket(dir, { title, area = '', project = '', status, priority = '', body: customBody, problem, criteria, notes } = {}) {
   title = (title || '').trim();
   if (!title) throw new ValidationError('title is required');
   checkFields({ area, project, priority, ...(status ? { status } : {}), title });
@@ -332,7 +339,8 @@ export function createTicket(dir, { title, area = '', project = '', status, prio
   front = setFrontField(front, 'area', area || null);
   front = setFrontField(front, 'project', project || null);
   front = setFrontField(front, 'priority', priority || null);
-  const body = customBody ?? `\n# ${title}\n\n## Problem / motivation\n\n\n\n## Acceptance criteria\n\n- [ ] \n`;
+  const structured = problem !== undefined || (criteria && criteria.length) || (notes && notes.length);
+  const body = customBody ?? (structured ? sectionedBody(title, { problem, criteria, notes }) : `\n# ${title}\n\n## Problem / motivation\n\n\n\n## Acceptance criteria\n\n- [ ] \n`);
   const file = `${claimId(dir)}-${slug}.md`;
   fs.writeFileSync(path.join(dir, file), buildRaw(front, body), { flag: 'wx' });
   return readTicket(dir, file);
