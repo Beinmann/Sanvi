@@ -148,3 +148,9 @@ test('a review takes a worktree slot while it runs, shows it busy, and gives it 
     assert.equal(git('branch', '--list', 'ticket-001'), '', 'the branch the review had to create is dropped again');
   } finally { await app.close(); }
 });
+
+test('review prompt defines the verdict emoji list for the heading', () => {
+  const p = reviewPrompt({ ticketsDir: '/t', file: '001-a.md', report: '/r/001-x.md' });
+  for (const e of ['✅', '⚠️', '❌', '❓']) assert.ok(p.includes(e), e);
+  assert.match(p, /verdict emojis/);
+});
