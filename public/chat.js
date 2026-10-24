@@ -6,7 +6,7 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(`sanvi.chat.${k}`, v); } catch { /* private window: just not remembered */ } },
 };
 
-export function initChat({ el, show, api, toast, button, project = () => '' }) {
+export function initChat({ el, show, api, toast, button, failedButton, project = () => '' }) {
   let usage = {};     // cost per provider, e.g. { claude: { costUsd } }
   let chats = [];     // list entries: { id, title, state }
   let queued = [];    // ticket files whose implementation waits for their refine run
@@ -162,10 +162,17 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   panel.append(head, body);
   const changed = [];  // callbacks: the set of tickets being refined may have changed
   const active = (c) => c.state === 'running' || c.state === 'queued';
+  const failedChat = (c) => c.state === 'failed';
   const paintButton = () => {
     const n = chats.filter(active).length;
     button.textContent = n ? `Chat · ${n} running` : 'Chat';
     const cost = usage.claude?.costUsd;
+    if (failedButton) { // header hint: chats whose run failed (it stays until the chat is deleted or runs again)
+      const f = chats.filter(failedChat).length;
+      failedButton.hidden = !f;
+      failedButton.textContent = `! ${f} agent${f === 1 ? '' : 's'} failed`;
+      failedButton.title = `${f === 1 ? 'A chat has' : `${f} chats have`} failed; click to open ${f === 1 ? 'it' : 'the newest'}`;
+    }
     button.title = `Chat with Claude${cost == null ? '' : `\nClaude usage so far: $${cost.toFixed(2)} (cost recorded by Sanvi)`}`;
   };
 
@@ -335,10 +342,21 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
   }
 
   button.addEventListener('click', () => toggle());
+  // Open the newest failed chat (optionally of one ticket); all failed chats are listed in the picker then.
+  async function openFailed(file) {
+    const fs = chats.filter((c) => failedChat(c) && (!file || c.ticket === file));
+    if (!fs.length) return;
+    for (const c of fs) seen.add(c.id);
+    await toggle(true);
+    await openChat(fs[0].id);
+  }
+  failedButton?.addEventListener('click', () => openFailed().catch((e) => toast(e.message)));
   return {
     toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, review, implement, cancelAgent, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && c.kind === 'refine' && active(c)),
     implementQueued: (file) => queued.includes(file),
+    failed: (file) => chats.some((c) => c.ticket === file && failedChat(c)),
+    openFailed,
     reviewing: (file) => chats.some((c) => c.ticket === file && c.kind === 'review' && active(c)),
     // The most recent chat linked to a ticket (the list is newest first), or null.
     busy: (file) => queued.includes(file) || chats.some((c) => c.ticket === file && active(c)),

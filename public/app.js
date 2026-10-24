@@ -155,6 +155,11 @@ function card(t, inText = false) {
     agentOn && chatPage.implementQueued(t.file) && el('span', { class: 'chip queued', title: 'Implementation starts when the refine run has finished' }, 'implementation queued'),
     agentOn && chatPage.implementing(t.file) && el('span', { class: 'chip refining', title: 'Claude is implementing this ticket' }, 'implementing…'),
     agentOn && chatPage.reviewing(t.file) && el('span', { class: 'chip refining', title: 'Claude is reviewing this ticket' }, 'reviewing…'),
+    agentOn && chatPage.failed(t.file) && el('button', {
+      type: 'button', class: 'chip failed', 'aria-label': 'Open the failed chat',
+      title: 'An agent run for this ticket failed; click to open the chat',
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); chatPage.openFailed(t.file).catch((err) => toast(err.message)); },
+    }, '! failed'),
     t.reviews > 0 && el('button', {
       type: 'button', class: 'chip report', 'aria-label': 'Open the review report',
       title: `${t.reviews === 1 ? 'A review report exists' : `${t.reviews} review reports exist`} for this ticket; click to open the ticket at the report`,
@@ -1234,7 +1239,7 @@ let autoRefine = false; // ... and with --auto-refine
 async function refineTicket(file) {
   try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
 }
-const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), project: () => (project === NO_PROJECT ? '' : project) });
+const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), failedButton: $('#failed-btn'), project: () => (project === NO_PROJECT ? '' : project) });
 const limitsUi = initLimits({ el, api, toast, node: $('#limits') });
 api('GET', 'agent').then((a) => {
   agentOn = a.enabled;
@@ -1245,7 +1250,7 @@ api('GET', 'agent').then((a) => {
   limitsUi.start();
   let lastKey = '';
   chatPage.onChange(() => { // repaint the board / detail when the set of tickets being refined changes
-    const key = S.tickets.filter((t) => chatPage.refining(t.file) || chatPage.implementing(t.file) || chatPage.implementQueued(t.file) || chatPage.reviewing(t.file)).map((t) => `${t.file}:${+chatPage.refining(t.file)}${+chatPage.implementing(t.file)}${+chatPage.implementQueued(t.file)}${+chatPage.reviewing(t.file)}`).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');
+    const key = S.tickets.filter((t) => chatPage.refining(t.file) || chatPage.implementing(t.file) || chatPage.implementQueued(t.file) || chatPage.reviewing(t.file) || chatPage.failed(t.file)).map((t) => `${t.file}:${+chatPage.refining(t.file)}${+chatPage.implementing(t.file)}${+chatPage.implementQueued(t.file)}${+chatPage.reviewing(t.file)}${+chatPage.failed(t.file)}`).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');
     if (key === lastKey) return;
     lastKey = key;
     if (document.querySelector('.board, .tablewrap')) refreshAll(); // also picks up the report count of a finished review
