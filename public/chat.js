@@ -217,6 +217,13 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     toast(c.queued ? `Queued: ${c.title}` : `Implementing: ${c.title}`);
   }
 
+  // Stops the ticket's runs and drops its queued implementation (the server clears the queue before it cancels).
+  async function cancelAgent(file) {
+    const r = await api('POST', 'agent/cancel-ticket', { file });
+    await refreshList();
+    toast(r.cancelled || r.queuedDropped ? 'Claude run cancelled' : 'Nothing to cancel');
+  }
+
   async function refineAll() {
     const r = await api('POST', 'agent/refine-all', {});
     await refreshList();
@@ -329,11 +336,12 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
 
   button.addEventListener('click', () => toggle());
   return {
-    toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, review, implement, refineAll, onChange: (fn) => changed.push(fn),
+    toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, review, implement, cancelAgent, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && c.kind === 'refine' && active(c)),
     implementQueued: (file) => queued.includes(file),
     reviewing: (file) => chats.some((c) => c.ticket === file && c.kind === 'review' && active(c)),
     // The most recent chat linked to a ticket (the list is newest first), or null.
+    busy: (file) => queued.includes(file) || chats.some((c) => c.ticket === file && active(c)),
     implementing: (file) => chats.some((c) => c.ticket === file && c.kind === 'implement' && active(c)),
     forTicket: (id, proj = '') => (id && chats.find((c) => c.ticketId === id && (c.project || '') === proj)) || null,
     allForTicket: (id, proj = '') => (id ? chats.filter((c) => c.ticketId === id && (c.project || '') === proj) : []),

@@ -540,6 +540,7 @@ export function initKeys(ctx) {
         { label: 'Open', hint: 'Enter', run: () => { location.hash = `#/t/${encodeURIComponent(t.file)}`; } },
         ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', run: () => ctx.refine(t.file) }] : []),
         ...(ctx.agents?.() ? [{ label: 'Review with Claude', hint: 'agent', run: () => ctx.review(t.file) }] : []),
+        ...(ctx.agents?.() && ctx.agentBusy?.(t.file) ? [{ label: 'Cancel Claude run', hint: 'agent', run: () => ctx.cancelAgent(t.file) }] : []),
         ...(ctx.agents?.() ? [{ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', run: () => ctx.implement(t.file) }] : []),
         { label: 'Change status…', hint: hint('status'), push: () => valueLevel(t, 'status') },
         ...doneRows(t),
@@ -670,6 +671,7 @@ export function initKeys(ctx) {
             { const refining = ctx.isRefining(t.file); rows.push({ label: refining ? 'Claude is refining this ticket…' : 'Refine with Claude', hint: 'agent', cmd: true, run: () => { if (!refining) ctx.refine(t.file); } }); }
             rows.push({ label: ctx.isRefining(t.file) ? 'Queue implementation with Claude' : 'Implement with Claude', hint: 'agent', cmd: true, run: () => ctx.implement(t.file) });
             rows.push({ label: 'Review with Claude', hint: 'agent', cmd: true, run: () => ctx.review(t.file) });
+            if (ctx.agentBusy?.(t.file)) rows.push({ label: 'Cancel Claude run', hint: 'agent', cmd: true, run: () => ctx.cancelAgent(t.file) });
             const chats = ctx.chatsFor(t);
             if (chats.length === 1) rows.push({ label: 'Go to chat', hint: chats[0].kind, cmd: true, run: () => ctx.openChat(chats[0].id) });
             else if (chats.length > 1) rows.push({ label: 'Go to chat…', hint: `${chats.length} chats`, cmd: true, push: () => chatsLevel(t, chats) });

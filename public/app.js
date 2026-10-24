@@ -1159,6 +1159,8 @@ const keysApi = initKeys({
   refineAll: () => chatPage.refineAll().catch((e) => toast(`Refine failed: ${e.message}`)),
   ask: (q) => chatPage.ask(q).catch((e) => toast(`Ask failed: ${e.message}`)),
   isRefining: (file) => chatPage.refining(file),
+  agentBusy: (file) => chatPage.busy(file),
+  cancelAgent: (file) => chatPage.cancelAgent(file).catch((e) => toast(`Cancel failed: ${e.message}`)),
   chatsFor: (t) => chatPage.allForTicket(t.id, t.project || ''),
   openChat: (id) => chatPage.open(id).catch((e) => toast(e.message)),
   detail: () => D, projects: () => ({ names: orderedProjects(), recent: recentProjects(), current: project, none: NO_PROJECT, mode: switcherMode(), fresh: newProjectValue() }), setProject,

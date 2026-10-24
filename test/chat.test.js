@@ -428,6 +428,21 @@ test('implement while refining is queued and starts after a clean refine; droppe
   } finally { await app.close(); }
 });
 
+test('cancel-ticket stops the refine run and drops the queued implementation', async () => {
+  const s = await refineSetup([['001-a.md', 'design']]);
+  const f = s.f;
+  const post = (url, body) => fetch(`http://127.0.0.1:${s.port}/api/agent/${url}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  try {
+    await post('refine', { file: '001-a.md' });
+    assert.equal((await (await post('implement', { file: '001-a.md' })).json()).queued, true);
+    const r = await (await post('cancel-ticket', { file: '001-a.md' })).json();
+    assert.deepEqual(r, { cancelled: 1, queuedDropped: true });
+    await tick();
+    assert.equal(f.calls.length, 1, 'no implement run started');
+    assert.deepEqual(await (await fetch(`http://127.0.0.1:${s.port}/api/agent/queued`)).json(), []);
+  } finally { await s.app.close(); }
+});
+
 test('implement needs a project directory', async () => {
   const s = await refineSetup([['001-a.md', 'open']]);
   try {

@@ -187,6 +187,14 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   // Implementations asked for while the ticket was being refined; each starts once its refine run has finished well.
   const implementAfterRefine = new Set();
   const activeRuns = (file) => chats.list().filter((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'));
+  // Stop everything the agent does for a ticket: the queued implementation goes first, so it cannot start when the refine run ends.
+  function cancelTicketAgent(file) {
+    const queued = implementAfterRefine.delete(file);
+    const runs = activeRuns(file);
+    for (const c of runs) chats.cancel(c.id);
+    broadcast({ type: 'chat', id: null });
+    return { cancelled: runs.length, queuedDropped: queued };
+  }
   function startQueuedImplements() {
     for (const file of [...implementAfterRefine]) {
       if (activeRuns(file).length) continue;
@@ -345,6 +353,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts[1] === 'slots' && parts.length === 2 && method === 'GET') return send(res, 200, slotsPayload());
       if (parts[1] === 'slots' && parts.length === 2 && method === 'PUT') return send(res, 200, setPoolSize((await readJson(req)).poolSize));
       if (parts[1] === 'queued' && parts.length === 2 && method === 'GET') return send(res, 200, [...implementAfterRefine]);
+      if (parts[1] === 'cancel-ticket' && parts.length === 2 && method === 'POST') return send(res, 200, cancelTicketAgent((await readJson(req)).file));
       if (parts[1] === 'limits' && parts.length === 2 && method === 'GET') return send(res, 200, await limits.get(url.searchParams.get('refresh') === '1'));
       if (parts[1] === 'refine-all' && parts.length === 2 && method === 'POST') return send(res, 200, startRefineAll());
       if (parts[1] === 'ask' && parts.length === 2 && method === 'POST') return send(res, 201, startAsk((await readJson(req)).question));
