@@ -3,6 +3,13 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 
+// Agent processes get their own session (`detached`), so neither they nor the hooks, tests and git commands they start
+// have the launching terminal as controlling terminal: nothing can write a bell or escape sequence to it through /dev/tty.
+// That also means a Ctrl+C in that terminal no longer reaches them, so they are stopped when the server exits.
+const live = new Set();
+const killGroup = (child, signal) => { try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* already gone */ } } };
+process.on('exit', () => { for (const c of live) killGroup(c, 'SIGTERM'); });
+
 export const DEFAULT_TOOLS = ['Read', 'Grep', 'Glob', 'Edit'];
 
 // startRun({ prompt, cwd, resume?, model?, tools?, maxBudgetUsd? }) -> { cancel(), onEvent(fn), done }
@@ -47,13 +54,15 @@ export function startRun({ prompt, cwd, resume, model, tools = DEFAULT_TOOLS, ma
     // spawn also reports ENOENT for a missing cwd (e.g. a removed worktree); name that instead of blaming the binary
     if (cwd && !fs.existsSync(cwd)) return finish({ error: `the working directory of this chat no longer exists: ${cwd}; open a new chat` });
     try {
-      child = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+      live.add(child);
     } catch (e) {
       return finish({ error: e.message });
     }
-    child.on('error', (e) => finish({
-      error: e.code === 'ENOENT' ? `"${bin}" not found: install the Claude Code CLI and make sure it is on PATH` : e.message,
-    }));
+    child.on('error', (e) => {
+      live.delete(child);
+      finish({ error: e.code === 'ENOENT' ? `"${bin}" not found: install the Claude Code CLI and make sure it is on PATH` : e.message });
+    });
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (d) => {
       buf += d;
@@ -63,6 +72,7 @@ export function startRun({ prompt, cwd, resume, model, tools = DEFAULT_TOOLS, ma
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-4000); });
     child.on('close', (code) => {
+      live.delete(child);
       handleLine(buf);
       if (cancelled) return finish({ error: 'cancelled' });
       if (result && !result.is_error) return finish({ ok: true, text: result.result || '', costUsd: result.total_cost_usd ?? null });
@@ -76,8 +86,8 @@ export function startRun({ prompt, cwd, resume, model, tools = DEFAULT_TOOLS, ma
     cancel() {
       cancelled = true;
       if (!child || child.exitCode !== null) return;
-      child.kill('SIGTERM');
-      setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 3000).unref();
+      killGroup(child, 'SIGTERM');
+      setTimeout(() => { if (child.exitCode === null) killGroup(child, 'SIGKILL'); }, 3000).unref();
     },
     done,
   };
