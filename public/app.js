@@ -831,6 +831,10 @@ function renderDetail({ fresh = false, edit = false } = {}) {
         disabled: chatPage.refining(D.file),
         onclick: () => refineTicket(D.file),
       }, chatPage.refining(D.file) ? 'Refining…' : 'Refine with Claude'),
+      el('button', {
+        type: 'button', id: 'review-report-btn', hidden: true, title: 'Jump to the newest review report below',
+        onclick: () => { const det = $('#reviews details.review'); if (!det) return; det.open = true; det.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+      }),
       agentOn && el('button', {
         type: 'button', id: 'review-btn', title: 'Let Claude review this ticket and its code; the findings are written to a report file shown below',
         disabled: chatPage.reviewing(D.file),
@@ -863,6 +867,8 @@ async function paintReviews() {
   try {
     const list = await api('GET', `reviews?id=${encodeURIComponent(D.loaded.id)}`);
     if (D?.file !== file || !$('#reviews')) return;
+    const rb = $('#review-report-btn');
+    if (rb) { rb.hidden = !list.length; rb.textContent = list.length > 1 ? `Review report (${list.length})` : 'Review report'; }
     box.replaceChildren(...(list.length ? [el('h2', {}, 'Reviews'), ...list.map((r) => {
       const doc = el('div', { class: 'doc' });
       const det = el('details', { class: 'review', 'data-name': r.name }, el('summary', {}, `${r.name} · ${r.created.slice(0, 16).replace('T', ' ')}`), doc);
@@ -872,7 +878,7 @@ async function paintReviews() {
       });
       return det;
     })] : []));
-  } catch { box.replaceChildren(); }
+  } catch { box.replaceChildren(); const rb = $('#review-report-btn'); if (rb) rb.hidden = true; }
 }
 
 async function openTicket(file, tab = 'view') {
