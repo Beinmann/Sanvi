@@ -427,7 +427,7 @@ function renderBoard() {
   if (pick && !S.tickets.some((t) => t.file === pick.file)) { pick = null; document.body.classList.remove('moving'); } // the ticket is gone
   const hadFocus = document.activeElement?.id === 'search';
   const caret = hadFocus ? document.activeElement.selectionStart : 0;
-  const caretEnd = hadFocus ? document.activeElement.selectionEnd : 0; // a selected text (gs) stays selected
+  const caretEnd = hadFocus ? document.activeElement.selectionEnd : 0; // a selection stays as it was
   const a0 = document.activeElement;
   const focusFree = !a0 || a0 === document.body || !!a0.closest?.('.card'); // not typing in a field, overlay or list
   if (pendingFocus) selected = pendingFocus;

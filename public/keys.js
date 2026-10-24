@@ -772,7 +772,7 @@ export function initKeys(ctx) {
     for (let i = 0; i < 30; i++) {
       const input = hashRoute() === 'board' && $('#search');
       if (input) {
-        input.focus(); input.select(); return;
+        input.focus(); input.setSelectionRange(input.value.length, input.value.length); return;
       }
       await new Promise((r) => setTimeout(r, 50));
     }
