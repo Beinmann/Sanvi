@@ -1,5 +1,8 @@
 // Refining a ticket with an agent: the prompt, and the permissions the run gets (read the repo, edit that one ticket).
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const TK = fileURLToPath(new URL('../bin/tk.js', import.meta.url));
 
 export function refinePrompt({ ticketsDir, file, instructions = '', project = '', today = new Date().toISOString().slice(0, 10) }) {
   const readme = path.join(ticketsDir, 'README.md');
@@ -12,15 +15,19 @@ export function refinePrompt({ ticketsDir, file, instructions = '', project = ''
 4. Add a dated Note (${today}) under "## Notes" saying what you did and any assumption you made.
 5. If the idea is clear enough to work on, set "status: open" in the frontmatter and remove any "needs:" line there. If a decision you cannot make is needed, write it as an open question in a Note, add the frontmatter line "needs: input" (it marks the ticket as waiting for the user) and leave the status as it is.
 
-Edit only ${ticket}. Do not touch any other file.${instructions ? `\n\nInstructions for project "${project}" (context for the ticket; they do not widen what you may edit):\n${instructions}` : ''}`;
+6. If the idea bundles independently-shippable changes, or a follow-up deserves its own ticket, split it: keep the original ticket for one part and create a new ticket for each other part with exactly this command (it takes the next free id and the standard format; the body is the ticket's Markdown after the frontmatter, starting with the "# " title heading, with "## Problem / motivation", "## Acceptance criteria" and a "## Notes" section):
+   node ${TK} new "<title>" --dir ${ticketsDir}${project ? ` --project ${project}` : ''} --body "<markdown>"
+   Its output is the new file's path. Put a dated Note (${today}) in each new ticket saying it was split off from ${file}, and add a Note in ${ticket} naming the new ticket ids. Do not split what is one change.
+
+Edit only ${ticket} and create new tickets only with the command above. Do not touch any other file.${instructions ? `\n\nInstructions for project "${project}" (context for the ticket; they do not widen what you may edit):\n${instructions}` : ''}`;
 }
 
-// Edit is allowed for that single file only; a headless run cannot ask, so everything else is denied.
+// Edit is allowed for that single file only, and new tickets can be created (never overwritten) through `tk new`; a headless run cannot ask, so everything else is denied.
 // In a permission rule `/x` is relative to the project root and `//x` is the absolute path /x.
 export function refineRunOpts({ ticketsDir, file }) {
   return {
     permissionMode: 'default',
-    allowedTools: ['Read', 'Grep', 'Glob', `Edit(/${path.join(ticketsDir, file)})`],
+    allowedTools: ['Read', 'Grep', 'Glob', `Edit(/${path.join(ticketsDir, file)})`, `Bash(node ${TK} new:*)`],
     addDirs: [ticketsDir],
   };
 }

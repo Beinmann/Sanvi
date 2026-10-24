@@ -24,7 +24,7 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   note <id|slug> "<text>"                 append a timestamped line to the ticket's ## Notes
   note --scratch "<text>"  (or: jot)      append to NOTES.md, the scratchpad not tied to any ticket
   jot                                     with no text: list the scratch notes
-  new "<title>" [--area A] [--project P] [--status S] [--priority P]
+  new "<title>" [--area A] [--project P] [--status S] [--priority P] [--body "<markdown>"]
                                           create the next ticket from the standard template
   status <id|slug> <status>               change status in the frontmatter only
   review <id|slug>                        start an agent review of the ticket and its code; the findings go to a report file in
@@ -172,7 +172,7 @@ async function main() {
     }
     case 'new': {
       if (!rest[0]) throw new ValidationError('usage: tk new "<title>"');
-      const t = createTicket(dir, { title: rest.join(' '), area: flags.area, project: flags.project, status: flags.status, priority: flags.priority });
+      const t = createTicket(dir, { title: rest.join(' '), area: flags.area, project: flags.project, status: flags.status, priority: flags.priority, body: flags.body && `\n${flags.body.replace(/^\n+/, '')}` });
       out(t, path.join(dir, t.file));
       break;
     }

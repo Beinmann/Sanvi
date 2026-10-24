@@ -376,3 +376,11 @@ test('needs: input is exposed, settable and clearable; unknown values are report
   assert.equal(t.needs, '');
   assert.ok(!/needs/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
 });
+
+test('createTicket with a custom body takes the next free id and never overwrites', () => {
+  const dir = tmp();
+  const a = createTicket(dir, { title: 'Split part', body: '\n# Split part\n\n## Notes\n\n- x\n' });
+  const b = createTicket(dir, { title: 'Split part', body: '\n# Split part\n' });
+  assert.notEqual(a.file, b.file);
+  assert.match(a.body, /## Notes/);
+});
