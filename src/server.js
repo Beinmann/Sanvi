@@ -2,6 +2,7 @@
 // SSE stream that tells browsers when anything in the directory changed.
 import http from 'node:http';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dataDir } from './datadir.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,7 +21,7 @@ import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mer
 import { startRun } from './agent.js';
 import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
-import { reviewPrompt, reviewRunOpts, newReportPath, listReviews, readReview, checkReview } from './review.js';
+import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
@@ -126,7 +127,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       }
       return m.merged ? { ok: true } : { ok: false, error: `${m.error}. Nothing was merged; the worktree is kept at ${wt.worktree} (branch ${wt.branch})` };
     },
-    abandon: (c) => { if (c.kind === 'implement' && c.meta?.wt) releaseWorktree(c.meta.wt); }, // deleting the chat frees its worktree slot
+    abandon: (c) => { if (c.kind === 'implement' && c.meta?.wt) releaseWorktree(c.meta.wt); else releaseReviewSlot(c); }, // deleting the chat frees its worktree slot
+    settle: (c) => releaseReviewSlot(c), // a review holds its slot only while it runs
     projectInfo: (name) => projectInfo(dir, name),
     run: (opts) => { // every run reports the plan limits; keep them for the header
       const r = agentRun(opts);
@@ -146,14 +148,30 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     return chat;
   }
 
-  // Review runs in the project's directory as its own chat; the findings go to a new report file under .sanvi/reviews.
+  // Review runs as its own chat; the findings go to a new report file under .sanvi/reviews. When the project has a
+  // repository the review takes a slot of the worktree pool (like implement) with the ticket's branch checked out, so it can run the tests.
   function startReview(file) {
     const t = readTicket(dir, file);
     if (activeRuns(file).length) throw new ValidationError(`#${t.id} already has an agent running`);
+    const info = projectInfo(dir, t.project);
+    const wt = info.dir ? createWorktree({ dir: resolveDir(info.dir), id: t.id, poolSize: poolSize(), isActive: (branch) => chats.list().some((c) => c.branch === branch && runActive(c)) }) : null;
     const report = newReportPath(dir, t.id);
-    const chat = chats.create({ project: t.project, kind: 'review', ticketId: t.id, meta: { file, report: path.basename(report) }, title: `Review #${t.id}: ${t.title}`.slice(0, 80), runOpts: reviewRunOpts({ ticketsDir: dir, report }) });
-    chats.send(chat.id, `Review ticket #${t.id} (${file}); the report is written to ${path.basename(report)}.`, { prompt: reviewPrompt({ ticketsDir: dir, file, report, project: t.project, instructions: projectInfo(dir, t.project).instructions }), queue: true });
+    const chat = chats.create({ ...(wt ? { dir: wt.worktree } : {}), project: t.project, kind: 'review', ticketId: t.id, meta: { file, report: path.basename(report), ...(wt ? { wt } : {}) }, title: `Review #${t.id}: ${t.title}`.slice(0, 80), runOpts: reviewRunOpts({ ticketsDir: dir, report, slot: !!wt }) });
+    chats.send(chat.id, `Review ticket #${t.id} (${file}); the report is written to ${path.basename(report)}.`, { prompt: reviewPrompt({ ticketsDir: dir, file, report, project: t.project, instructions: info.instructions, slot: wt }), queue: true });
     return chat;
+  }
+
+  // Gives a review's slot back (once). A slot that already belonged to the ticket's implementation is left as it was, and a
+  // branch the review had to create is dropped again. Later messages in the chat get the read-only permissions.
+  function releaseReviewSlot(c) {
+    const wt = c.kind === 'review' && c.meta?.wt;
+    if (!wt || wt.released) return;
+    wt.released = true;
+    if (!wt.reused) {
+      releaseWorktree(wt);
+      if (!wt.branchExisted) { try { execFileSync('git', ['-C', wt.top, 'branch', '-d', wt.branch], { stdio: 'ignore' }); } catch { /* has commits or is checked out: keep it */ } }
+    }
+    c.runOpts = reviewRunOpts({ ticketsDir: dir, report: path.join(reviewsDir(dir), c.meta.report) });
   }
 
   function startRefineAll() {
@@ -204,7 +222,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       repos: projectRepos().map((top) => ({
         name: path.basename(top),
         slots: slotOverview(top, size).map((o) => {
-          const c = o.busy && list.find((x) => x.kind === 'implement' && x.worktree === o.worktree && x.branch === o.branch);
+          const c = o.busy && list.find((x) => (x.kind === 'implement' || x.kind === 'review') && x.worktree === o.worktree && x.branch === o.branch);
           const chat = !o.busy ? null : !c ? 'gone' : runActive(c) ? 'running' : c.outcome === 'ok' ? 'finished' : 'failed';
           return { ...o, ageMs: o.taken ? now - Date.parse(o.taken) : null, chat, chatId: c?.id || null, ticket: c?.ticketId || null };
         }),
@@ -235,7 +253,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} already has an agent running`);
     const info = projectInfo(dir, t.project);
     if (!info.dir) throw new ValidationError(`project "${t.project || DEFAULT_LABEL}" has no directory: set the repository to implement in on the Projects page`);
-    const wt = createWorktree({ dir: resolveDir(info.dir), id: t.id, poolSize: poolSize(), isActive: (branch) => chats.list().some((c) => c.kind === 'implement' && c.branch === branch && runActive(c)) });
+    const wt = createWorktree({ dir: resolveDir(info.dir), id: t.id, poolSize: poolSize(), isActive: (branch) => chats.list().some((c) => c.branch === branch && runActive(c)) });
     // the agent finishes with `testing`; until then the board shows the ticket as being worked on
     if (['open', 'reopened'].includes(t.status) && readConfig(dir).statuses.includes('in-progress')) saveTicket(dir, file, { fields: { status: 'in-progress' } }, t.version);
     const chat = chats.create({ dir: wt.worktree, project: t.project, kind: 'implement', ticketId: t.id, meta: { file, wt }, title: `Implement #${t.id}: ${t.title}`.slice(0, 80), runOpts: implementRunOpts({ ticketsDir: dir, projectDir: resolveDir(info.dir) }) });

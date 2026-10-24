@@ -36,7 +36,7 @@ const REUSE_KINDS = new Set(['refine', 'implement']);
 // Context size after a turn: everything the model read plus what it wrote.
 const contextTokens = (u) => (u ? (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.output_tokens || 0) : 0);
 
-export function createChats({ cwd, file, check, sessionReuse = sessionReuseFromEnv(), projectInfo = () => ({}), finalize, abandon = () => {}, notify = () => {}, run = defaultRun, maxRuns = Infinity, log = () => {} }) {
+export function createChats({ cwd, file, check, sessionReuse = sessionReuseFromEnv(), projectInfo = () => ({}), finalize, abandon = () => {}, settle = () => {}, notify = () => {}, run = defaultRun, maxRuns = Infinity, log = () => {} }) {
   const chats = new Map();
   let running = 0;
   const pending = []; // ids of chats waiting for a free slot
@@ -185,6 +185,7 @@ export function createChats({ cwd, file, check, sessionReuse = sessionReuseFromE
 
   function conclude(c, reply, started, d) {
     running--;
+    try { settle(c); } catch { /* cleanup is best effort */ }
     if (d.ok) {
       c.state = 'idle'; if (!reply.text) reply.text = d.text;
       const verdict = check?.(c, d) || {};
