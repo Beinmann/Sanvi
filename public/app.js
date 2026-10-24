@@ -868,7 +868,7 @@ async function paintReviews() {
     const list = await api('GET', `reviews?id=${encodeURIComponent(D.loaded.id)}`);
     if (D?.file !== file || !$('#reviews')) return;
     const rb = $('#review-report-btn');
-    if (rb) { rb.hidden = !list.length; rb.textContent = list.length > 1 ? `Review report (${list.length})` : 'Review report'; }
+    if (rb) { rb.hidden = !list.length; rb.textContent = list.length > 1 ? `📋 Review report (${list.length})` : '📋 Review report'; }
     box.replaceChildren(...(list.length ? [el('h2', {}, 'Reviews'), ...list.map((r) => {
       const doc = el('div', { class: 'doc' });
       const det = el('details', { class: 'review', 'data-name': r.name }, el('summary', {}, `${r.name} · ${r.created.slice(0, 16).replace('T', ' ')}`), doc);
