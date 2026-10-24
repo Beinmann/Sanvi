@@ -298,6 +298,8 @@ body.has-selection .selhint { display: none; }
 .slots .slot-detail { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding-left: 18px; }
 .slots .slot-branch { font-family: ui-monospace, monospace; word-break: break-all; }
 .slots .slot-detail small { color: var(--muted); font-size: 12px; }
+.ghelp { width: min(1100px, 96vw); max-height: 90vh; display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); column-gap: 28px; align-content: start; } /* sections side by side on wide windows, one column on narrow ones */
+.ghelp > h2, .ghelp > .buttons { grid-column: 1 / -1; }
 .ghelp .buttons { display: flex; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
 .ghelp .allkeys { width: 100%; padding: 6px 12px; font-weight: 600; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .ghelp dt.sub, .ghelp dd.sub { padding-left: 18px; }
