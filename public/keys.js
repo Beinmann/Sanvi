@@ -85,7 +85,7 @@ export const canMarkDone = (columns, status) => columns.includes('done') && stat
 export const formatAge = (ms) => (ms < 3600e3 ? `${Math.max(1, Math.round(ms / 60e3))} min` : ms < 48 * 3600e3 ? `${Math.round(ms / 3600e3)} h` : `${Math.round(ms / 86400e3)} d`);
 
 /** Vim-like jump: `g` is the top of the page, `G` the bottom; any other key is not a jump (null). */
-export const jumpTop = (key, scrollHeight) => (key === 'g' ? 0 : key === 'G' ? scrollHeight : null);
+export const jumpTop = (key, scrollHeight) => (key === 'gg' ? 0 : key === 'G' ? scrollHeight : null);
 
 export const isTyping = (t) => !!t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
 
@@ -120,7 +120,7 @@ export const HELP = [
   ]],
   ['Ticket', [
     ['j / k', 'Scroll down / up (outside fields)'],
-    ['g / G', 'Scroll to the top / bottom (outside fields)'],
+    ['gg / G', 'Scroll to the top / bottom (outside fields)'],
     ['c / Ctrl+Shift+Enter', 'Add a timestamped comment to this ticket (c outside fields, Ctrl+Shift+Enter also while typing; unsaved edits are kept)'],
     ['e / p', 'Edit / preview'],
     ['s', 'Set status (unsaved until you save)'],
@@ -729,6 +729,7 @@ export function initKeys(ctx) {
   window.addEventListener('blur', stopHold);
 
   // ---- global keys
+  let pendingG = false; // a first `g` was just pressed (`gg` scrolls to the top)
   document.addEventListener('keydown', (e) => {
     if (e.isComposing || e.defaultPrevented) return;
     const mod = e.ctrlKey || e.metaKey;
@@ -789,6 +790,8 @@ export function initKeys(ctx) {
       return;
     }
     if (mod || e.altKey || isTyping(e.target)) return;
+    if (e.key === 'Shift') return; // a bare modifier does not break a pending `gg`
+    const gPending = pendingG; pendingG = false;
 
     const board = hashRoute() === 'board';
     // Keyboard pick-up (034): while a card is picked up only these keys act, so the board is never half-held.
@@ -816,7 +819,11 @@ export function initKeys(ctx) {
       case 'b': location.hash = '#/'; break;
       case 'i': openIdea(); break;
       case 'm': openScratch(); break;
-      case 'g': case 'G': if (hashRoute() === 'detail') window.scrollTo({ top: jumpTop(e.key, document.documentElement.scrollHeight) }); else return; break;
+      case 'g': case 'G':
+        if (hashRoute() !== 'detail') return;
+        if (e.key === 'g' && !gPending) { pendingG = true; break; } // first `g`: wait for the second
+        window.scrollTo({ top: jumpTop(e.key === 'g' ? 'gg' : 'G', document.documentElement.scrollHeight) });
+        break;
       case 'a': if (ctx.agents?.()) ctx.chatHotkey(); else return; break;
       case '+': if (ctx.agents?.()) ctx.chatType(); else return; break;
       case 'P': if (ctx.projects().mode === 'dropdown') openPalette('project'); else return; break;
