@@ -332,6 +332,7 @@ export function initChat({ el, show, api, toast, button, project = () => '' }) {
     toggle, hotkey, focusTyping, isOpen: () => isOpen, close: () => toggle(false), onEvent, ask, refine, review, implement, refineAll, onChange: (fn) => changed.push(fn),
     refining: (file) => chats.some((c) => c.ticket === file && c.kind === 'refine' && active(c)),
     implementQueued: (file) => queued.includes(file),
+    reviewing: (file) => chats.some((c) => c.ticket === file && c.kind === 'review' && active(c)),
     // The most recent chat linked to a ticket (the list is newest first), or null.
     implementing: (file) => chats.some((c) => c.ticket === file && c.kind === 'implement' && active(c)),
     forTicket: (id, proj = '') => (id && chats.find((c) => c.ticketId === id && (c.project || '') === proj)) || null,

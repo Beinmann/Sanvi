@@ -154,6 +154,7 @@ function card(t, inText = false) {
     agentOn && chatPage.refining(t.file) && el('span', { class: 'chip refining', title: 'Claude is refining this ticket' }, 'refining…'),
     agentOn && chatPage.implementQueued(t.file) && el('span', { class: 'chip queued', title: 'Implementation starts when the refine run has finished' }, 'implementation queued'),
     agentOn && chatPage.implementing(t.file) && el('span', { class: 'chip refining', title: 'Claude is implementing this ticket' }, 'implementing…'),
+    agentOn && chatPage.reviewing(t.file) && el('span', { class: 'chip refining', title: 'Claude is reviewing this ticket' }, 'reviewing…'),
     t.progress.total > 0 && el('span', {}, `${t.progress.done}/${t.progress.total}`)));
 }
 
@@ -832,8 +833,9 @@ function renderDetail({ fresh = false, edit = false } = {}) {
       }, chatPage.refining(D.file) ? 'Refining…' : 'Refine with Claude'),
       agentOn && el('button', {
         type: 'button', id: 'review-btn', title: 'Let Claude review this ticket and its code; the findings are written to a report file shown below',
+        disabled: chatPage.reviewing(D.file),
         onclick: () => chatPage.review(D.file).catch((e) => toast(`Review failed: ${e.message}`)),
-      }, 'Review with Claude'),
+      }, chatPage.reviewing(D.file) ? 'Reviewing…' : 'Review with Claude'),
       agentOn && chatPage.implementQueued(D.file) && el('span', { id: 'impl-queued', class: 'chip queued', title: 'Implementation starts when the refine run has finished' }, 'implementation queued'),
       agentOn && chatPage.forTicket(D.loaded.id, D.loaded.project || '') && el('button', {
         type: 'button', id: 'chat-link', title: 'Open the latest Claude chat about this ticket',
@@ -1162,7 +1164,7 @@ api('GET', 'agent').then((a) => {
   limitsUi.start();
   let lastKey = '';
   chatPage.onChange(() => { // repaint the board / detail when the set of tickets being refined changes
-    const key = S.tickets.filter((t) => chatPage.refining(t.file) || chatPage.implementing(t.file) || chatPage.implementQueued(t.file)).map((t) => `${t.file}:${+chatPage.refining(t.file)}${+chatPage.implementing(t.file)}${+chatPage.implementQueued(t.file)}`).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');
+    const key = S.tickets.filter((t) => chatPage.refining(t.file) || chatPage.implementing(t.file) || chatPage.implementQueued(t.file) || chatPage.reviewing(t.file)).map((t) => `${t.file}:${+chatPage.refining(t.file)}${+chatPage.implementing(t.file)}${+chatPage.implementQueued(t.file)}${+chatPage.reviewing(t.file)}`).join() + (D ? `|${chatPage.forTicket(D.loaded.id, D.loaded.project || '')?.id}` : '');
     if (key === lastKey) return;
     lastKey = key;
     if (document.querySelector('.board, .tablewrap')) renderBoard();
