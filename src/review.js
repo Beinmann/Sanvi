@@ -35,28 +35,30 @@ export function readReview(ticketsDir, name) {
   try { return { name, text: fs.readFileSync(path.join(reviewsDir(ticketsDir), name), 'utf8') }; } catch { throw new NotFoundError(`no such report: ${name}`); }
 }
 
-export function reviewPrompt({ ticketsDir, file, report, instructions = '', project = '' }) {
+export function reviewPrompt({ ticketsDir, file, report, instructions = '', project = '', slot = null }) {
   const readme = path.join(ticketsDir, 'README.md');
   const ticket = path.join(ticketsDir, file);
   return `You are reviewing one ticket and its implementation in a Markdown ticket tracker. Nobody can answer questions during this run, so do not ask any.
 
 1. Read the ticket format in ${readme} (if it does not exist, keep the ticket's own structure) and the ticket ${ticket}.
-2. Find the implementation in the repository you are running in: use git log and git diff (for example the branch named after the ticket id, or commits mentioning the ticket) and read the changed code and tests.
+2. Find the implementation in the repository you are running in${slot ? ` (a worktree slot with branch ${slot.branch} checked out${slot.branchExisted ? ', the ticket\'s implementation branch' : '; that branch did not exist before and was created from ' + slot.base + ', so look for the implementation in other branches or commits'})` : ''}: use git log and git diff (for example the branch named after the ticket id, or commits mentioning the ticket) and read the changed code and tests.
 3. Review it against the ticket: is each acceptance criterion actually met? Look for bugs, missing edge cases, missing or weak tests, style that does not match the surrounding code, and anything the ticket asked for that is not there.
 4. Write your findings as a Markdown report to exactly this file: ${report}. Start with a "# Review of ticket" heading with the ticket title, then a short verdict, then findings grouped by severity (each with file and line where possible), then one line per acceptance criterion saying met / not met / unclear.
 
-Do not edit the ticket, the code or any other file; write only ${report}. Do not run anything that changes the repository.${instructions ? `\n\nInstructions for project "${project}" (context; they do not widen what you may edit):\n${instructions}` : ''}`;
+${slot ? `Tests: you may run the project's tests in this worktree (npm test, npm run test, node --test) to check the implementation. Skip them if the ticket only implements something minor and reading the code is enough; say in the report whether you ran them and what they showed.\n\n` : ''}Do not edit the ticket, the code or any other file; write only ${report}. Do not run anything that changes the repository.${instructions ? `\n\nInstructions for project "${project}" (context; they do not widen what you may edit):\n${instructions}` : ''}`;
 }
 
 // Read-only on the repo (plus read-only git), Write for the one report path; everything else is denied in a headless run.
-export function reviewRunOpts({ ticketsDir, report }) {
+// With `slot` (a worktree slot is the working directory) the project's test commands are allowed too; they write only inside that slot.
+export function reviewRunOpts({ ticketsDir, report, slot = false }) {
   return {
     permissionMode: 'default',
     tools: ['Read', 'Grep', 'Glob', 'Write', 'Bash'],
     // The report is allowed as Write and as Edit: Claude Code matches file rules under the Edit name, and a Write-only rule was denied in a real run.
     // `git branch` is listing only (no -D / creating); `--output=<file>` (diff, log, show) would write files, so it is denied for every git command.
     allowedTools: ['Read', 'Grep', 'Glob', `Write(/${report})`, `Edit(/${report})`, 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)',
-      'Bash(git branch --list:*)', 'Bash(git branch --show-current)', 'Bash(git branch -a)', 'Bash(git branch -r)', 'Bash(git branch -v)', 'Bash(git branch -vv)'],
+      'Bash(git branch --list:*)', 'Bash(git branch --show-current)', 'Bash(git branch -a)', 'Bash(git branch -r)', 'Bash(git branch -v)', 'Bash(git branch -vv)',
+      ...(slot ? ['Bash(npm test:*)', 'Bash(npm run test:*)', 'Bash(node --test:*)'] : [])],
     disallowedTools: ['Bash(git * --output*)', 'Bash(git diff --output:*)'],
     addDirs: [ticketsDir, path.dirname(report)],
   };

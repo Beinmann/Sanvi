@@ -98,3 +98,51 @@ test('tk review says what is missing: no instance, or agents off', () => {
     assert.match(tk('review'), /usage: tk review/);
   } finally { tk('stop'); }
 });
+
+test('review run with a slot may also run the tests, with the other deny rules intact', () => {
+  const plain = reviewRunOpts({ ticketsDir: '/t', report: '/r/001-x.md' });
+  assert.ok(!plain.allowedTools.some((r) => /npm|node --test/.test(r)));
+  const o = reviewRunOpts({ ticketsDir: '/t', report: '/r/001-x.md', slot: true });
+  for (const r of ['Bash(npm test:*)', 'Bash(npm run test:*)', 'Bash(node --test:*)']) assert.ok(o.allowedTools.includes(r), r);
+  assert.ok(o.disallowedTools.includes('Bash(git * --output*)'));
+  assert.ok(!o.allowedTools.some((r) => /^(Write|Edit)\(/.test(r) && !r.includes('001-x.md')), 'writes only the report');
+  assert.ok(!o.allowedTools.includes('Bash'));
+  const p = reviewPrompt({ ticketsDir: '/t', file: '001-a.md', report: '/r/001-x.md', slot: { branch: 'ticket-001', base: 'main', branchExisted: true } });
+  assert.match(p, /ticket-001/);
+  assert.match(p, /may run the project's tests/);
+  assert.match(p, /Skip them if the ticket only implements something minor/);
+  assert.doesNotMatch(reviewPrompt({ ticketsDir: '/t', file: '001-a.md', report: '/r/001-x.md' }), /may run the project's tests/);
+});
+
+test('a review takes a worktree slot while it runs, shows it busy, and gives it back afterwards', async () => {
+  const dir = setup();
+  const repo = path.join(path.dirname(dir), 'repo');
+  fs.mkdirSync(repo);
+  const git = (...a) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], { encoding: 'utf8' }).trim();
+  git('init', '-q', '-b', 'main'); git('commit', '-q', '--allow-empty', '-m', 'init');
+  fs.mkdirSync(path.join(dir, '_projects'));
+  fs.writeFileSync(path.join(dir, '_projects', '_default.md'), `---\nname: ""\ndir: ${repo}\n---\n`);
+  const calls = [];
+  let finish;
+  const run = (opts) => { calls.push(opts); return { onEvent() {}, done: new Promise((r) => { finish = r; }), cancel() {} }; };
+  const app = createTicketServer({ dir, agents: true, agentRun: run, chatsFile: null });
+  const { port } = await app.listen(0);
+  const j = (m, p, b) => fetch(`http://127.0.0.1:${port}${p}`, { method: m, headers: { 'content-type': 'application/json' }, body: m === 'GET' ? undefined : JSON.stringify(b ?? {}) });
+  const busy = async () => (await (await j('GET', '/api/agent/slots')).json()).repos[0].slots.filter((s) => s.busy);
+  try {
+    const chat = await (await j('POST', '/api/agent/review', { file: '001-a.md' })).json();
+    const slot = `${repo}-worktrees/slot-1`;
+    assert.equal(calls[0].cwd, slot);
+    assert.ok(calls[0].allowedTools.includes('Bash(npm test:*)'));
+    assert.equal(git('-C', slot, 'branch', '--show-current'), 'ticket-001');
+    const b = await busy();
+    assert.equal(b.length, 1);
+    assert.equal(b[0].chat, 'running');
+    assert.equal(b[0].chatId, chat.id);
+    finish({ ok: true, text: 'done' });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(await busy(), []);
+    assert.equal(git('-C', slot, 'branch', '--show-current'), '', 'slot is detached again');
+    assert.equal(git('branch', '--list', 'ticket-001'), '', 'the branch the review had to create is dropped again');
+  } finally { await app.close(); }
+});

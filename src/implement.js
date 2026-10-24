@@ -102,6 +102,7 @@ export function createWorktree({ dir, id, poolSize = DEFAULT_POOL_SIZE, isActive
     for (let n = 1; n <= size && !slot; n++) { // this ticket's own slot from an earlier attempt
       if (readMarker(slotDir(top, n))?.branch === branch) slot = n;
     }
+    const reused = !!slot;
     for (let n = 1; n <= size && !slot; n++) if (!marked(n)) slot = n;
     if (!slot) {
       const held = slotOverview(top, size).map((o) => `${o.name}: ${o.branch} (${ago(now - Date.parse(o.taken))})`).join(', ');
@@ -116,7 +117,7 @@ export function createWorktree({ dir, id, poolSize = DEFAULT_POOL_SIZE, isActive
       git(worktree, 'checkout', ...(exists ? [branch] : ['-b', branch, base]));
     }
     fs.writeFileSync(markerOf(worktree), `${branch}\n${new Date(now).toISOString()}\n`);
-    return { top, base, branch, worktree };
+    return { top, base, branch, worktree, reused, branchExisted: exists };
   } catch (e) {
     if (e instanceof ValidationError) throw e;
     throw new ValidationError(`could not create the worktree: ${gitError(e)}`);
