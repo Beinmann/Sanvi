@@ -129,6 +129,8 @@ export const HELP = [
   ['Ticket', [
     ['j / k', 'Scroll down / up (outside fields)'],
     ['gg / G', 'Scroll to the top / bottom (outside fields)'],
+    ['gj / gk', 'Scroll down / up a few lines (about 5)'],
+    ['g<n>j / g<n>k', 'Scroll down / up n/30 of the window height: g10j about a third of a page, g30j a full page'],
     ['gt / gT', 'Next / previous ticket in board order'],
     ['gc', 'Jump to the Notes at the bottom of the ticket'],
     ['gr', 'Open the newest review report of the ticket'],
@@ -757,6 +759,7 @@ export function initKeys(ctx) {
   window.addEventListener('blur', stopHold);
 
   // ---- global keys
+  let gCount = ''; // digits typed after `g` on the ticket page (`g10j`)
   let pendingG = false; // a first `g` was just pressed (`gg` scrolls to the top, `g` + letter is a "go to" key)
   // Second key after `g`; true when it was one of ours. Anything else cancels the prefix and is handled as a normal key.
   function gKey(key) {
@@ -869,7 +872,7 @@ export function initKeys(ctx) {
     }
     if (mod || e.altKey || isTyping(e.target)) return;
     if (e.key === 'Shift') return; // a bare modifier does not break a pending `gg`
-    const gPending = pendingG; pendingG = false;
+    const gPending = pendingG, gN = gCount; pendingG = false; gCount = '';
 
     const board = hashRoute() === 'board';
     // Keyboard pick-up (034): while a card is picked up only these keys act, so the board is never half-held.
@@ -889,6 +892,13 @@ export function initKeys(ctx) {
       else if (/^[1-9]$/.test(e.key)) { const target = all.filter(Boolean)[Number(e.key) - 1]; if (target == null) return; ctx.moveTicket(pk.file, target); }
       e.preventDefault(); // j/k/n/i/s...: swallowed until the card is dropped or Esc
       return;
+    }
+    if (gPending && hashRoute() === 'detail') { // ticket page: g<n>j / g<n>k scroll n/30 of the viewport, gj / gk a few lines
+      if (/^\d$/.test(e.key) && (gN || e.key !== '0')) { pendingG = true; gCount = gN + e.key; e.preventDefault(); return; }
+      if (e.key === 'j' || e.key === 'k') {
+        scrollBy({ top: (e.key === 'j' ? 1 : -1) * (gN ? Number(gN) * innerHeight / 30 : 120), behavior: 'instant' });
+        e.preventDefault(); return;
+      }
     }
     if (gPending && gKey(e.key)) { e.preventDefault(); return; }
     switch (e.key) {
