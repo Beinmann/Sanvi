@@ -33,10 +33,10 @@ async function readStream(base, id, until) {
   return { text, exit };
 }
 
-test('terminal API needs --agents; with it a command runs on a pty, takes input and resize, and ends with stop', { skip: !hasPython }, async () => {
+test('terminal API needs --terminal (not --agents); with it a shell command runs on a pty, takes input and resize, and ends with stop', { skip: !hasPython }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-'));
-  const off = createTicketServer({ dir });
-  const on = createTicketServer({ dir, agents: true, agentRun: () => {}, chatsFile: null, terminalCommand: ['sh', '-c', 'echo cwd=$(pwd); [ -t 0 ] && echo tty; stty size; read x; echo got:$x; sleep 30'] });
+  const off = createTicketServer({ dir, agents: true, agentRun: () => {}, chatsFile: null });
+  const on = createTicketServer({ dir, terminal: true, shellCommand: ['sh', '-c', 'echo cwd=$(pwd); [ -t 0 ] && echo tty; stty size; read x; echo got:$x; sleep 30'] });
   try {
     const offBase = `http://127.0.0.1:${(await off.listen(0)).port}`;
     const base = `http://127.0.0.1:${(await on.listen(0)).port}`;
@@ -104,6 +104,20 @@ test('a terminal nobody watches is ended after the idle time', { skip: !hasPytho
   } finally { term.stopAll(); }
 });
 
+test('--terminal alone: shell sessions work, ticket sessions (agents) and the agent API stay off', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-'));
+  const app = createTicketServer({ dir, terminal: true });
+  try {
+    const base = `http://127.0.0.1:${(await app.listen(0)).port}`;
+    const info = await (await fetch(`${base}/api/agent`)).json();
+    assert.deepEqual([info.enabled, info.terminal], [false, true]);
+    assert.equal((await fetch(`${base}/api/agent/terminals`)).status, 200);
+    const ticket = await fetch(`${base}/api/agent/terminals/ticket`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"file":"x.md"}' });
+    assert.equal(ticket.status, 403);
+    assert.equal((await fetch(`${base}/api/agent/usage`)).status, 403);
+  } finally { await app.close(); }
+});
+
 test('the vendored terminal front end is served with a module type', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-'));
   const app = createTicketServer({ dir });
@@ -123,7 +137,7 @@ test('ticket sessions: started in the project dir in auto mode with the ticket a
   fs.writeFileSync(path.join(dir, '002-two.md'), '---\nstatus: open\n---\n\n# Two\n\n## Problem / motivation\n\ny\n');
   // a fake `claude`: prints its working dir and arguments, then ends when told to
   const fake = ['sh', '-c', 'echo "cwd=$(pwd)"; echo "args:$*"; read x; [ "$x" = bye ] && exit 4; sleep 30', 'claude'];
-  const app = createTicketServer({ dir, agents: true, agentRun: () => {}, chatsFile: null, terminalCommand: fake });
+  const app = createTicketServer({ dir, agents: true, terminal: true, agentRun: () => {}, chatsFile: null, terminalCommand: fake });
   try {
     const base = `http://127.0.0.1:${(await app.listen(0)).port}`;
     const post = (p, b) => fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });

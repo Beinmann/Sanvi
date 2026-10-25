@@ -24,3 +24,10 @@ test('tk: --agents-full counts as --agents (the network check applies) and --aut
   const refine = run('--auto-refine');
   assert.match(refine.stderr, /--auto-refine needs --agents/);
 });
+
+test('tk: --terminal on a non-loopback host needs --allow-agents-on-network, like --agents', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-flags-'));
+  const r = spawnSync(process.execPath, [TK, '--dir', dir, 'serve', '--terminal', '--host', '0.0.0.0'], { encoding: 'utf8' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--terminal with a non-loopback/);
+});

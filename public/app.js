@@ -1155,6 +1155,7 @@ const keysApi = initKeys({
   },
   about: () => api('GET', 'about'),
   agents: () => agentOn,
+  terminal: () => terminalOn,
   lastEdited: () => S.lastEdited ?? null,
   openEdit: (file) => { if (location.hash === `#/t/${encodeURIComponent(file)}`) setTab('edit'); else { pendingTab = 'edit'; location.hash = `#/t/${encodeURIComponent(file)}`; } },
   // Next (+1) / previous (-1) ticket in board order: columns left to right, shown before hidden ones, each as listed on the board.
@@ -1251,6 +1252,7 @@ async function paintProjectsBadge() { // the button carries the number of projec
 }
 document.addEventListener('projects-changed', paintProjectsBadge);
 let agentOn = false; // server started with --agents
+let terminalOn = false; // server started with --terminal
 let autoRefine = false; // ... and with --auto-refine
 async function refineTicket(file) {
   try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
@@ -1264,7 +1266,8 @@ api('GET', 'agent').then((a) => {
   agentOn = a.enabled;
   autoRefine = !!a.autoRefine;
   $('#chat-btn').hidden = !a.enabled;
-  $('#term-btn').hidden = !a.enabled;
+  terminalOn = !!a.terminal;
+  $('#term-btn').hidden = !terminalOn;
   if (!a.enabled) return;
   chatPage.start();
   limitsUi.start();

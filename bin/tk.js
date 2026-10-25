@@ -38,11 +38,11 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   trash                                   list deleted tickets with days left
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate [--closed-warnings]            check format; exit 1 on errors (closed tickets skip missing-section warnings)
-  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine] | --agents-full] [--force]
-                                          run the web UI in the foreground (port: --port, else the number in .sanvi/port, else 4321; one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --agents-full = --agents --auto-refine (hosts *.localhost are always allowed)
+  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine] | --agents-full] [--terminal] [--force]
+                                          run the web UI in the foreground (port: --port, else the number in .sanvi/port, else 4321; one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --terminal adds a shell terminal in the browser = FULL SYSTEM ACCESS (isolated systems only); --agents-full = --agents --auto-refine (hosts *.localhost are always allowed)
                                           --host 0.0.0.0 serves the LAN (its IPs are allowed automatically; no auth, so trusted networks only;
-                                          --agents on the network also needs --allow-agents-on-network)
-  start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine] | --agents-full]
+                                          --agents or --terminal on the network also needs --allow-agents-on-network)
+  start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine] | --agents-full] [--terminal]
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
   ps                                      list running instances; stale entries are cleaned up
@@ -65,6 +65,7 @@ function parseArgs(argv) {
     else if (a === '--force') flags.force = true;
     else if (a === '--agents') flags.agents = true;
     else if (a === '--auto-refine') flags['auto-refine'] = true;
+    else if (a === '--terminal') flags.terminal = true;
     else if (a === '--agents-full') flags['agents-full'] = true;
     else if (a === '--allow-agents-on-network') flags['allow-agents-on-network'] = true;
     else if (a === '--criterion' || a === '--note') (flags[a.slice(2)] ||= []).push(argv[++i]); // repeatable
@@ -92,6 +93,7 @@ const brief = (t) => `${t.id}  ${(t.status || '-').padEnd(12)} ${(t.area || '').
 // Flag combinations `serve` refuses; `start` runs the same check before detaching so the error shows in the terminal.
 function checkServeFlags(flags, isLoopback) {
   if (flags['auto-refine'] && !flags.agents) throw new ValidationError('--auto-refine needs --agents');
+  if (flags.terminal && !isLoopback(flags.host || '127.0.0.1') && !flags['allow-agents-on-network']) throw new ValidationError('--terminal with a non-loopback --host gives anyone on the network a shell on this machine; add --allow-agents-on-network to confirm');
   if (flags.agents && !isLoopback(flags.host || '127.0.0.1') && !flags['allow-agents-on-network']) throw new ValidationError('--agents with a non-loopback --host lets anyone on the network run the agent; add --allow-agents-on-network to confirm');
 }
 
@@ -230,6 +232,7 @@ async function main() {
       const fd = fs.openSync(log, 'a');
       const args = [fileURLToPath(import.meta.url), '--dir', dir, 'serve', '--auto-port'];
       if (flags.agents) args.push('--agents');
+      if (flags.terminal) args.push('--terminal');
       if (flags['auto-refine']) args.push('--auto-refine');
       if (flags.force) args.push('--force');
       if (flags['allow-agents-on-network']) args.push('--allow-agents-on-network');
@@ -268,7 +271,7 @@ async function main() {
       process.on('exit', () => releaseLock(dir));
       const bindHost = flags.host || '127.0.0.1';
       const networked = !isLoopback(bindHost);
-      const app = createTicketServer({ dir, bindHost, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents, autoRefine: !!flags['auto-refine'] });
+      const app = createTicketServer({ dir, bindHost, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents, terminal: !!flags.terminal, autoRefine: !!flags['auto-refine'] });
       const host = bindHost;
       // The server's timers would keep a failed process alive (holding the lock, serving nothing), so exit explicitly.
       const listenFailed = (e) => {

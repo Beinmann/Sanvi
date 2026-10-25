@@ -87,7 +87,7 @@ function readBuffer(req, limit) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, terminalCommand, chatsFile, autoRefine = false, bindHost, limitsProbe }) {
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, terminal = false, agentRun = startRun, terminalCommand, shellCommand, chatsFile, autoRefine = false, bindHost, limitsProbe }) {
   const extraHosts = new Set([...allowedHosts.map((h) => h.toLowerCase()), ...bindHosts(bindHost)]);
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h) || [...extraHosts].some((e) => hostMatches(e, h)) || persistentHosts(dir).some((e) => hostMatches(e, h));
@@ -114,17 +114,18 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
 
   const runner = createRunner({ dir });
 
-  // Interactive `claude` on a pty (see src/terminal.js); also --agents only.
-  const terminals = agents ? createTerminals({ command: terminalCommand }) : null;
+  // Terminals on a pty (see src/terminal.js), only with --terminal: a plain shell, and with --agents also ticket sessions
+  // running the interactive `claude` (`terminalCommand`). A shell is full system access, hence its own flag.
+  const terminals = terminal ? createTerminals({ command: terminalCommand }) : null;
   // Where a terminal starts: the given directory, else the project's (as chats do), else the default directory.
   function startCwd(project) {
     const info = projectInfo(dir, project || '') || {};
     if (info.dir) { try { return resolveDir(info.dir); } catch { /* missing: the default directory */ } }
-    return chats.defaultDir;
+    return chats?.defaultDir ?? process.cwd();
   }
-  function startTerminal({ dir: tdir, project, prompt, cols, rows } = {}) {
+  function startTerminal({ dir: tdir, project, cols, rows } = {}) {
     const cwd = tdir ? resolveDir(tdir) : startCwd(project);
-    const t = terminals.start({ cwd, prompt, cols, rows });
+    const t = terminals.start({ cwd, cols, rows, command: shellCommand || [process.env.SHELL || '/bin/sh'] });
     changelog.log({ ticket: '-', action: 'terminal', project: project || '' });
     return t;
   }
@@ -376,8 +377,18 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       });
     }
     if (parts[0] === 'agent') {
-      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir }) });
-      if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
+      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, terminal: !!terminals, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir }) });
+      if (parts[1] === 'terminals') {
+        if (!terminals) return send(res, 403, { error: 'the terminal is off (start the server with --terminal)' });
+        if (parts.length === 2 && method === 'GET') return send(res, 200, terminals.list());
+        if (parts.length === 3 && parts[2] === 'ticket' && method === 'POST') { if (!chats) return send(res, 403, { error: 'ticket sessions need --agents' }); const r = openTicketTerminal(await readJson(req)); return send(res, r.reused ? 200 : 201, r); }
+        if (parts.length === 2 && method === 'POST') return send(res, 201, startTerminal(await readJson(req)));
+        if (parts.length === 4 && parts[3] === 'stream' && method === 'GET') return terminals.watch(parts[2], req, res);
+        if (parts.length === 4 && parts[3] === 'input' && method === 'POST') { terminals.input(parts[2], (await readJson(req)).data); return send(res, 200, { ok: true }); }
+        if (parts.length === 4 && parts[3] === 'resize' && method === 'POST') { const b = await readJson(req); return send(res, 200, terminals.resize(parts[2], b.cols, b.rows)); }
+        if ((parts.length === 3 && method === 'DELETE') || (parts.length === 4 && parts[3] === 'stop' && method === 'POST')) { terminals.stop(parts[2]); return send(res, 200, { ok: true }); }
+        return send(res, 404, { error: 'not found' });
+      }      if (!chats) return send(res, 403, { error: 'agent features are off (start the server with --agents)' });
       if (parts[1] === 'usage' && parts.length === 2 && method === 'GET') return send(res, 200, chats.usage());
       if (parts[1] === 'slots' && parts.length === 2 && method === 'GET') return send(res, 200, slotsPayload());
       if (parts[1] === 'slots' && parts.length === 2 && method === 'PUT') return send(res, 200, setPoolSize((await readJson(req)).poolSize));
@@ -389,16 +400,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts[1] === 'implement' && parts.length === 2 && method === 'POST') return send(res, 201, startImplement((await readJson(req)).file));
       if (parts[1] === 'review' && parts.length === 2 && method === 'POST') return send(res, 201, startReview((await readJson(req)).file));
       if (parts[1] === 'refine' && parts.length === 2 && method === 'POST') return send(res, 201, startRefine((await readJson(req)).file));
-      if (parts[1] === 'terminals') {
-        if (parts.length === 2 && method === 'GET') return send(res, 200, terminals.list());
-        if (parts.length === 3 && parts[2] === 'ticket' && method === 'POST') { const r = openTicketTerminal(await readJson(req)); return send(res, r.reused ? 200 : 201, r); }
-        if (parts.length === 2 && method === 'POST') return send(res, 201, startTerminal(await readJson(req)));
-        if (parts.length === 4 && parts[3] === 'stream' && method === 'GET') return terminals.watch(parts[2], req, res);
-        if (parts.length === 4 && parts[3] === 'input' && method === 'POST') { terminals.input(parts[2], (await readJson(req)).data); return send(res, 200, { ok: true }); }
-        if (parts.length === 4 && parts[3] === 'resize' && method === 'POST') { const b = await readJson(req); return send(res, 200, terminals.resize(parts[2], b.cols, b.rows)); }
-        if ((parts.length === 3 && method === 'DELETE') || (parts.length === 4 && parts[3] === 'stop' && method === 'POST')) { terminals.stop(parts[2]); return send(res, 200, { ok: true }); }
-        return send(res, 404, { error: 'not found' });
-      }
+
       if (parts[1] !== 'chats') return send(res, 404, { error: 'not found' });
       if (parts.length === 2 && method === 'GET') return send(res, 200, chats.list());
       if (parts.length === 2 && method === 'POST') return send(res, 201, chats.create(await readJson(req)));

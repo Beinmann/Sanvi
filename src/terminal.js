@@ -30,12 +30,12 @@ export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, reapMs
     if (t.state === 'running' && !t.watchers.size) t.idle = setTimeout(() => stop(t.id), idleMs);
   }
 
-  /** Starts `command` (plus `flags` and the optional initial `prompt`) in `cwd`. `ticket` (a file name) marks a ticket session. */
-  function start({ cwd, prompt, cols, rows, flags = [], ticket = null } = {}) {
+  /** Starts `command` (or the given `command`, plus `flags` and the optional initial `prompt`) in `cwd`. `ticket` (a file name) marks a ticket session. */
+  function start({ cwd, prompt, cols, rows, flags = [], ticket = null, command: cmd = command } = {}) {
     if (!cwd) throw new ValidationError('a directory is needed');
     if ([...terms.values()].filter((t) => t.state === 'running').length >= MAX) throw new ValidationError(`at most ${MAX} terminals at once`);
     cols = size(cols, 100, 500); rows = size(rows, 30, 200);
-    const args = [...command, ...flags];
+    const args = [...cmd, ...flags];
     const text = String(prompt || '').trim();
     if (text) args.push(text.startsWith('-') ? `Task: ${text}` : text);
     const t = { id: crypto.randomUUID(), cwd, ticket, cols, rows, state: 'running', exitCode: null, created: new Date().toISOString(), chunks: [], bytes: 0, watchers: new Set(), idle: null, proc: null };
