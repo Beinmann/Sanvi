@@ -204,3 +204,16 @@ test('ticket sessions run in an interactive shell: Ctrl+Z gives a prompt in the 
     await wait(/got:hello/);
   } finally { term.stopAll(); }
 });
+
+test('Tab and Shift+Tab bytes reach the command on the pty unchanged (completion is up to the shell)', { skip: !hasPython }, async () => {
+  const term = createTerminals({ command: ['sh', '-c', 'stty raw -echo; echo ready; dd bs=1 count=4 2>/dev/null | od -An -tx1; sleep 30'] });
+  const t = term.start({ cwd: os.tmpdir() });
+  try {
+    let text = '';
+    term.watch(t.id, { on() {} }, { writeHead() {}, end() {}, write(x) { const m = /^data: (.*)$/m.exec(x); if (m && !x.startsWith('event')) text += Buffer.from(m[1], 'base64').toString(); } });
+    for (let i = 0; i < 100 && !text.includes('ready'); i++) await new Promise((r) => setTimeout(r, 50));
+    term.input(t.id, '\t\x1b[Z');
+    for (let i = 0; i < 100 && !text.includes('5a'); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.match(text, /09 1b 5b 5a/);
+  } finally { term.stopAll(); }
+});
