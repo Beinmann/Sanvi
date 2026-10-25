@@ -23,6 +23,7 @@ The command is `tk` (alias `sanvi`). If `tk` clashes with another program on you
 board and editor for your Markdown tickets. With it, Claude works on them:
 
 - **Refine** rough ideas into proper tickets (or all of them automatically with `--auto-refine`).
+  `--agents-full` is shorthand for `--agents --auto-refine` (on `tk serve` and `tk start`).
 - **Implement** a ticket in a separate git worktree and merge the result.
 - **Review** a ticket's changes and attach a report.
 - **Chat** about the board or a project, with cost and plan-limit display.
