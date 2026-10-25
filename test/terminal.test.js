@@ -175,3 +175,32 @@ test('ticket sessions: started in the project dir in auto mode with the ticket a
     assert.equal((await fetch(`${base}/api/agent/terminals/${ta.id}/stream`)).status, 400);
   } finally { await app.close(); }
 });
+
+test('ticket sessions run in an interactive shell: Ctrl+Z gives a prompt in the same session, fg resumes, a normal end exits', { skip: !hasPython }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-'));
+  const term = createTerminals({ command: ['sh', '-c', 'echo started; read x; echo got:$x; exit 5', 'claude'], shell: ['bash', '--norc', '--noprofile'] });
+  const base = { cwd: dir, cols: 80, rows: 24 };
+  const t = term.start({ ...base, inShell: true });
+  try {
+    let text = '';
+    term.watch(t.id, { on() {} }, { writeHead() {}, end() {}, write(x) { const m = /^data: (.*)$/m.exec(x); if (m && !x.startsWith('event')) text += Buffer.from(m[1], 'base64').toString(); } });
+    const send = (data) => term.input(t.id, data);
+    const wait = async (re, ms = 5000) => {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        if (re.test(text)) return text;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      throw new Error(`timed out waiting for ${re}`);
+    };
+    await wait(/started/);
+    send('\x1a'); // Ctrl+Z
+    await wait(/Stopped|stopped/);
+    send('echo shell-works:$(pwd)\n');
+    await wait(new RegExp(`shell-works:${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    send('fg\n');
+    await new Promise((r) => setTimeout(r, 300));
+    send('hello\n');
+    await wait(/got:hello/);
+  } finally { term.stopAll(); }
+});

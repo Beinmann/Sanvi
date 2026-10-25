@@ -14,7 +14,11 @@ const REAP_MS = 10000;     // an ended terminal is forgotten after this long (la
 
 const size = (v, dflt, max) => (Number.isInteger(v) && v >= 1 && v <= max ? v : dflt);
 
-export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, reapMs = REAP_MS, python = 'python3' } = {}) {
+const quote = (a) => `'${String(a).replace(/'/g, `'\\''`)}'`;
+// Typed into the interactive shell: runs $SANVI_RUN as a foreground job, so Ctrl+Z (exit status 128+SIGTSTP) returns to the prompt for `fg`; any other end leaves the shell too.
+const RUN_LINE = ' eval "$SANVI_RUN"; s=$?; [ "$s" -eq 148 ] || exit "$s"\n';
+
+export function createTerminals({ command = ['claude'], shell = null, idleMs = IDLE_MS, reapMs = REAP_MS, python = 'python3' } = {}) {
   const terms = new Map();
 
   const view = (t) => ({ id: t.id, cwd: t.cwd, cols: t.cols, rows: t.rows, state: t.state, exitCode: t.exitCode, created: t.created, ticket: t.ticket });
@@ -30,8 +34,9 @@ export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, reapMs
     if (t.state === 'running' && !t.watchers.size) t.idle = setTimeout(() => stop(t.id), idleMs);
   }
 
-  /** Starts `command` (or the given `command`, plus `flags` and the optional initial `prompt`) in `cwd`. `ticket` (a file name) marks a ticket session. */
-  function start({ cwd, prompt, cols, rows, flags = [], ticket = null, command: cmd = command } = {}) {
+  /** Starts `command` (or the given `command`, plus `flags` and the optional initial `prompt`) in `cwd`. `ticket` (a file name) marks a ticket session.
+   *  With `inShell` (and a `shell`) the command runs as a job of an interactive shell instead of being the pty's direct child, so Ctrl+Z gives a shell. */
+  function start({ cwd, prompt, cols, rows, flags = [], ticket = null, inShell = false, command: cmd = command } = {}) {
     if (!cwd) throw new ValidationError('a directory is needed');
     if ([...terms.values()].filter((t) => t.state === 'running').length >= MAX) throw new ValidationError(`at most ${MAX} terminals at once`);
     cols = size(cols, 100, 500); rows = size(rows, 30, 200);
@@ -39,10 +44,12 @@ export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, reapMs
     const text = String(prompt || '').trim();
     if (text) args.push(text.startsWith('-') ? `Task: ${text}` : text);
     const t = { id: crypto.randomUUID(), cwd, ticket, cols, rows, state: 'running', exitCode: null, created: new Date().toISOString(), chunks: [], bytes: 0, watchers: new Set(), idle: null, proc: null };
-    const proc = spawn(python, ['-I', HOST, cwd, String(cols), String(rows), ...args], {
-      stdio: ['pipe', 'pipe', 'pipe', 'pipe'], cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+    const wrap = inShell && shell;
+    const proc = spawn(python, ['-I', HOST, cwd, String(cols), String(rows), ...(wrap ? shell : args)], {
+      stdio: ['pipe', 'pipe', 'pipe', 'pipe'], cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...(wrap ? { SANVI_RUN: args.map(quote).join(' ') } : {}) },
     });
     t.proc = proc;
+    if (wrap) proc.stdin.write(RUN_LINE); // queued on the pty until the shell reads it
     const out = (buf) => {
       t.chunks.push(buf); t.bytes += buf.length;
       while (t.bytes > KEEP && t.chunks.length > 1) t.bytes -= t.chunks.shift().length;

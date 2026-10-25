@@ -116,7 +116,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
 
   // Terminals on a pty (see src/terminal.js), only with --terminal: a plain shell, and with --agents also ticket sessions
   // running the interactive `claude` (`terminalCommand`). A shell is full system access, hence its own flag.
-  const terminals = terminal ? createTerminals({ command: terminalCommand }) : null;
+  const terminals = terminal ? createTerminals({ command: terminalCommand, shell: shellCommand || [process.env.SHELL || '/bin/sh'] }) : null;
   // Where a terminal starts: the given directory, else the project's (as chats do), else the default directory.
   function startCwd(project) {
     const info = projectInfo(dir, project || '') || {};
@@ -137,7 +137,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (running) return { ...running, reused: true };
     // The ticket goes in as system-prompt context, not as the first user prompt: nothing runs until the user types.
     const context = `This session was opened from ticket #${t.id} "${t.title}" (${path.join(dir, file)}). Do not start working until the user says what to do; the user may also work on other things.`;
-    const made = terminals.start({ cwd: startCwd(t.project), cols, rows, flags: ['--permission-mode', 'auto', '--append-system-prompt', context], ticket: file });
+    const made = terminals.start({ cwd: startCwd(t.project), cols, rows, flags: ['--permission-mode', 'auto', '--append-system-prompt', context], ticket: file, inShell: true });
     changelog.log({ ticket: file, action: 'terminal', project: t.project || '' });
     return { ...made, reused: false };
   }
