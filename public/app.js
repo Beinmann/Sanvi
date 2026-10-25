@@ -322,7 +322,7 @@ function paintProject() {
   label.textContent = soleProject();
   if (project && project !== NO_PROJECT && !names.includes(project)) names.push(project);
   sel.replaceChildren(el('option', { value: '' }, 'All projects'), ...names.map((n) => el('option', { value: n }, n)),
-    el('option', { value: NO_PROJECT }, 'No project'));
+    el('option', { value: NO_PROJECT }, 'Default project'));
   sel.value = project;
   sel.classList.toggle('set', !!project);
   paintRun();
