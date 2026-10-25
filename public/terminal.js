@@ -5,7 +5,7 @@
 import { Terminal } from './xterm.mjs';
 import { FitAddon } from './addon-fit.mjs';
 
-export function initTerminal({ el, api, toast, button, project = () => '', ticketTitle = (file) => file }) {
+export function initTerminal({ el, api, toast, button, onHide = () => {}, project = () => '', ticketTitle = (file) => file }) {
   const panel = el('aside', { class: 'chatpanel termpanel', 'aria-label': 'Terminal with Claude Code', hidden: true });
   const tabs = el('div', { class: 'termtabs', role: 'tablist' });
   const status = el('span', { class: 'muted chatmeta' });
@@ -47,7 +47,8 @@ export function initTerminal({ el, api, toast, button, project = () => '', ticke
 
   function close(id) { drop(id); api('DELETE', `agent/terminals/${id}`).catch(() => {}); }
 
-  function hide() { panel.hidden = true; button.focus(); }
+  // Focus must not stay on (or return to) the Terminal button: Space would open the panel again.
+  function hide() { panel.hidden = true; button.blur(); document.activeElement?.blur?.(); onHide(); }
 
   function attach(made, label) {
     if (sessions.has(made.id)) return show(made.id);

@@ -245,13 +245,17 @@ export function initKeys(ctx) {
       hadFocus = has;
     };
     const timer = setInterval(check, 150);
+    // Opened by a key press, so the page has the keyboard: apply the focus again once the browser has settled.
+    if (typable) for (const ms of [0, 60]) setTimeout(() => { if (overlay?.node === backdrop && document.hasFocus() && document.activeElement !== target) target.focus(); }, ms);
     const refocus = () => { hadFocus = false; check(); };
     const redirect = (e) => { // focus is elsewhere but a key arrived: move it into the box (the key then types there)
       if (overlay?.node !== backdrop || backdrop.contains(document.activeElement)) return;
       if (typable && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) target.focus(); else refocus();
     };
     node.addEventListener('mousedown', (e) => { if (!e.target.closest('button, input, textarea, select, a')) { e.preventDefault(); target.focus(); } });
+    const lost = () => { hadFocus = false; }; // the next check re-applies the focus (blur then focus, which forces the caret)
     window.addEventListener('focus', refocus);
+    window.addEventListener('blur', lost);
     document.addEventListener('visibilitychange', refocus);
     document.addEventListener('keydown', redirect, true);
     overlay = {
@@ -259,6 +263,7 @@ export function initKeys(ctx) {
       close() {
         clearInterval(timer);
         window.removeEventListener('focus', refocus);
+        window.removeEventListener('blur', lost);
         document.removeEventListener('visibilitychange', refocus);
         document.removeEventListener('keydown', redirect, true);
         backdrop.remove(); overlay = null; onClose?.(); if (prev?.isConnected) prev.focus();

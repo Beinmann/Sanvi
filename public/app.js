@@ -101,6 +101,20 @@ document.addEventListener('focusin', (e) => {
   if (c && c.dataset.file !== selected) setSelected(c.dataset.file, { focus: false });
 });
 
+// After the window regained focus (e.g. after an OS screenshot) the board is re-synced: a card that looks marked
+// (it has DOM focus) becomes the real selection, the selected card gets DOM focus back, and focus does not stay on a
+// header button (a stale Terminal / Chat button would be "clicked" by Space).
+function resyncFocus() {
+  if (document.visibilityState === 'hidden' || !document.hasFocus()) return;
+  const a = document.activeElement;
+  const c = a?.closest?.('.card');
+  if (c && c.dataset.file !== selected) setSelected(c.dataset.file, { focus: false });
+  else if (a?.matches?.('#term-btn, #chat-btn')) { a.blur(); if (selected) setSelected(selected); }
+  else if (selected && (!a || a === document.body)) setSelected(selected);
+}
+window.addEventListener('focus', resyncFocus);
+document.addEventListener('visibilitychange', resyncFocus);
+
 // The selected card (045): explicit state, independent of DOM focus, so keys keep working after focus is lost.
 // `lastSelected` survives Esc so j/k can come back to it.
 let selected = null;
@@ -1242,7 +1256,8 @@ async function refineTicket(file) {
   try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
 }
 const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), failedButton: $('#failed-btn'), project: () => (project === NO_PROJECT ? '' : project) });
-const terminalPage = initTerminal({ el, api, toast, button: $('#term-btn'), project: () => (project === NO_PROJECT ? '' : project),
+const terminalPage = initTerminal({ el, api, toast, button: $('#term-btn'), onHide: () => { if (selected) setSelected(selected); },
+  project: () => (project === NO_PROJECT ? '' : project),
   ticketTitle: (file) => { const t = S.tickets.find((x) => x.file === file); return t ? `#${t.id} ${t.title}`.slice(0, 28) : file; } });
 const limitsUi = initLimits({ el, api, toast, node: $('#limits') });
 api('GET', 'agent').then((a) => {
