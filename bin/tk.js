@@ -47,6 +47,8 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
 
 The tickets dir is --dir, $TK_DIR, or the nearest ./tickets (searching upwards).`;
 
+const VALUE_FLAGS = new Set(['--dir', '--port', '--host', '--allow-host', '--status', '--area', '--project', '--priority', '--problem', '--body']);
+
 function parseArgs(argv) {
   const flags = {};
   const pos = [];
@@ -63,7 +65,9 @@ function parseArgs(argv) {
     else if (a === '--auto-refine') flags['auto-refine'] = true;
     else if (a === '--allow-agents-on-network') flags['allow-agents-on-network'] = true;
     else if (a === '--criterion' || a === '--note') (flags[a.slice(2)] ||= []).push(argv[++i]); // repeatable
-    else if (a.startsWith('--')) flags[a.slice(2)] = argv[++i];
+    else if (VALUE_FLAGS.has(a)) flags[a.slice(2)] = argv[++i];
+    else if (a === '--help') flags.help = true;
+    else if (a.startsWith('--')) throw new ValidationError(`unknown flag ${a.split('=')[0]} (see tk help)`);
     else pos.push(a);
   }
   return { flags, pos };
@@ -228,7 +232,9 @@ async function main() {
         const tail = fs.readFileSync(log, 'utf8').trim().split('\n').slice(-5).join('\n');
         throw new ValidationError(`server did not start; see ${log}${tail ? `\n${tail}` : ''}`);
       }
-      console.log(`started (pid ${e.pid}): ${e.url}\n${dir}\nlog: ${log}`);
+      const wanted = flags.port === undefined ? 4321 : Number(flags.port);
+      const moved = e.port !== wanted ? `\nnote: port ${wanted} was busy, using ${e.port}` : '';
+      console.log(`started (pid ${e.pid}): ${e.url}${moved}\n${dir}\nlog: ${log}`);
       break;
     }
     case 'stop': {
@@ -255,11 +261,18 @@ async function main() {
       const app = createTicketServer({ dir, bindHost, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents, autoRefine: !!flags['auto-refine'] });
       const host = bindHost;
       const want = flags.port === undefined ? 4321 : Number(flags.port);
+      // The server's timers would keep a failed process alive (holding the lock, serving nothing), so exit explicitly.
+      const listenFailed = (e) => {
+        console.error(e.code === 'EADDRINUSE' ? `error: port ${want} is already in use` : `error: cannot listen on ${host}:${want}: ${e.message}`);
+        releaseLock(dir);
+        process.exit(1);
+      };
       let addr;
       try { addr = await app.listen(want, host); } catch (e) {
         // An explicit --port is honoured strictly; otherwise fall back to any free port when asked to.
-        if (e.code !== 'EADDRINUSE' || !flags['auto-port'] || flags.port !== undefined) throw e;
-        addr = await app.listen(0, host);
+        if (e.code !== 'EADDRINUSE' || !flags['auto-port'] || flags.port !== undefined) return listenFailed(e);
+        try { addr = await app.listen(0, host); } catch (e2) { return listenFailed(e2); }
+        console.log(`port ${want} was busy, using ${addr.port}`);
       }
       const url = `http://localhost:${addr.port}`;
       updateLock(dir, { port: addr.port });

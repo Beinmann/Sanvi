@@ -113,3 +113,26 @@ test('server lock: live holder refuses, stale lock is replaced, --force override
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('serve on a taken port exits non-zero, says so and leaves no lock; unknown flags are rejected', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const net = await import('node:net');
+  const { root, mk } = setup();
+  const d = mk('busy');
+  const blocker = net.createServer();
+  await new Promise((r) => blocker.listen(0, '127.0.0.1', r));
+  const port = blocker.address().port;
+  const env = { ...process.env, TK_STATE_DIR: path.join(root, 'state') };
+  try {
+    const r = spawnSync(process.execPath, [TK, '--dir', d, 'serve', '--port', String(port)], { encoding: 'utf8', env, timeout: 15000 });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, new RegExp(`port ${port} is already in use`));
+    assert.ok(!fs.existsSync(path.join(root, 'busy', '.sanvi', 'server.lock')));
+    const u = spawnSync(process.execPath, [TK, '--dir', d, 'list', '--bogus', 'x'], { encoding: 'utf8', env });
+    assert.equal(u.status, 1);
+    assert.match(u.stderr, /unknown flag --bogus/);
+  } finally {
+    blocker.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
