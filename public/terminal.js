@@ -18,11 +18,34 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
   document.body.append(panel);
   const sessions = new Map(); // id -> { id, label, ticket, host, term, fit, source, observer, tab }
   let current = null;
+  let counter = 0; // numbers the default labels; unlike sessions.size it never repeats after a tab is closed
 
   const decode = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const paintTabs = () => tabs.replaceChildren(...[...sessions.values()].map((s) => el('span', { class: `termtab${s === current ? ' on' : ''}`, role: 'tab', 'aria-selected': String(s === current) },
-    el('button', { type: 'button', title: s.cwd, onclick: () => show(s.id) }, s.label),
-    el('button', { type: 'button', class: 'termx', title: 'End this session', 'aria-label': `End ${s.label}`, onclick: () => close(s.id) }, '×'))));
+    el('button', { type: 'button', title: `${s.cwd} (double-click to rename)`, onclick: () => { if (s !== current) show(s.id); }, ondblclick: (e) => rename(s, e.currentTarget) }, s.label),
+    el('button', { type: 'button', class: 'termx', title: 'End this session', 'aria-label': `End ${s.label}`, onclick: () => close(s.id) }, '×'))),
+    el('button', { type: 'button', class: 'termadd', title: 'Start another terminal', 'aria-label': 'New terminal', onclick: () => start() }, '+'));
+
+  // Enter confirms, Esc cancels, an empty name keeps the old one. Only the label changes; the process is untouched.
+  function rename(s, labelButton) {
+    const input = el('input', { class: 'termrename', value: s.label, 'aria-label': 'Terminal name', size: Math.max(8, s.label.length) });
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      const name = input.value.trim();
+      if (save && name) s.label = name;
+      paintTabs();
+      if (current === s) s.term.focus();
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // typing a name must not trigger board hotkeys
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    labelButton.replaceWith(input);
+    input.focus(); input.select();
+  }
 
   function show(id) {
     const s = sessions.get(id);
@@ -79,7 +102,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     panel.hidden = false;
     try {
       const made = await api('POST', 'agent/terminals', { dir, prompt, project: project(), cols: 100, rows: 30 });
-      attach(made, `Terminal ${sessions.size + 1}`);
+      attach(made, `Terminal ${++counter}`);
     } catch (e) { if (!sessions.size) panel.hidden = true; toast(`Terminal failed: ${e.message}`); }
   }
 
