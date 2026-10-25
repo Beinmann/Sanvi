@@ -12,7 +12,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
   const hosts = el('div', { class: 'termstack' });
   panel.append(
     el('div', { class: 'chathead' }, el('strong', {}, 'Terminal'), status, el('span', { style: 'flex:1' }),
-      el('button', { type: 'button', title: 'Hide the panel; the sessions keep running', onclick: () => hide() }, 'Hide'),
+      el('button', { type: 'button', title: 'Hide the panel; the sessions keep running (Ctrl+H)', onclick: () => hide() }, 'Hide'),
       el('button', { type: 'button', title: 'End the current session', onclick: () => current && close(current.id) }, 'End session')),
     tabs, hosts,
     el('p', { class: 'muted termhint' }, 'Copy: Shift+drag to select, then Ctrl+C (without a selection Ctrl+C interrupts).'));
@@ -96,6 +96,11 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     panel.hidden = false;
     // Ctrl+C with a selection copies it (Firefox keeps Ctrl+Shift+C for its dev tools); without one it stays the interrupt.
     term.attachCustomKeyEventHandler((e) => {
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'h') { // Ctrl+H hides the panel (same as Hide); never reaches the shell
+        if (e.type === 'keydown') hide();
+        e.preventDefault();
+        return false;
+      }
       if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'c' || !term.hasSelection()) return true;
       const text = term.getSelection();
       copyText(text).then((ok) => { if (!ok) toast('Copy failed: the browser denied clipboard access'); });

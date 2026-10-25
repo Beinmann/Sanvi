@@ -120,6 +120,7 @@ export const HELP = [
     ['gav', 'Review the selected / open ticket with Claude'],
     ['gt', 'Terminal: same as the Terminal button (toggle; starts a shell if none; only with --terminal, and not on a ticket page, where gt is next ticket)'],
     ['gat', 'Terminal: show the interactive Claude session of the selected / open ticket, or start one (auto permission mode; needs --terminal and --agents)'],
+    ['Ctrl+H', 'Terminal (while it has focus): hide the panel and return to the board, same as the Hide button'],
     ['gas', 'Worktree slot overview (same as gw)'],
     ['gw', 'Worktree slot overview (only with --agents)'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
