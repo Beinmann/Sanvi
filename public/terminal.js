@@ -14,7 +14,8 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     el('div', { class: 'chathead' }, el('strong', {}, 'Terminal'), status, el('span', { style: 'flex:1' }),
       el('button', { type: 'button', title: 'Hide the panel; the sessions keep running', onclick: () => hide() }, 'Hide'),
       el('button', { type: 'button', title: 'End the current session', onclick: () => current && close(current.id) }, 'End session')),
-    tabs, hosts);
+    tabs, hosts,
+    el('p', { class: 'muted termhint' }, 'Copy: Shift+drag to select, then Ctrl+C (without a selection Ctrl+C interrupts).'));
   document.body.append(panel);
   const sessions = new Map(); // id -> { id, label, ticket, host, term, fit, source, observer, tab }
   let current = null;

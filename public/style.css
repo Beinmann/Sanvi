@@ -313,3 +313,4 @@ body.has-selection .selhint { display: none; }
 .ghelp .buttons { display: flex; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
 .ghelp .allkeys { width: 100%; padding: 6px 12px; font-weight: 600; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .ghelp dt.sub, .ghelp dd.sub { padding-left: 18px; }
+.termhint { margin: 4px 0 0; font-size: 12px; }
