@@ -136,3 +136,43 @@ test('serve on a taken port exits non-zero, says so and leaves no lock; unknown 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('persistent port: .sanvi/port is the default, --port overrides, invalid content is an error, busy port is explained', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const net = await import('node:net');
+  const { portFile, storedPort, resolvePort, parsePort } = await import('../src/port.js');
+  const { root, mk } = setup();
+  const d = mk('persist');
+  const env = { ...process.env, TK_STATE_DIR: path.join(root, 'state') };
+  const blocker = net.createServer();
+  await new Promise((r) => blocker.listen(0, '127.0.0.1', r));
+  const port = blocker.address().port;
+  try {
+    assert.deepEqual(storedPort(d), {});
+    assert.deepEqual(resolvePort(undefined, d), { port: 4321, source: 'default' });
+    assert.equal(parsePort('65536'), null);
+    assert.equal(parsePort('0'), null);
+    assert.equal(parsePort('12x'), null);
+    fs.mkdirSync(path.dirname(portFile(d)), { recursive: true });
+    fs.writeFileSync(portFile(d), `# mine\n${port}\n`);
+    assert.equal(resolvePort(undefined, d).port, port);
+    assert.equal(resolvePort('5000', d).port, 5000);
+    assert.throws(() => resolvePort('abc', d), /invalid --port/);
+    // stored port taken: clear error naming the file, non-zero exit
+    const busy = spawnSync(process.execPath, [TK, '--dir', d, 'serve'], { encoding: 'utf8', env, timeout: 15000 });
+    assert.equal(busy.status, 1);
+    assert.match(busy.stderr, new RegExp(`port ${port} is already in use \\(from .*port\\)`));
+    // invalid content: error, no crash trace
+    fs.writeFileSync(portFile(d), 'banana\n');
+    const bad = spawnSync(process.execPath, [TK, '--dir', d, 'serve'], { encoding: 'utf8', env, timeout: 15000 });
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /must contain a port number from 1 to 65535/);
+    // an explicit --port wins over the (invalid) file
+    const flagBad = spawnSync(process.execPath, [TK, '--dir', d, 'serve', '--port', String(port)], { encoding: 'utf8', env, timeout: 15000 });
+    assert.match(flagBad.stderr, new RegExp(`port ${port} is already in use`));
+    assert.doesNotMatch(flagBad.stderr, /must contain/);
+  } finally {
+    blocker.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

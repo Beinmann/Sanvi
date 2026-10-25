@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { versionLine } from '../src/about.js';
 import { reviewStartedMessage } from '../src/review.js';
 import { expandFlags } from '../src/cliflags.js';
+import { resolvePort } from '../src/port.js';
 import {
   register, unregister, acquireLock, updateLock, releaseLock, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
@@ -38,7 +39,7 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate [--closed-warnings]            check format; exit 1 on errors (closed tickets skip missing-section warnings)
   serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine] | --agents-full] [--force]
-                                          run the web UI in the foreground (one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --agents-full = --agents --auto-refine (hosts *.localhost are always allowed)
+                                          run the web UI in the foreground (port: --port, else the number in .sanvi/port, else 4321; one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --agents-full = --agents --auto-refine (hosts *.localhost are always allowed)
                                           --host 0.0.0.0 serves the LAN (its IPs are allowed automatically; no auth, so trusted networks only;
                                           --agents on the network also needs --allow-agents-on-network)
   start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine] | --agents-full]
@@ -92,6 +93,11 @@ const brief = (t) => `${t.id}  ${(t.status || '-').padEnd(12)} ${(t.area || '').
 function checkServeFlags(flags, isLoopback) {
   if (flags['auto-refine'] && !flags.agents) throw new ValidationError('--auto-refine needs --agents');
   if (flags.agents && !isLoopback(flags.host || '127.0.0.1') && !flags['allow-agents-on-network']) throw new ValidationError('--agents with a non-loopback --host lets anyone on the network run the agent; add --allow-agents-on-network to confirm');
+}
+
+// The port `serve`/`start` want, from --port, else .sanvi/port, else 4321; bad values are a clean error, not a crash.
+function wantedPort(flags, dir) {
+  try { return resolvePort(flags.port, dir); } catch (e) { throw new ValidationError(e.message); }
 }
 
 async function main() {
@@ -217,6 +223,7 @@ async function main() {
     case 'start': {
       const running = findInstance(dir);
       if (running) { console.log(`already running (pid ${running.pid}): ${running.url}\n${dir}`); break; }
+      wantedPort(flags, dir);
       checkServeFlags(flags, (await import('../src/server.js')).isLoopback); // fail here, not only in the log of the detached child
       const log = logPath(dir);
       fs.mkdirSync(path.dirname(log), { recursive: true });
@@ -234,7 +241,7 @@ async function main() {
         const tail = fs.readFileSync(log, 'utf8').trim().split('\n').slice(-5).join('\n');
         throw new ValidationError(`server did not start; see ${log}${tail ? `\n${tail}` : ''}`);
       }
-      const wanted = flags.port === undefined ? 4321 : Number(flags.port);
+      const wanted = wantedPort(flags, dir).port;
       const moved = e.port !== wanted ? `\nnote: port ${wanted} was busy, using ${e.port}` : '';
       console.log(`started (pid ${e.pid}): ${e.url}${moved}\n${dir}\nlog: ${log}`);
       break;
@@ -256,16 +263,16 @@ async function main() {
       if (existing) throw new ValidationError(`already running for this dir (pid ${existing.pid}): ${existing.url}`);
       const { createTicketServer, bindHosts, isLoopback } = await import('../src/server.js');
       checkServeFlags(flags, isLoopback);
+      const { port: want, source: portSource } = wantedPort(flags, dir);
       try { acquireLock(dir, { force: !!flags.force }); } catch (e) { throw new ValidationError(e.message); }
       process.on('exit', () => releaseLock(dir));
       const bindHost = flags.host || '127.0.0.1';
       const networked = !isLoopback(bindHost);
       const app = createTicketServer({ dir, bindHost, allowedHosts: (flags['allow-host'] || '').split(',').filter(Boolean), agents: !!flags.agents, autoRefine: !!flags['auto-refine'] });
       const host = bindHost;
-      const want = flags.port === undefined ? 4321 : Number(flags.port);
       // The server's timers would keep a failed process alive (holding the lock, serving nothing), so exit explicitly.
       const listenFailed = (e) => {
-        console.error(e.code === 'EADDRINUSE' ? `error: port ${want} is already in use` : `error: cannot listen on ${host}:${want}: ${e.message}`);
+        console.error(e.code === 'EADDRINUSE' ? `error: port ${want} is already in use${portSource === 'default' ? '' : ` (from ${portSource})`}; stop what uses it, or pick another with --port N${portSource === '--port' ? '' : ' or in the port file'}` : `error: cannot listen on ${host}:${want}: ${e.message}`);
         releaseLock(dir);
         process.exit(1);
       };
