@@ -118,6 +118,7 @@ export const HELP = [
     ['gai', 'Implement the selected / open ticket with Claude (queued behind a running refine)'],
     ['gar', 'Refine the selected / open ticket with Claude'],
     ['gav', 'Review the selected / open ticket with Claude'],
+    ['gt', 'Terminal: same as the Terminal button (toggle; starts a session if none; only with --agents, and not on a ticket page, where gt is next ticket)'],
     ['gat', 'Terminal: show the interactive Claude session of the selected / open ticket, or start one (auto permission mode)'],
     ['gas', 'Worktree slot overview (same as gw)'],
     ['gw', 'Worktree slot overview (only with --agents)'],
@@ -697,6 +698,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Delete status…', hint: 'column', push: deleteStatusLevel },
           { cmd: true, label: 'Columns…', hint: 'show / hide', push: columnsLevel },
           ...(ctx.agents?.() ? [
+            { cmd: true, label: 'Terminal (toggle, same as the button)', hint: 'gt', run: () => $('#term-btn').click() },
             { cmd: true, label: 'Chat with Claude', hint: 'a', run: () => $('#chat-btn').click() },
             ...(contextFile() ? [{ cmd: true, label: 'Open in terminal (interactive Claude session for this ticket)', hint: 'gat', run: () => ctx.openTerminal(contextFile()) }] : []),
             { cmd: true, label: 'Refresh Claude limits (5-hour, weekly)', hint: 'agent', run: () => ctx.refreshLimits() },
@@ -852,7 +854,9 @@ export function initKeys(ctx) {
       case 'g': return needDetail(() => window.scrollTo({ top: jumpTop('gg', document.documentElement.scrollHeight) }));
       case 'i': { const f = ctx.lastEdited?.(); if (f) ctx.openEdit(f); else ctx.toast('No ticket edited yet'); return true; }
       case 'b': location.hash = ctx.boardHash(); return true;
-      case 't': case 'T': return needDetail(() => { const f = ctx.neighbour(detail.file, key === 't' ? 1 : -1); if (f) location.hash = `#/t/${encodeURIComponent(f)}`; else ctx.toast(key === 't' ? 'Last ticket' : 'First ticket'); });
+      case 't': case 'T':
+        if (!detail && key === 't' && agents) { $('#term-btn').click(); return true; } // same as the Terminal button (the detail page keeps next ticket)
+        return needDetail(() => { const f = ctx.neighbour(detail.file, key === 't' ? 1 : -1); if (f) location.hash = `#/t/${encodeURIComponent(f)}`; else ctx.toast(key === 't' ? 'Last ticket' : 'First ticket'); });
       case 'c': return needDetail(() => { // the Notes section at the bottom, else the very bottom
         ctx.setTab('view');
         const h = [...document.querySelectorAll('#content h2')].reverse().find((x) => /^notes\b/i.test(x.textContent.trim()));
