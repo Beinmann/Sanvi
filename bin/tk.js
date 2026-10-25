@@ -258,7 +258,11 @@ async function main() {
       let addr;
       try { addr = await app.listen(want, host); } catch (e) {
         // An explicit --port is honoured strictly; otherwise fall back to any free port when asked to.
-        if (e.code !== 'EADDRINUSE' || !flags['auto-port'] || flags.port !== undefined) throw e;
+        if (e.code !== 'EADDRINUSE' || !flags['auto-port'] || flags.port !== undefined) {
+          // The server's timers would keep this process alive, holding the lock but serving nothing.
+          console.error(e.code === 'EADDRINUSE' ? `error: port ${want} is already in use` : `error: ${e.message}`);
+          process.exit(1); // the exit handler releases the lock
+        }
         addr = await app.listen(0, host);
       }
       const url = `http://localhost:${addr.port}`;
