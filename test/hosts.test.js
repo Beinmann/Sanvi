@@ -46,7 +46,12 @@ test('server: hosts from the file and wildcards pass, others stay 403 with a hin
     const denied = await get('box.tail1.ts.net');
     assert.equal(denied.status, 403);
     assert.match(denied.body, /--allow-host box\.tail1\.ts\.net/);
-    assert.match(denied.body, /allowed-hosts/);
+    assert.match(denied.body, /forbidden host "box\.tail1\.ts\.net"/);
+    assert.match(denied.body, /\.sanvi\/allowed-hosts/);
+    assert.match(denied.body, /\*\.example\.net/);
+    assert.ok(denied.body.trim().split('\n').length >= 4, 'several lines');
+    assert.ok(!denied.body.includes(root) && !denied.body.includes(os.tmpdir()), 'no filesystem path');
+    assert.doesNotMatch(denied.body, /(^|[\s"'(])\/(?!\.sanvi)[\w.-]+\//, 'no absolute path');
     fs.mkdirSync(path.join(root, '.sanvi'), { recursive: true });
     fs.writeFileSync(path.join(root, '.sanvi', 'allowed-hosts'), '# mine\n*.ts.net\nsolo.test\n');
     assert.equal((await get('box.tail1.ts.net:4321')).status, 200);
