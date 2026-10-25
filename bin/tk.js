@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { versionLine } from '../src/about.js';
 import { reviewStartedMessage } from '../src/review.js';
+import { expandFlags } from '../src/cliflags.js';
 import {
   register, unregister, acquireLock, updateLock, releaseLock, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
@@ -36,11 +37,11 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   trash                                   list deleted tickets with days left
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate [--closed-warnings]            check format; exit 1 on errors (closed tickets skip missing-section warnings)
-  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine]] [--force]
-                                          run the web UI in the foreground (one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only) (hosts *.localhost are always allowed)
+  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine] | --agents-full] [--force]
+                                          run the web UI in the foreground (one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --agents-full = --agents --auto-refine (hosts *.localhost are always allowed)
                                           --host 0.0.0.0 serves the LAN (its IPs are allowed automatically; no auth, so trusted networks only;
                                           --agents on the network also needs --allow-agents-on-network)
-  start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine]]
+  start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine] | --agents-full]
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
   ps                                      list running instances; stale entries are cleaned up
@@ -63,6 +64,7 @@ function parseArgs(argv) {
     else if (a === '--force') flags.force = true;
     else if (a === '--agents') flags.agents = true;
     else if (a === '--auto-refine') flags['auto-refine'] = true;
+    else if (a === '--agents-full') flags['agents-full'] = true;
     else if (a === '--allow-agents-on-network') flags['allow-agents-on-network'] = true;
     else if (a === '--criterion' || a === '--note') (flags[a.slice(2)] ||= []).push(argv[++i]); // repeatable
     else if (VALUE_FLAGS.has(a)) flags[a.slice(2)] = argv[++i];
@@ -70,7 +72,7 @@ function parseArgs(argv) {
     else if (a.startsWith('--')) throw new ValidationError(`unknown flag ${a.split('=')[0]} (see tk help)`);
     else pos.push(a);
   }
-  return { flags, pos };
+  return { flags: expandFlags(flags), pos };
 }
 
 function findDir(flag) {
