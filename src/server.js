@@ -129,13 +129,14 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     return t;
   }
   // Interactive session for a ticket: the running one is reused, else `claude` starts in the project's directory in
-  // `auto` permission mode (never bypassPermissions) with the ticket as initial prompt.
+  // `auto` permission mode (never bypassPermissions) with the ticket as context.
   function openTicketTerminal({ file, cols, rows } = {}) {
     const t = readTicket(dir, file);
     const running = terminals.forTicket(file);
     if (running) return { ...running, reused: true };
-    const prompt = `Work on ticket #${t.id} "${t.title}": ${path.join(dir, file)}. Read it first and follow its acceptance criteria.`;
-    const made = terminals.start({ cwd: startCwd(t.project), prompt, cols, rows, flags: ['--permission-mode', 'auto'], ticket: file });
+    // The ticket goes in as system-prompt context, not as the first user prompt: nothing runs until the user types.
+    const context = `This session was opened from ticket #${t.id} "${t.title}" (${path.join(dir, file)}). Do not start working until the user says what to do; the user may also work on other things.`;
+    const made = terminals.start({ cwd: startCwd(t.project), cols, rows, flags: ['--permission-mode', 'auto', '--append-system-prompt', context], ticket: file });
     changelog.log({ ticket: file, action: 'terminal', project: t.project || '' });
     return { ...made, reused: false };
   }

@@ -103,7 +103,7 @@ test('the vendored terminal front end is served with a module type', async () =>
   } finally { await app.close(); }
 });
 
-test('ticket sessions: started in the project dir in auto mode with the ticket as prompt, reused, switchable, and gone when ended or closed', { skip: !hasPython }, async () => {
+test('ticket sessions: started in the project dir in auto mode with the ticket as context only (no prompt), reused, switchable, and gone when ended or closed', { skip: !hasPython }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-'));
   fs.writeFileSync(path.join(dir, '001-one.md'), '---\nstatus: open\n---\n\n# One\n\n## Problem / motivation\n\nx\n');
   fs.writeFileSync(path.join(dir, '002-two.md'), '---\nstatus: open\n---\n\n# Two\n\n## Problem / motivation\n\ny\n');
@@ -120,7 +120,8 @@ test('ticket sessions: started in the project dir in auto mode with the ticket a
     const ta = await a.json();
     assert.equal(ta.ticket, '001-one.md');
     const out = await readStream(base, ta.id, (x) => x.includes('args:'));
-    assert.match(out.text, /args:--permission-mode auto Work on ticket #001 "One"/);
+    assert.match(out.text, /args:--permission-mode auto --append-system-prompt This session was opened from ticket #001 "One" \(.*001-one\.md\)\. Do not start working/);
+    assert.ok(!/Do not start working[^\r\n]*\r\n[^\r\n]/.test(out.text.replace(/\r\n$/, '')), 'no further (prompt) argument after the context');
     assert.ok(!out.text.includes('bypassPermissions'));
 
     const again = await post('/api/agent/terminals/ticket', { file: '001-one.md' }); // the hotkey again: same session
