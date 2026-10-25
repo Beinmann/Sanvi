@@ -19,6 +19,16 @@ if pid == 0:
         os._exit(127)
 resize(master, int(cols), int(rows))
 
+def finish(status):
+    # The command itself is over: whatever it left behind in its process group (background jobs) must not outlive it.
+    for sig in (signal.SIGHUP, signal.SIGKILL):
+        try:
+            os.killpg(pid, sig)
+        except OSError:
+            break
+        time.sleep(0.05)
+    os._exit(os.waitstatus_to_exitcode(status))
+
 def stop(*_):
     for sig in (signal.SIGHUP, signal.SIGKILL):
         try:
@@ -42,6 +52,19 @@ except OSError:
     pass
 while True:
     ready, _, _ = select.select(list(fds), [], [], 1)
+    if not ready or master not in ready:
+        # A leftover background job can keep the terminal open after the command exited: notice the exit anyway.
+        done, status = os.waitpid(pid, os.WNOHANG)
+        if done:
+            try:
+                while select.select([master], [], [], 0)[0]:
+                    chunk = os.read(master, 65536)
+                    if not chunk:
+                        break
+                    os.write(1, chunk)
+            except OSError:
+                pass
+            finish(status)
     for fd in ready:
         try:
             data = os.read(fd, 65536)
@@ -50,7 +73,7 @@ while True:
         if fd == master:
             if not data:
                 _, status = os.waitpid(pid, 0)
-                os._exit(os.waitstatus_to_exitcode(status))
+                finish(status)
             os.write(1, data)
         elif fd == 0:
             if not data:
