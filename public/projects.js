@@ -2,8 +2,13 @@
 // no native file dialog, since Sanvi often runs in a container or on another host) and instructions for the agent.
 export function initProjects({ el, show, api, toast, view, canBrowse = () => false }) {
   let list = [];
+  let defaults = null; // { start, home } from the server (start dir of Sanvi); only known with --agents
 
-  async function load() { list = await api('GET', 'projects'); return list; }
+  async function load() {
+    list = await api('GET', 'projects');
+    if (canBrowse() && !defaults) { try { defaults = await api('GET', 'dirs/defaults'); } catch { /* the picker reports its own errors */ } }
+    return list;
+  }
   const warningCount = () => list.reduce((n, p) => n + p.warnings.length, 0);
 
   async function render() {
@@ -12,7 +17,7 @@ export function initProjects({ el, show, api, toast, view, canBrowse = () => fal
   }
 
   function card(p) {
-    const dir = el('input', { value: p.dir, placeholder: '/absolute/path on the machine running Sanvi', 'aria-label': `Directory of ${p.label}`, spellcheck: 'false' });
+    const dir = el('input', { value: p.dir || (defaults && defaults.start) || '', placeholder: '/absolute/path on the machine running Sanvi', 'aria-label': `Directory of ${p.label}`, spellcheck: 'false' });
     const ins = el('textarea', { rows: 4, placeholder: 'Instructions for the agent: conventions, what to avoid, how to build or test…', 'aria-label': `Instructions for ${p.label}` });
     ins.value = p.instructions;
     const run = el('input', { value: p.run, placeholder: 'e.g. npm start (optional; run with the Run button in the header)', 'aria-label': `Run command of ${p.label}`, spellcheck: 'false' });
@@ -33,6 +38,7 @@ export function initProjects({ el, show, api, toast, view, canBrowse = () => fal
       show(picker,
         el('div', { class: 'dirbar' },
           el('button', { type: 'button', title: 'Parent directory', disabled: !r.parent, onclick: () => browse(r.parent) }, '↑'),
+          el('button', { type: 'button', title: 'Reset the directory to your home directory (~) on the machine running Sanvi', onclick: () => { dir.value = defaults ? defaults.home : '~'; browse('~'); } }, 'Home (~)'),
           el('code', { class: 'dirpath', title: r.path }, r.path),
           el('label', { class: 'muted' }, el('input', { type: 'checkbox', checked: showHidden, onchange: (e) => { showHidden = e.target.checked; browse(r.path); } }), ' hidden'),
           el('button', { type: 'button', class: 'primary', title: 'Put this directory into the field (press Save to keep it)', onclick: () => { dir.value = r.path; picker.hidden = true; } }, 'Use this directory'),

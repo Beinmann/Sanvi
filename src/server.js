@@ -91,6 +91,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h) || [...extraHosts].some((e) => hostMatches(e, h)) || persistentHosts(dir).some((e) => hostMatches(e, h));
   dir = path.resolve(dir);
+  const startDir = process.cwd(); // where Sanvi was launched: the default directory of a project that has none
   if (!fs.statSync(dir).isDirectory()) throw new Error(`not a directory: ${dir}`);
   const clients = new Set();
   dataDir(dir); // migrate a pre-rename .tk dir at start
@@ -377,6 +378,10 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (parts[0] === 'reviews' && method === 'GET') { // reports are plain files: readable without --agents
       if (parts.length === 1) return send(res, 200, listReviews(dir, String(url.searchParams.get('id') || '')));
       if (parts.length === 2) return send(res, 200, readReview(dir, decodeURIComponent(parts[1])));
+    }
+    if (parts[0] === 'dirs' && parts[1] === 'defaults' && parts.length === 2 && method === 'GET') { // where the picker starts: the dir Sanvi was launched in, and home (as ~, the real path stays on the server)
+      if (!chats) return send(res, 403, { error: 'the directory picker needs the server to be started with --agents' });
+      return send(res, 200, { start: startDir, home: '~' });
     }
     if (parts[0] === 'dirs' && parts.length === 1 && method === 'GET') { // directory picker: names of the machine's directories, so only with agents
       if (!chats) return send(res, 403, { error: 'the directory picker needs the server to be started with --agents' });

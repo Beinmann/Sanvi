@@ -111,6 +111,9 @@ test('GET /api/dirs lists sub-directories only, sorted, and reports bad paths; n
     const get = async (app, q) => fetch(`http://127.0.0.1:${app.port}/api/dirs${q}`);
     off.port = (await off.listen(0)).port; on.port = (await on.listen(0)).port;
     assert.equal((await get(off, `?path=${root}`)).status, 403);
+    assert.equal((await fetch(`http://127.0.0.1:${off.port}/api/dirs/defaults`)).status, 403);
+    // the picker's starting points come from the server: its launch directory, and home as "~" (never an absolute path)
+    assert.deepEqual(await (await fetch(`http://127.0.0.1:${on.port}/api/dirs/defaults`)).json(), { start: process.cwd(), home: '~' });
     const r = await (await get(on, `?path=${encodeURIComponent(root)}`)).json();
     assert.equal(r.path, root);
     assert.equal(r.parent, path.dirname(root));
