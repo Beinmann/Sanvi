@@ -23,6 +23,7 @@ import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
 import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, countReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
+import { hostMatches, persistentHosts, hostsFile } from './hosts.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -88,7 +89,7 @@ function readBuffer(req, limit) {
 export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false, bindHost, limitsProbe }) {
   const extraHosts = new Set([...allowedHosts.map((h) => h.toLowerCase()), ...bindHosts(bindHost)]);
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
-  const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h);
+  const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h) || [...extraHosts].some((e) => hostMatches(e, h)) || persistentHosts(dir).some((e) => hostMatches(e, h));
   dir = path.resolve(dir);
   if (!fs.statSync(dir).isDirectory()) throw new Error(`not a directory: ${dir}`);
   const clients = new Set();
@@ -516,7 +517,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   const server = http.createServer(async (req, res) => {
     try {
       const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-      if (!hostAllowed(host)) { res.writeHead(403, { 'content-type': 'text/plain' }); return res.end(`forbidden host "${host}" (start with --allow-host ${host} to permit)`); }
+      if (!hostAllowed(host)) { res.writeHead(403, { 'content-type': 'text/plain' }); return res.end(`forbidden host "${host}" (start with --allow-host ${host}, or add the line ${host} to ${hostsFile(dir)} to permit it for good; a line like *.example.net allows a whole domain)`); }
       const url = new URL(req.url, 'http://localhost');
       res.on('finish', () => { // failed requests go to the change log so a repeat can be diagnosed (409 is logged with detail elsewhere)
         if (res.statusCode >= 400 && res.statusCode !== 404 && res.statusCode !== 409) {
