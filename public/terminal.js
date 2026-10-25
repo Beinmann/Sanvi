@@ -20,6 +20,18 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
   let current = null;
   let counter = 0; // numbers the default labels; unlike sessions.size it never repeats after a tab is closed
 
+  // Copy through the async clipboard API (secure contexts only), else the old way via a temporary textarea (plain-http LAN use).
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch { /* fall back */ }
+    const ta = el('textarea', { style: 'position:fixed;opacity:0' }, text);
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* not allowed */ }
+    ta.remove();
+    return ok;
+  }
+
   const decode = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const paintTabs = () => tabs.replaceChildren(...[...sessions.values()].map((s) => el('span', { class: `termtab${s === current ? ' on' : ''}`, role: 'tab', 'aria-selected': String(s === current) },
     el('button', { type: 'button', title: `${s.cwd} (double-click to rename)`, onclick: () => { if (s !== current) show(s.id); }, ondblclick: (e) => rename(s, e.currentTarget) }, s.label),
@@ -81,6 +93,14 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     const fit = new FitAddon();
     term.loadAddon(fit);
     panel.hidden = false;
+    // Ctrl+C with a selection copies it (Firefox keeps Ctrl+Shift+C for its dev tools); without one it stays the interrupt.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'c' || !term.hasSelection()) return true;
+      const text = term.getSelection();
+      copyText(text).then((ok) => { if (!ok) toast('Copy failed: the browser denied clipboard access'); });
+      e.preventDefault();
+      return false;
+    });
     term.open(host);
     fit.fit();
     const source = new EventSource(`/api/agent/terminals/${made.id}/stream`);

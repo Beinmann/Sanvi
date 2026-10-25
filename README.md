@@ -192,6 +192,8 @@ With `--agents` the header has a **Terminal** button: it runs the interactive `c
 
 **Ticket sessions**: `gat` (or the command palette entry "Open in terminal") on the selected / open ticket shows its interactive session, or starts a new `claude --permission-mode auto` in the ticket's project directory with the ticket given as system-prompt context (`--append-system-prompt`), not as a prompt: it knows its ticket but waits for your first input and is not limited to it. The panel holds several sessions as tabs; each keeps running while another is shown, **Hide** keeps them all, `×` / **End session** ends one process. A session whose process exited disappears from the tabs (so `gat` starts a new one). Refine, implement and review runs and the chat panel are unchanged. API: `POST /api/agent/terminals/ticket {file}` (201 new, 200 reused).
 
+**Copying**: select text with the mouse, then press `Ctrl+C` (`Cmd+C`) to copy it; without a selection `Ctrl+C` is still the interrupt for the running command. (`Ctrl+Shift+C` is not used: Firefox takes it for its dev tools.)
+
 Closing a tab (or the browser tab) ends the process; so does stopping the server, and a terminal nobody has watched for 20 s is ended too. API: `POST /api/agent/terminals {dir?, project?, prompt?, cols?, rows?}` starts one (`prompt` is the initial prompt), `GET .../:id/stream` (SSE, base64), `POST .../:id/input {data}`, `POST .../:id/resize {cols, rows}`, `DELETE .../:id`; in code `createTerminals().start({ cwd, prompt })` (`src/terminal.js`) is the entry for other runs.
 
 ## Chat with Claude (`--agents`, prototype)
