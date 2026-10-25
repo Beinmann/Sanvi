@@ -117,16 +117,27 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   // Interactive `claude` on a pty (see src/terminal.js); also --agents only.
   const terminals = agents ? createTerminals({ command: terminalCommand }) : null;
   // Where a terminal starts: the given directory, else the project's (as chats do), else the default directory.
+  function startCwd(project) {
+    const info = projectInfo(dir, project || '') || {};
+    if (info.dir) { try { return resolveDir(info.dir); } catch { /* missing: the default directory */ } }
+    return chats.defaultDir;
+  }
   function startTerminal({ dir: tdir, project, prompt, cols, rows } = {}) {
-    let cwd = chats.defaultDir;
-    if (tdir) cwd = resolveDir(tdir);
-    else {
-      const info = projectInfo(dir, project || '') || {};
-      if (info.dir) { try { cwd = resolveDir(info.dir); } catch { /* missing: the default directory */ } }
-    }
+    const cwd = tdir ? resolveDir(tdir) : startCwd(project);
     const t = terminals.start({ cwd, prompt, cols, rows });
     changelog.log({ ticket: '-', action: 'terminal', project: project || '' });
     return t;
+  }
+  // Interactive session for a ticket: the running one is reused, else `claude` starts in the project's directory in
+  // `auto` permission mode (never bypassPermissions) with the ticket as initial prompt.
+  function openTicketTerminal({ file, cols, rows } = {}) {
+    const t = readTicket(dir, file);
+    const running = terminals.forTicket(file);
+    if (running) return { ...running, reused: true };
+    const prompt = `Work on ticket #${t.id} "${t.title}": ${path.join(dir, file)}. Read it first and follow its acceptance criteria.`;
+    const made = terminals.start({ cwd: startCwd(t.project), prompt, cols, rows, flags: ['--permission-mode', 'auto'], ticket: file });
+    changelog.log({ ticket: file, action: 'terminal', project: t.project || '' });
+    return { ...made, reused: false };
   }
   const limits = agents ? createLimits({ probe: limitsProbe }) : null;
 
@@ -379,6 +390,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts[1] === 'refine' && parts.length === 2 && method === 'POST') return send(res, 201, startRefine((await readJson(req)).file));
       if (parts[1] === 'terminals') {
         if (parts.length === 2 && method === 'GET') return send(res, 200, terminals.list());
+        if (parts.length === 3 && parts[2] === 'ticket' && method === 'POST') { const r = openTicketTerminal(await readJson(req)); return send(res, r.reused ? 200 : 201, r); }
         if (parts.length === 2 && method === 'POST') return send(res, 201, startTerminal(await readJson(req)));
         if (parts.length === 4 && parts[3] === 'stream' && method === 'GET') return terminals.watch(parts[2], req, res);
         if (parts.length === 4 && parts[3] === 'input' && method === 'POST') { terminals.input(parts[2], (await readJson(req)).data); return send(res, 200, { ok: true }); }

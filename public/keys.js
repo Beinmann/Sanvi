@@ -118,6 +118,7 @@ export const HELP = [
     ['gai', 'Implement the selected / open ticket with Claude (queued behind a running refine)'],
     ['gar', 'Refine the selected / open ticket with Claude'],
     ['gav', 'Review the selected / open ticket with Claude'],
+    ['gat', 'Terminal: show the interactive Claude session of the selected / open ticket, or start one (auto permission mode)'],
     ['gas', 'Worktree slot overview (same as gw)'],
     ['gw', 'Worktree slot overview (only with --agents)'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
@@ -692,6 +693,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Columns…', hint: 'show / hide', push: columnsLevel },
           ...(ctx.agents?.() ? [
             { cmd: true, label: 'Chat with Claude', hint: 'a', run: () => $('#chat-btn').click() },
+            ...(contextFile() ? [{ cmd: true, label: 'Open in terminal (interactive Claude session for this ticket)', hint: 'gat', run: () => ctx.openTerminal(contextFile()) }] : []),
             { cmd: true, label: 'Refresh Claude limits (5-hour, weekly)', hint: 'agent', run: () => ctx.refreshLimits() },
             { cmd: true, label: 'Worktree slots (overview)', hint: 'agent', run: openSlots },
             { cmd: true, label: 'Set worktree slot count…', hint: 'agent', push: slotCountLevel },
@@ -812,6 +814,7 @@ export function initKeys(ctx) {
       case 'i': return withFile((f) => ctx.implement(f));
       case 'r': return withFile((f) => { if (!ctx.isRefining(f)) ctx.refine(f); });
       case 'v': return withFile((f) => ctx.review(f));
+      case 't': return withFile((f) => { ctx.openTerminal(f); return true; });
       case 's': openSlots(); return true;
       default: return false;
     }
@@ -857,7 +860,7 @@ export function initKeys(ctx) {
         if (!hid.length) ctx.toast('No hidden columns'); else ctx.selectStrip(hid.find((x) => ctx.hiddenCount(x) > 0) ?? hid[0]);
         return true;
       }
-      case 'a': if (!agents) return false; pendingGA = true; return true; // prefix of the agent keys (gaa gac gai gar gav gas)
+      case 'a': if (!agents) return false; pendingGA = true; return true; // prefix of the agent keys (gaa gac gai gar gav gas gat)
       case 'w': if (!agents) return false; openSlots(); return true;
       case 's': focusSearch(); return true;
       case 'n': location.hash = '#/notes'; return true;

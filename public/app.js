@@ -1157,6 +1157,7 @@ const keysApi = initKeys({
   autoRefine: () => autoRefine,
   refreshLimits: () => limitsUi.refresh(),
   chatHotkey: () => chatPage.hotkey(),
+  openTerminal: (file) => terminalPage.openTicket(file),
   chatType: () => chatPage.focusTyping(),
   chatClose: () => { if (!agentOn || !chatPage.isOpen()) return false; chatPage.close(); return true; },
   refine: refineTicket,
@@ -1241,7 +1242,8 @@ async function refineTicket(file) {
   try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
 }
 const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), failedButton: $('#failed-btn'), project: () => (project === NO_PROJECT ? '' : project) });
-const terminalPage = initTerminal({ el, api, toast, button: $('#term-btn'), project: () => (project === NO_PROJECT ? '' : project) });
+const terminalPage = initTerminal({ el, api, toast, button: $('#term-btn'), project: () => (project === NO_PROJECT ? '' : project),
+  ticketTitle: (file) => { const t = S.tickets.find((x) => x.file === file); return t ? `#${t.id} ${t.title}`.slice(0, 28) : file; } });
 const limitsUi = initLimits({ el, api, toast, node: $('#limits') });
 api('GET', 'agent').then((a) => {
   agentOn = a.enabled;

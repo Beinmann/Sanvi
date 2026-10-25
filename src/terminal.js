@@ -10,13 +10,14 @@ const HOST = fileURLToPath(new URL('./ptyhost.py', import.meta.url));
 const KEEP = 256 * 1024;   // output kept for a browser that attaches late or reconnects
 const MAX = 8;             // terminals at once
 const IDLE_MS = 20000;     // nobody watching for this long: the process is ended
+const REAP_MS = 10000;     // an ended terminal is forgotten after this long (late watchers still see its output and exit)
 
 const size = (v, dflt, max) => (Number.isInteger(v) && v >= 1 && v <= max ? v : dflt);
 
-export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, python = 'python3' } = {}) {
+export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, reapMs = REAP_MS, python = 'python3' } = {}) {
   const terms = new Map();
 
-  const view = (t) => ({ id: t.id, cwd: t.cwd, cols: t.cols, rows: t.rows, state: t.state, exitCode: t.exitCode, created: t.created });
+  const view = (t) => ({ id: t.id, cwd: t.cwd, cols: t.cols, rows: t.rows, state: t.state, exitCode: t.exitCode, created: t.created, ticket: t.ticket });
   const get = (id) => {
     const t = terms.get(id);
     if (!t) throw new ValidationError('no such terminal');
@@ -29,15 +30,15 @@ export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, python
     if (t.state === 'running' && !t.watchers.size) t.idle = setTimeout(() => stop(t.id), idleMs);
   }
 
-  /** Starts `command` (plus the optional initial `prompt`) in `cwd`. This is also the entry for other runs to use. */
-  function start({ cwd, prompt, cols, rows } = {}) {
+  /** Starts `command` (plus `flags` and the optional initial `prompt`) in `cwd`. `ticket` (a file name) marks a ticket session. */
+  function start({ cwd, prompt, cols, rows, flags = [], ticket = null } = {}) {
     if (!cwd) throw new ValidationError('a directory is needed');
     if ([...terms.values()].filter((t) => t.state === 'running').length >= MAX) throw new ValidationError(`at most ${MAX} terminals at once`);
     cols = size(cols, 100, 500); rows = size(rows, 30, 200);
-    const args = [...command];
+    const args = [...command, ...flags];
     const text = String(prompt || '').trim();
     if (text) args.push(text.startsWith('-') ? `Task: ${text}` : text);
-    const t = { id: crypto.randomUUID(), cwd, cols, rows, state: 'running', exitCode: null, created: new Date().toISOString(), chunks: [], bytes: 0, watchers: new Set(), idle: null, proc: null };
+    const t = { id: crypto.randomUUID(), cwd, ticket, cols, rows, state: 'running', exitCode: null, created: new Date().toISOString(), chunks: [], bytes: 0, watchers: new Set(), idle: null, proc: null };
     const proc = spawn(python, ['-I', HOST, cwd, String(cols), String(rows), ...args], {
       stdio: ['pipe', 'pipe', 'pipe', 'pipe'], cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
     });
@@ -58,6 +59,7 @@ export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, python
       emit(t, 'exit', String(code));
       for (const res of t.watchers) res.end();
       t.watchers.clear();
+      setTimeout(() => { if (terms.get(t.id) === t) terms.delete(t.id); }, reapMs).unref();
     };
     proc.on('error', (e) => done(127, e.code === 'ENOENT' ? `the terminal needs ${python} (not found)` : `cannot start: ${e.message}`));
     proc.on('close', (code) => done(code ?? 1, `exited with code ${code ?? 1}`));
@@ -106,5 +108,8 @@ export function createTerminals({ command = ['claude'], idleMs = IDLE_MS, python
 
   function stopAll() { for (const id of [...terms.keys()]) stop(id); }
 
-  return { start, watch, input, resize, stop, stopAll, list: () => [...terms.values()].map(view), get: (id) => view(get(id)) };
+  /** The running session of a ticket, if any (ended ones do not count). */
+  const forTicket = (file) => [...terms.values()].find((t) => t.state === 'running' && t.ticket === file);
+
+  return { start, forTicket: (file) => { const t = forTicket(file); return t ? view(t) : null; }, watch, input, resize, stop, stopAll, list: () => [...terms.values()].filter((t) => t.state === 'running').map(view), get: (id) => view(get(id)) };
 }

@@ -102,3 +102,47 @@ test('the vendored terminal front end is served with a module type', async () =>
     }
   } finally { await app.close(); }
 });
+
+test('ticket sessions: started in the project dir in auto mode with the ticket as prompt, reused, switchable, and gone when ended or closed', { skip: !hasPython }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-'));
+  fs.writeFileSync(path.join(dir, '001-one.md'), '---\nstatus: open\n---\n\n# One\n\n## Problem / motivation\n\nx\n');
+  fs.writeFileSync(path.join(dir, '002-two.md'), '---\nstatus: open\n---\n\n# Two\n\n## Problem / motivation\n\ny\n');
+  // a fake `claude`: prints its working dir and arguments, then ends when told to
+  const fake = ['sh', '-c', 'echo "cwd=$(pwd)"; echo "args:$*"; read x; [ "$x" = bye ] && exit 4; sleep 30', 'claude'];
+  const app = createTicketServer({ dir, agents: true, agentRun: () => {}, chatsFile: null, terminalCommand: fake });
+  try {
+    const base = `http://127.0.0.1:${(await app.listen(0)).port}`;
+    const post = (p, b) => fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    const list = async () => (await fetch(`${base}/api/agent/terminals`)).json();
+
+    const a = await post('/api/agent/terminals/ticket', { file: '001-one.md' });
+    assert.equal(a.status, 201);
+    const ta = await a.json();
+    assert.equal(ta.ticket, '001-one.md');
+    const out = await readStream(base, ta.id, (x) => x.includes('args:'));
+    assert.match(out.text, /args:--permission-mode auto Work on ticket #001 "One"/);
+    assert.ok(!out.text.includes('bypassPermissions'));
+
+    const again = await post('/api/agent/terminals/ticket', { file: '001-one.md' }); // the hotkey again: same session
+    assert.equal(again.status, 200);
+    assert.deepEqual([(await again.json()).id, (await list()).length], [ta.id, 1]);
+    assert.equal((await post('/api/agent/terminals/ticket', { file: 'missing.md' })).status, 404);
+
+    const tb = await (await post('/api/agent/terminals/ticket', { file: '002-two.md' })).json(); // a second one runs alongside
+    assert.notEqual(tb.id, ta.id);
+    assert.deepEqual((await list()).map((t) => t.ticket).sort(), ['001-one.md', '002-two.md']);
+    assert.equal((await post(`/api/agent/terminals/${ta.id}/input`, { data: 'x\n' })).status, 200); // each takes input while the other exists
+    assert.equal((await post(`/api/agent/terminals/${tb.id}/input`, { data: 'bye\n' })).status, 200);
+
+    const ended = await readStream(base, tb.id, () => false); // the process ends: exit event, no longer listed
+    assert.equal(ended.exit, 4);
+    assert.deepEqual((await list()).map((t) => t.id), [ta.id]);
+
+    const fresh = await (await post('/api/agent/terminals/ticket', { file: '002-two.md' })).json(); // hotkey after the end: a new one
+    assert.notEqual(fresh.id, tb.id);
+
+    assert.equal((await fetch(`${base}/api/agent/terminals/${ta.id}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } })).status, 200); // closing a tab
+    assert.deepEqual((await list()).map((t) => t.id), [fresh.id]);
+    assert.equal((await fetch(`${base}/api/agent/terminals/${ta.id}/stream`)).status, 400);
+  } finally { await app.close(); }
+});
