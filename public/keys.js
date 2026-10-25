@@ -224,13 +224,15 @@ export function initKeys(ctx) {
   }
 
   // ---- overlays
-  function openOverlay(node, { onClose, focus } = {}) {
+  function openOverlay(node, { onClose, focus, caretStart } = {}) {
     closeOverlay();
     const prev = document.activeElement;
     const backdrop = el('div', { class: 'overlay', onmousedown: (e) => { if (e.target === backdrop) closeOverlay(); } }, node);
     document.body.append(backdrop);
     const target = focus ?? node;
     const typable = ['INPUT', 'TEXTAREA'].includes(target.tagName);
+    // `caretStart`: whenever the focus is (re)applied, the caret goes to the start of the field (the quick idea box).
+    const focusTarget = () => { target.focus(); if (typable && caretStart) try { target.setSelectionRange(0, 0); } catch { /* not a text field */ } };
     // The browser window can be active without the page owning the keyboard focus (seen in Firefox right after an
     // OS screenshot tool): focus() then sets activeElement but no caret, and no focus event tells us when it
     // changes. So: keep checking while the overlay is open; when the page really has focus, re-apply it (blur then
@@ -242,16 +244,16 @@ export function initKeys(ctx) {
       if (overlay?.node !== backdrop) return;
       const has = document.hasFocus();
       hint.hidden = has;
-      if (has && (!hadFocus || !backdrop.contains(document.activeElement))) { if (typable) target.blur(); target.focus(); }
+      if (has && (!hadFocus || !backdrop.contains(document.activeElement))) { if (typable) target.blur(); focusTarget(); }
       hadFocus = has;
     };
     const timer = setInterval(check, 150);
     // Opened by a key press, so the page has the keyboard: apply the focus again once the browser has settled.
-    if (typable) for (const ms of [0, 60]) setTimeout(() => { if (overlay?.node === backdrop && document.hasFocus() && document.activeElement !== target) target.focus(); }, ms);
+    if (typable) for (const ms of [0, 60]) setTimeout(() => { if (overlay?.node === backdrop && document.hasFocus() && document.activeElement !== target) focusTarget(); }, ms);
     const refocus = () => { hadFocus = false; check(); };
     const redirect = (e) => { // focus is elsewhere but a key arrived: move it into the box (the key then types there)
       if (overlay?.node !== backdrop || backdrop.contains(document.activeElement)) return;
-      if (typable && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) target.focus(); else refocus();
+      if (typable && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) focusTarget(); else refocus();
     };
     node.addEventListener('mousedown', (e) => { if (!e.target.closest('button, input, textarea, select, a')) { e.preventDefault(); target.focus(); } });
     const lost = () => { hadFocus = false; }; // the next check re-applies the focus (blur then focus, which forces the caret)
@@ -270,7 +272,7 @@ export function initKeys(ctx) {
         backdrop.remove(); overlay = null; onClose?.(); if (prev?.isConnected) prev.focus();
       },
     };
-    target.focus();
+    focusTarget();
     check();
   }
 
@@ -378,7 +380,7 @@ export function initKeys(ctx) {
         agents && el('div', { class: 'stack' },
           refineToo && el('button', { class: 'small', type: 'button', title: 'Save the idea and let Claude refine it (Ctrl+Shift+Enter)', onclick: saveRefine }, 'Save and refine'),
           el('button', { class: 'small', type: 'button', title: `Save the idea${refineToo ? ', let Claude refine it' : ''} and queue the implementation (Ctrl+Alt+Enter)`, onclick: saveImplement }, 'Save, refine and implement'))));
-    openOverlay(box, { focus: ta });
+    openOverlay(box, { focus: ta, caretStart: true });
   }
 
   // Quick note: a line in NOTES.md, independent of any ticket. Without a version the server just appends.
