@@ -6,6 +6,7 @@ import { planStatusDelete, parseQuery, formatQuery, matchTicket, scoreTicket, ma
 import { initKeys, neighbourFile } from './keys.js';
 import { attachVim } from './vim.js';
 import { initChat } from './chat.js';
+import { initTerminal } from './terminal.js';
 import { initLimits } from './limits.js';
 import { initProjects } from './projects.js';
 
@@ -1240,11 +1241,13 @@ async function refineTicket(file) {
   try { await chatPage.refine(file); } catch (e) { toast(`Refine failed: ${e.message}`); }
 }
 const chatPage = initChat({ el, show, api, toast, button: $('#chat-btn'), failedButton: $('#failed-btn'), project: () => (project === NO_PROJECT ? '' : project) });
+const terminalPage = initTerminal({ el, api, toast, button: $('#term-btn'), project: () => (project === NO_PROJECT ? '' : project) });
 const limitsUi = initLimits({ el, api, toast, node: $('#limits') });
 api('GET', 'agent').then((a) => {
   agentOn = a.enabled;
   autoRefine = !!a.autoRefine;
   $('#chat-btn').hidden = !a.enabled;
+  $('#term-btn').hidden = !a.enabled;
   if (!a.enabled) return;
   chatPage.start();
   limitsUi.start();

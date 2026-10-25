@@ -23,12 +23,13 @@ import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
 import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, countReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
+import { createTerminals } from './terminal.js';
 import { hostMatches, persistentHosts } from './hosts.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 // Any top-level file in public/ is served by name, so new frontend modules need no route.
-const STATIC_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const STATIC_TYPES = { '.mjs': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 function staticFile(pathname) {
   const name = pathname === '/' ? 'index.html' : pathname.slice(1);
@@ -86,7 +87,7 @@ function readBuffer(req, limit) {
   });
 }
 
-export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, chatsFile, autoRefine = false, bindHost, limitsProbe }) {
+export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agents = false, agentRun = startRun, terminalCommand, chatsFile, autoRefine = false, bindHost, limitsProbe }) {
   const extraHosts = new Set([...allowedHosts.map((h) => h.toLowerCase()), ...bindHosts(bindHost)]);
   // *.localhost always resolves to loopback in browsers, so it cannot be a DNS-rebinding vector.
   const hostAllowed = (h) => LOCAL_HOSTS.has(h) || h.endsWith('.localhost') || extraHosts.has(h) || [...extraHosts].some((e) => hostMatches(e, h)) || persistentHosts(dir).some((e) => hostMatches(e, h));
@@ -113,6 +114,20 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
 
   const runner = createRunner({ dir });
 
+  // Interactive `claude` on a pty (see src/terminal.js); also --agents only.
+  const terminals = agents ? createTerminals({ command: terminalCommand }) : null;
+  // Where a terminal starts: the given directory, else the project's (as chats do), else the default directory.
+  function startTerminal({ dir: tdir, project, prompt, cols, rows } = {}) {
+    let cwd = chats.defaultDir;
+    if (tdir) cwd = resolveDir(tdir);
+    else {
+      const info = projectInfo(dir, project || '') || {};
+      if (info.dir) { try { cwd = resolveDir(info.dir); } catch { /* missing: the default directory */ } }
+    }
+    const t = terminals.start({ cwd, prompt, cols, rows });
+    changelog.log({ ticket: '-', action: 'terminal', project: project || '' });
+    return t;
+  }
   const limits = agents ? createLimits({ probe: limitsProbe }) : null;
 
   // Agent chats run `claude` on this machine, so they exist only when the server was started with --agents.
@@ -362,6 +377,15 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts[1] === 'implement' && parts.length === 2 && method === 'POST') return send(res, 201, startImplement((await readJson(req)).file));
       if (parts[1] === 'review' && parts.length === 2 && method === 'POST') return send(res, 201, startReview((await readJson(req)).file));
       if (parts[1] === 'refine' && parts.length === 2 && method === 'POST') return send(res, 201, startRefine((await readJson(req)).file));
+      if (parts[1] === 'terminals') {
+        if (parts.length === 2 && method === 'GET') return send(res, 200, terminals.list());
+        if (parts.length === 2 && method === 'POST') return send(res, 201, startTerminal(await readJson(req)));
+        if (parts.length === 4 && parts[3] === 'stream' && method === 'GET') return terminals.watch(parts[2], req, res);
+        if (parts.length === 4 && parts[3] === 'input' && method === 'POST') { terminals.input(parts[2], (await readJson(req)).data); return send(res, 200, { ok: true }); }
+        if (parts.length === 4 && parts[3] === 'resize' && method === 'POST') { const b = await readJson(req); return send(res, 200, terminals.resize(parts[2], b.cols, b.rows)); }
+        if ((parts.length === 3 && method === 'DELETE') || (parts.length === 4 && parts[3] === 'stop' && method === 'POST')) { terminals.stop(parts[2]); return send(res, 200, { ok: true }); }
+        return send(res, 404, { error: 'not found' });
+      }
       if (parts[1] !== 'chats') return send(res, 404, { error: 'not found' });
       if (parts.length === 2 && method === 'GET') return send(res, 200, chats.list());
       if (parts.length === 2 && method === 'POST') return send(res, 201, chats.create(await readJson(req)));
@@ -584,7 +608,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       });
     },
     close() {
-      clearTimeout(timer); clearInterval(heartbeat); watcher.close(); runner.stopAll();
+      clearTimeout(timer); clearInterval(heartbeat); watcher.close(); runner.stopAll(); terminals?.stopAll();
       for (const c of clients) c.end();
       return new Promise((resolve) => { server.close(resolve); server.closeAllConnections?.(); });
     },

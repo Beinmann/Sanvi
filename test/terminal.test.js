@@ -1,0 +1,104 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { createTicketServer } from '../src/server.js';
+import { createTerminals } from '../src/terminal.js';
+
+const hasPython = spawnSync('python3', ['-V']).status === 0;
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+// Reads the SSE stream of a terminal until `until(text)` holds (or the stream ends).
+async function readStream(base, id, until) {
+  const ctl = new AbortController();
+  const res = await fetch(`${base}/api/agent/terminals/${id}/stream`, { signal: ctl.signal });
+  const dec = new TextDecoder();
+  let buf = ''; let text = ''; let exit = null;
+  try {
+    for await (const chunk of res.body) {
+      buf += dec.decode(chunk, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, i); buf = buf.slice(i + 2);
+        const ev = /^event: (.*)$/m.exec(block)?.[1];
+        const data = /^data: (.*)$/m.exec(block)?.[1];
+        if (ev === 'exit') exit = Number(data);
+        else if (data) text += Buffer.from(data, 'base64').toString();
+      }
+      if (exit !== null || until(text)) break;
+    }
+  } finally { ctl.abort(); }
+  return { text, exit };
+}
+
+test('terminal API needs --agents; with it a command runs on a pty, takes input and resize, and ends with stop', { skip: !hasPython }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-'));
+  const off = createTicketServer({ dir });
+  const on = createTicketServer({ dir, agents: true, agentRun: () => {}, chatsFile: null, terminalCommand: ['sh', '-c', 'echo cwd=$(pwd); [ -t 0 ] && echo tty; stty size; read x; echo got:$x; sleep 30'] });
+  try {
+    const offBase = `http://127.0.0.1:${(await off.listen(0)).port}`;
+    const base = `http://127.0.0.1:${(await on.listen(0)).port}`;
+    assert.equal((await fetch(`${offBase}/api/agent/terminals`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 403);
+    const cwd = fs.realpathSync(dir);
+    const post = (p, b) => fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    const made = await post('/api/agent/terminals', { dir: cwd, cols: 90, rows: 20 });
+    assert.equal(made.status, 201);
+    const t = await made.json();
+    const first = await readStream(base, t.id, (x) => x.includes('20 90'));
+    assert.match(first.text, new RegExp(`cwd=${cwd}`));
+    assert.match(first.text, /tty/);
+    assert.match(first.text, /20 90/);
+    assert.equal((await post(`/api/agent/terminals/${t.id}/input`, { data: 'hello\n' })).status, 200);
+    const second = await readStream(base, t.id, (x) => x.includes('got:hello')); // replays the output kept so far
+    assert.match(second.text, /got:hello/);
+    assert.equal((await post(`/api/agent/terminals/${t.id}/resize`, { cols: 0, rows: 5 })).status, 400);
+    assert.equal((await post(`/api/agent/terminals/${t.id}/stop`, {})).status, 200);
+    assert.equal((await post(`/api/agent/terminals/${t.id}/input`, { data: 'x' })).status, 400);
+    assert.equal((await post('/api/agent/terminals', { dir: path.join(cwd, 'missing') })).status, 400);
+  } finally { await off.close(); await on.close(); }
+});
+
+test('terminals: the prompt is the last argument, a finished command reports its exit, and no process is left behind', { skip: !hasPython }, async () => {
+  const term = createTerminals({ command: ['sh', '-c', 'echo "args:$1"; echo $$ > pid.txt; sleep 30', 'sh'] });
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-')));
+  const done = createTerminals({ command: ['sh', '-c', 'exit 3'] });
+  try {
+    const t = term.start({ cwd, prompt: 'do the thing' });
+    for (let i = 0; i < 100 && !fs.existsSync(path.join(cwd, 'pid.txt')); i++) await new Promise((r) => setTimeout(r, 50));
+    const pid = Number(fs.readFileSync(path.join(cwd, 'pid.txt'), 'utf8'));
+    assert.ok(alive(pid));
+    term.stop(t.id); // closing the view
+    for (let i = 0; i < 100 && alive(pid); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(!alive(pid), 'the command is gone after stop');
+    assert.throws(() => term.start({}), /directory/);
+    const d = done.start({ cwd });
+    for (let i = 0; i < 100 && done.get(d.id).state === 'running'; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual([done.get(d.id).state, done.get(d.id).exitCode], ['exited', 3]);
+  } finally { term.stopAll(); done.stopAll(); }
+});
+
+test('a terminal nobody watches is ended after the idle time', { skip: !hasPython }, async () => {
+  const term = createTerminals({ command: ['sh', '-c', 'sleep 30'], idleMs: 200 });
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-')));
+  try {
+    const t = term.start({ cwd });
+    await new Promise((r) => setTimeout(r, 600));
+    assert.deepEqual(term.list(), []);
+    assert.throws(() => term.get(t.id), /no such terminal/);
+  } finally { term.stopAll(); }
+});
+
+test('the vendored terminal front end is served with a module type', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-'));
+  const app = createTicketServer({ dir });
+  try {
+    const base = `http://127.0.0.1:${(await app.listen(0)).port}`;
+    for (const [f, type] of [['xterm.mjs', /javascript/], ['addon-fit.mjs', /javascript/], ['xterm.css', /css/], ['terminal.js', /javascript/]]) {
+      const r = await fetch(`${base}/${f}`);
+      assert.equal(r.status, 200, f);
+      assert.match(r.headers.get('content-type'), type);
+    }
+  } finally { await app.close(); }
+});
