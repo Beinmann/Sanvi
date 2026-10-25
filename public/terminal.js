@@ -5,6 +5,9 @@
 import { Terminal } from './xterm.mjs';
 import { FitAddon } from './addon-fit.mjs';
 
+const HIDE_KEY = 'h'; // Ctrl+<HIDE_KEY> hides the panel; the key handler and the Hide label both read it
+const HIDE_LABEL = `Ctrl+${HIDE_KEY.toUpperCase()}`;
+
 export function initTerminal({ el, api, toast, button, onHide = () => {}, project = () => '', ticketTitle = (file) => file }) {
   const panel = el('aside', { class: 'chatpanel termpanel', 'aria-label': 'Terminal with Claude Code', hidden: true });
   const tabs = el('div', { class: 'termtabs', role: 'tablist' });
@@ -12,7 +15,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
   const hosts = el('div', { class: 'termstack' });
   panel.append(
     el('div', { class: 'chathead' }, el('strong', {}, 'Terminal'), status, el('span', { style: 'flex:1' }),
-      el('button', { type: 'button', title: 'Hide the panel; the sessions keep running (Ctrl+H)', onclick: () => hide() }, 'Hide'),
+      el('button', { type: 'button', title: `Hide the panel; the sessions keep running (${HIDE_LABEL})`, onclick: () => hide() }, 'Hide ', el('kbd', {}, HIDE_LABEL)),
       el('button', { type: 'button', title: 'End the current session', onclick: () => current && close(current.id) }, 'End session')),
     tabs, hosts,
     el('p', { class: 'muted termhint' }, 'Copy: Shift+drag to select, then Ctrl+C (without a selection Ctrl+C interrupts).'));
@@ -96,7 +99,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     panel.hidden = false;
     // Ctrl+C with a selection copies it (Firefox keeps Ctrl+Shift+C for its dev tools); without one it stays the interrupt.
     term.attachCustomKeyEventHandler((e) => {
-      if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'h') { // Ctrl+H hides the panel (same as Hide); never reaches the shell
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === HIDE_KEY) { // Ctrl+H hides the panel (same as Hide); never reaches the shell
         if (e.type === 'keydown') hide();
         e.preventDefault();
         return false;
