@@ -12,6 +12,7 @@ def resize(fd, c, r):
 pid, master = pty.fork()
 if pid == 0:
     try:
+        os.closerange(3, 256)  # the control pipe etc. stay with the host; a leftover job holding them would keep the host's pipes open
         os.chdir(cwd)
         os.execvp(cmd[0], cmd)
     except OSError as e:
@@ -52,19 +53,20 @@ except OSError:
     pass
 while True:
     ready, _, _ = select.select(list(fds), [], [], 1)
-    if not ready or master not in ready:
-        # A leftover background job can keep the terminal open after the command exited: notice the exit anyway.
-        done, status = os.waitpid(pid, os.WNOHANG)
-        if done:
-            try:
-                while select.select([master], [], [], 0)[0]:
-                    chunk = os.read(master, 65536)
-                    if not chunk:
-                        break
-                    os.write(1, chunk)
-            except OSError:
-                pass
-            finish(status)
+    # Checked on every pass, not only when the terminal is idle: a leftover job that keeps writing must not hide the exit.
+    done, status = os.waitpid(pid, os.WNOHANG)
+    if done:
+        try:
+            for _ in range(64):  # bounded: a chatty leftover job would never let the output run dry
+                if not select.select([master], [], [], 0)[0]:
+                    break
+                chunk = os.read(master, 65536)
+                if not chunk:
+                    break
+                os.write(1, chunk)
+        except OSError:
+            pass
+        finish(status)
     for fd in ready:
         try:
             data = os.read(fd, 65536)

@@ -93,6 +93,22 @@ test('a command that exits leaves no background job (even one ignoring SIGHUP) b
   } finally { term.stopAll(); }
 });
 
+test('a command that exits ends the session even if a leftover job keeps writing to the terminal (also one in its own session)', { skip: !hasPython }, async () => {
+  const script = '(while true; do echo x; sleep 0.05; done) & echo $! > pid.txt; '
+    + '(setsid sh -c \'for i in $(seq 200); do echo y; sleep 0.05; done\' >/dev/null 2>&1 &) ; sleep 1';
+  const term = createTerminals({ command: ['sh', '-c', script] });
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-')));
+  try {
+    const t = term.start({ cwd });
+    for (let i = 0; i < 100 && !fs.existsSync(path.join(cwd, 'pid.txt')); i++) await new Promise((r) => setTimeout(r, 50));
+    const pid = Number(fs.readFileSync(path.join(cwd, 'pid.txt'), 'utf8'));
+    for (let i = 0; i < 100 && term.get(t.id).state === 'running'; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(term.get(t.id).state, 'exited');
+    for (let i = 0; i < 100 && alive(pid); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(!alive(pid), 'the chatty background job is gone');
+  } finally { term.stopAll(); }
+});
+
 test('a terminal nobody watches is ended after the idle time', { skip: !hasPython }, async () => {
   const term = createTerminals({ command: ['sh', '-c', 'sleep 30'], idleMs: 200 });
   const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-')));
