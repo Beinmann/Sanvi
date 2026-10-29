@@ -217,3 +217,32 @@ test('Tab and Shift+Tab bytes reach the command on the pty unchanged (completion
     assert.match(text, /09 1b 5b 5a/);
   } finally { term.stopAll(); }
 });
+
+const hasTmux = spawnSync('tmux', ['-V']).status === 0;
+
+test('tmux mode: terminals are windows of one named session, in the given directory, shown through one attached pty', { skip: !hasPython || !hasTmux }, async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-tmux-')));
+  const sub = fs.mkdirSync(path.join(dir, 'sub')) ?? path.join(dir, 'sub');
+  const socket = `tk-test-${process.pid}`;
+  const tmux = { session: 'sanvi-test', socket };
+  const q = (...a) => spawnSync('tmux', ['-L', socket, ...a], { encoding: 'utf8' });
+  const term = createTerminals({ tmux, shell: ['sh'] });
+  try {
+    const a = term.start({ cwd: dir, cols: 100, rows: 30, command: ['sh', '-c', 'pwd > a.txt; sleep 30'] });
+    assert.equal(a.tmux, 'sanvi-test');
+    const b = term.start({ cwd: sub, command: ['sh', '-c', 'pwd > b.txt; sleep 30'] }); // a second terminal: same pty, new window
+    assert.equal(b.id, a.id);
+    assert.equal(term.list().length, 1);
+    for (let i = 0; i < 60 && !fs.existsSync(path.join(sub, 'b.txt')); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8').trim(), dir);
+    assert.equal(fs.readFileSync(path.join(sub, 'b.txt'), 'utf8').trim(), sub);
+    assert.equal(q('list-windows', '-t', 'sanvi-test:').stdout.trim().split('\n').length, 2);
+    const c = term.start({ cwd: dir, command: ['sh', '-c', 'echo "args:$*" > c.txt; sleep 30', 'claude'], flags: ['--x'], ticket: '001-one.md', inShell: true }); // a ticket session: a window running the command via the shell
+    assert.equal(c.id, a.id);
+    assert.equal(term.forTicket('001-one.md')?.id, a.id);
+    assert.equal(term.forTicket('002-two.md'), null);
+    for (let i = 0; i < 60 && !fs.existsSync(path.join(dir, 'c.txt')); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(fs.readFileSync(path.join(dir, 'c.txt'), 'utf8').trim(), 'args:--x');
+    assert.equal(q('list-sessions', '-F', '#{session_name}').stdout.trim(), 'sanvi-test');
+  } finally { term.stopAll(); q('kill-server'); }
+});

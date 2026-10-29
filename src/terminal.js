@@ -1,7 +1,7 @@
 // Interactive terminals: the real `claude` CLI on a pseudo-terminal, bridged to the browser (SSE for output, POST for
 // input). Node has no pty, so src/ptyhost.py (python3, standard library only) owns it. Exists only with --agents.
 // A terminal ends when it is stopped, when the server closes, or when no browser has been watching it for a while.
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ValidationError } from './core.js';
@@ -18,10 +18,16 @@ const quote = (a) => `'${String(a).replace(/'/g, `'\\''`)}'`;
 // Typed into the interactive shell: runs $SANVI_RUN as a foreground job, so Ctrl+Z (exit status 128+SIGTSTP) returns to the prompt for `fg`; any other end leaves the shell too.
 const RUN_LINE = ' eval "$SANVI_RUN"; s=$?; [ "$s" -eq 148 ] || exit "$s"\n';
 
-export function createTerminals({ command = ['claude'], shell = null, idleMs = IDLE_MS, reapMs = REAP_MS, python = 'python3' } = {}) {
-  const terms = new Map();
+export const TMUX_SESSION = 'sanvi'; // the fixed name of the tmux session used with --tmux
 
-  const view = (t) => ({ id: t.id, cwd: t.cwd, cols: t.cols, rows: t.rows, state: t.state, exitCode: t.exitCode, created: t.created, ticket: t.ticket });
+export function createTerminals({ command = ['claude'], shell = null, tmux = null, idleMs = IDLE_MS, reapMs = REAP_MS, python = 'python3' } = {}) {
+  const terms = new Map();
+  // tmux mode: `tmux` is { session, socket? }. One pty is attached to that session; every further terminal is a window in it.
+  const windows = new Map(); // ticket file -> tmux window id
+  const tm = (args) => execFileSync('tmux', [...(tmux.socket ? ['-L', tmux.socket] : []), ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const hasWindow = (id) => { try { return tm(['list-windows', '-t', `${tmux.session}:`, '-F', '#{window_id}']).split('\n').includes(id); } catch { return false; } };
+
+  const view = (t) => ({ id: t.id, cwd: t.cwd, cols: t.cols, rows: t.rows, state: t.state, exitCode: t.exitCode, created: t.created, ticket: t.ticket, ...(t.tmux && { tmux: tmux.session }) });
   const get = (id) => {
     const t = terms.get(id);
     if (!t) throw new ValidationError('no such terminal');
@@ -43,13 +49,36 @@ export function createTerminals({ command = ['claude'], shell = null, idleMs = I
     const args = [...cmd, ...flags];
     const text = String(prompt || '').trim();
     if (text) args.push(text.startsWith('-') ? `Task: ${text}` : text);
-    const t = { id: crypto.randomUUID(), cwd, ticket, cols, rows, state: 'running', exitCode: null, created: new Date().toISOString(), chunks: [], bytes: 0, watchers: new Set(), idle: null, proc: null };
-    const wrap = inShell && shell;
-    const proc = spawn(python, ['-I', HOST, cwd, String(cols), String(rows), ...(wrap ? shell : args)], {
-      stdio: ['pipe', 'pipe', 'pipe', 'pipe'], cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...(wrap ? { SANVI_RUN: args.map(quote).join(' ') } : {}) },
+    if (tmux) return startWindow({ cwd, cols, rows, args, ticket, inShell });
+    return launch({ cwd, cols, rows, argv: inShell && shell ? shell : args, env: inShell && shell ? { SANVI_RUN: args.map(quote).join(' ') } : {}, ticket, typed: inShell && shell ? RUN_LINE : '' });
+  }
+
+  /** tmux mode: a new window in the named session (created with its first window), shown through the one attached pty. */
+  function startWindow({ cwd, cols, rows, args, ticket, inShell }) {
+    const env = inShell ? ['-e', `SANVI_RUN=${args.map(quote).join(' ')}`] : [];
+    const run = inShell ? [] : [args.map(quote).join(' ')];
+    let id;
+    try {
+      let has = true;
+      try { tm(['has-session', '-t', `=${tmux.session}`]); } catch { has = false; }
+      id = has
+        ? tm(['new-window', '-t', `${tmux.session}:`, '-c', cwd, '-P', '-F', '#{window_id}', ...env, ...run])
+        : tm(['new-session', '-d', '-s', tmux.session, '-c', cwd, '-x', String(cols), '-y', String(rows), '-P', '-F', '#{window_id}', ...env, ...run]);
+      if (inShell) { tm(['send-keys', '-t', id, '-l', RUN_LINE.trimEnd()]); tm(['send-keys', '-t', id, 'Enter']); }
+    } catch (e) { throw new ValidationError(`tmux failed: ${String(e.stderr || e.message).trim()}`); }
+    if (ticket) windows.set(ticket, id);
+    const attached = [...terms.values()].find((t) => t.tmux && t.state === 'running');
+    if (attached) return view(attached);
+    return launch({ cwd, cols, rows, argv: ['tmux', ...(tmux.socket ? ['-L', tmux.socket] : []), 'attach-session', '-t', tmux.session], env: {}, ticket: null, typed: '', isTmux: true });
+  }
+
+  function launch({ cwd, cols, rows, argv, env, ticket, typed, isTmux = false }) {
+    const t = { tmux: isTmux, id: crypto.randomUUID(), cwd, ticket, cols, rows, state: 'running', exitCode: null, created: new Date().toISOString(), chunks: [], bytes: 0, watchers: new Set(), idle: null, proc: null };
+    const proc = spawn(python, ['-I', HOST, cwd, String(cols), String(rows), ...argv], {
+      stdio: ['pipe', 'pipe', 'pipe', 'pipe'], cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...env },
     });
     t.proc = proc;
-    if (wrap) proc.stdin.write(RUN_LINE); // queued on the pty until the shell reads it
+    if (typed) proc.stdin.write(typed); // queued on the pty until the shell reads it
     const out = (buf) => {
       t.chunks.push(buf); t.bytes += buf.length;
       while (t.bytes > KEEP && t.chunks.length > 1) t.bytes -= t.chunks.shift().length;
@@ -116,7 +145,13 @@ export function createTerminals({ command = ['claude'], shell = null, idleMs = I
   function stopAll() { for (const id of [...terms.keys()]) stop(id); }
 
   /** The running session of a ticket, if any (ended ones do not count). */
-  const forTicket = (file) => [...terms.values()].find((t) => t.state === 'running' && t.ticket === file);
+  const forTicket = (file) => {
+    if (!tmux) return [...terms.values()].find((t) => t.state === 'running' && t.ticket === file);
+    const id = windows.get(file);
+    if (!id || !hasWindow(id)) { windows.delete(file); return undefined; }
+    try { tm(['select-window', '-t', id]); } catch { return undefined; }
+    return [...terms.values()].find((t) => t.state === 'running' && t.tmux);
+  };
 
   return { start, forTicket: (file) => { const t = forTicket(file); return t ? view(t) : null; }, watch, input, resize, stop, stopAll, list: () => [...terms.values()].filter((t) => t.state === 'running').map(view), get: (id) => view(get(id)) };
 }

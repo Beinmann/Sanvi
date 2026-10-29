@@ -196,6 +196,8 @@ With `--terminal` the header has a **Terminal** button: it opens your shell (`$S
 
 **Copying**: select text with Shift+drag (plain drag works too unless the program captures the mouse), then press `Ctrl+C` (`Cmd+C`) to copy it; without a selection `Ctrl+C` is still the interrupt for the running command. (`Ctrl+Shift+C` is not used: Firefox takes it for its dev tools.)
 
+**tmux mode (`--tmux`, needs `--terminal` and tmux installed; startup fails with a message otherwise).** Instead of one pty per UI tab, the panel shows one pty attached to the tmux session named `sanvi` (fixed), and every new terminal (the **+** button, `gat` on a ticket) becomes a new window of that session, started in the project's / ticket's directory. Switch windows with tmux's own keys (`Ctrl+B n` / `p` / number); the UI has no per-window tabs, rename or ×. `gat` on a ticket that already has a window selects it. **End session** (or closing the browser tab, or stopping Sanvi) only detaches: the tmux session and its windows keep running and are re-used by the next terminal (`tmux attach -t sanvi` works from any shell). Without `--tmux` nothing changes.
+
 Closing a tab (or the browser tab) ends the process; so does stopping the server, and a terminal nobody has watched for 20 s is ended too. API: `POST /api/agent/terminals {dir?, project?, cols?, rows?}` starts a shell, `GET .../:id/stream` (SSE, base64), `POST .../:id/input {data}`, `POST .../:id/resize {cols, rows}`, `DELETE .../:id`; in code `createTerminals().start({ cwd, prompt })` (`src/terminal.js`) is the entry for other runs.
 
 ## Chat with Claude (`--agents`, prototype)

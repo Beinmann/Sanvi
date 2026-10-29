@@ -31,3 +31,10 @@ test('tk: --terminal on a non-loopback host needs --allow-agents-on-network, lik
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /--terminal with a non-loopback/);
 });
+
+test('tk: --tmux needs --terminal', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-flags-'));
+  const r = spawnSync(process.execPath, [TK, '--dir', dir, 'serve', '--tmux'], { encoding: 'utf8' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--tmux needs --terminal/);
+});

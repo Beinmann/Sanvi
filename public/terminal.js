@@ -16,7 +16,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
   panel.append(
     el('div', { class: 'chathead' }, el('strong', {}, 'Terminal'), status, el('span', { style: 'flex:1' }),
       el('button', { type: 'button', title: `Hide the panel; the sessions keep running (${HIDE_LABEL})`, onclick: () => hide() }, 'Hide ', el('kbd', {}, HIDE_LABEL)),
-      el('button', { type: 'button', title: 'End the current session', onclick: () => current && close(current.id) }, 'End session')),
+      el('button', { type: 'button', title: 'End the current session (with tmux: detach; the tmux session keeps running)', onclick: () => current && close(current.id) }, 'End session')),
     tabs, hosts,
     el('p', { class: 'muted termhint' }, 'Copy: Shift+drag to select, then Ctrl+C (without a selection Ctrl+C interrupts).'));
   document.body.append(panel);
@@ -37,10 +37,11 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
   }
 
   const decode = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  // With --tmux the one tab is the tmux session; the windows (and their names) belong to tmux, so there is no rename or per-tab end.
   const paintTabs = () => tabs.replaceChildren(...[...sessions.values()].map((s) => el('span', { class: `termtab${s === current ? ' on' : ''}`, role: 'tab', 'aria-selected': String(s === current) },
-    el('button', { type: 'button', title: `${s.cwd} (double-click to rename)`, onclick: () => { if (s !== current) show(s.id); }, ondblclick: (e) => rename(s, e.currentTarget) }, s.label),
-    el('button', { type: 'button', class: 'termx', title: 'End this session', 'aria-label': `End ${s.label}`, onclick: () => close(s.id) }, '×'))),
-    el('button', { type: 'button', class: 'termadd', title: 'Start another terminal', 'aria-label': 'New terminal', onclick: () => start() }, '+'));
+    el('button', { type: 'button', title: s.tmux ? `tmux session ${s.tmux}: switch windows with Ctrl+B, then n / p / a number` : `${s.cwd} (double-click to rename)`, onclick: () => { if (s !== current) show(s.id); }, ondblclick: (e) => { if (!s.tmux) rename(s, e.currentTarget); } }, s.label),
+    ...(s.tmux ? [] : [el('button', { type: 'button', class: 'termx', title: 'End this session', 'aria-label': `End ${s.label}`, onclick: () => close(s.id) }, '×')]))),
+    el('button', { type: 'button', class: 'termadd', title: [...sessions.values()].some((s) => s.tmux) ? 'New tmux window' : 'Start another terminal', 'aria-label': 'New terminal', onclick: () => start() }, '+'));
 
   // Enter confirms, Esc cancels, an empty name keeps the old one. Only the label changes; the process is untouched.
   function rename(s, labelButton) {
@@ -124,7 +125,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
       api('POST', `agent/terminals/${made.id}/resize`, { cols: term.cols, rows: term.rows }).catch(() => {});
     });
     observer.observe(host);
-    sessions.set(made.id, { id: made.id, label, cwd: made.cwd, ticket: made.ticket, host, term, fit, source, observer });
+    sessions.set(made.id, { id: made.id, tmux: made.tmux, label: made.tmux ? `tmux: ${made.tmux}` : label, cwd: made.cwd, ticket: made.ticket, host, term, fit, source, observer });
     show(made.id);
   }
 
