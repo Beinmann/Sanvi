@@ -266,12 +266,15 @@ test('tmux mode: terminals are windows of one named session, in the given direct
     assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8').trim(), dir);
     assert.equal(fs.readFileSync(path.join(sub, 'b.txt'), 'utf8').trim(), sub);
     assert.equal(q('list-windows', '-t', 'sanvi-test:').stdout.trim().split('\n').length, 2);
-    const c = term.start({ cwd: dir, command: ['sh', '-c', 'echo "args:$*" > c.txt; sleep 30', 'claude'], flags: ['--x'], ticket: '001-one.md', inShell: true }); // a ticket session: a window running the command via the shell
+    const c = term.start({ cwd: dir, command: ['sh', '-c', 'echo "args:$*" > c.txt; sleep 30', 'claude'], flags: ['--x'], ticket: '001-one.md', inShell: true, name: '#001 One' }); // a ticket session: a window running the command via the shell
     assert.equal(c.id, a.id);
     assert.equal(term.forTicket('001-one.md')?.id, a.id);
     assert.equal(term.forTicket('002-two.md'), null);
     for (let i = 0; i < 60 && !fs.existsSync(path.join(dir, 'c.txt')); i++) await new Promise((r) => setTimeout(r, 50));
     assert.equal(fs.readFileSync(path.join(dir, 'c.txt'), 'utf8').trim(), 'args:--x');
+    assert.deepEqual(q('list-windows', '-t', 'sanvi-test:', '-F', '#{window_name}|#{automatic-rename}').stdout.trim().split('\n').filter((l) => l.startsWith('#001')), ['#001 One|0']);
+    await new Promise((r) => setTimeout(r, 1500)); // the name stays while the command runs
+    assert.ok(q('list-windows', '-t', 'sanvi-test:', '-F', '#{window_name}').stdout.includes('#001 One\n'));
     assert.equal(q('list-sessions', '-F', '#{session_name}').stdout.trim(), 'sanvi-test');
   } finally { term.stopAll(); q('kill-server'); }
 });

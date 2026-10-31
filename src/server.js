@@ -137,7 +137,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     if (running) return { ...running, reused: true };
     // The ticket goes in as system-prompt context, not as the first user prompt: nothing runs until the user types.
     const context = `This session was opened from ticket #${t.id} "${t.title}" (${path.join(dir, file)}). Do not start working until the user says what to do; the user may also work on other things.`;
-    const made = terminals.start({ cwd: startCwd(t.project), cols, rows, flags: ['--permission-mode', 'auto', '--append-system-prompt', context], ticket: file, inShell: true });
+    const made = terminals.start({ cwd: startCwd(t.project), cols, rows, flags: ['--permission-mode', 'auto', '--append-system-prompt', context], ticket: file, inShell: true, name: `#${t.id} ${t.title}`.slice(0, 28) });
     changelog.log({ ticket: file, action: 'terminal', project: t.project || '' });
     return { ...made, reused: false };
   }

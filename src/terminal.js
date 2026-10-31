@@ -42,30 +42,35 @@ export function createTerminals({ command = ['claude'], shell = null, tmux = nul
     if (idleMs > 0 && t.state === 'running' && !t.watchers.size) t.idle = setTimeout(() => stop(t.id), idleMs);
   }
 
-  /** Starts `command` (or the given `command`, plus `flags` and the optional initial `prompt`) in `cwd`. `ticket` (a file name) marks a ticket session.
+  /** Starts `command` (or the given `command`, plus `flags` and the optional initial `prompt`) in `cwd`. `ticket` (a file name) marks a ticket session; `name` titles the tmux window.
    *  With `inShell` (and a `shell`) the command runs as a job of an interactive shell instead of being the pty's direct child, so Ctrl+Z gives a shell. */
-  function start({ cwd, prompt, cols, rows, flags = [], ticket = null, inShell = false, command: cmd = command } = {}) {
+  function start({ cwd, prompt, cols, rows, flags = [], ticket = null, inShell = false, name = null, command: cmd = command } = {}) {
     if (!cwd) throw new ValidationError('a directory is needed');
     if ([...terms.values()].filter((t) => t.state === 'running').length >= MAX) throw new ValidationError(`at most ${MAX} terminals at once`);
     cols = size(cols, 100, 500); rows = size(rows, 30, 200);
     const args = [...cmd, ...flags];
     const text = String(prompt || '').trim();
     if (text) args.push(text.startsWith('-') ? `Task: ${text}` : text);
-    if (tmux) return startWindow({ cwd, cols, rows, args, ticket, inShell });
+    if (tmux) return startWindow({ cwd, cols, rows, args, ticket, inShell, name });
     return launch({ cwd, cols, rows, argv: inShell && shell ? shell : args, env: inShell && shell ? { SANVI_RUN: args.map(quote).join(' ') } : {}, ticket, typed: inShell && shell ? RUN_LINE : '' });
   }
 
   /** tmux mode: a new window in the named session (created with its first window), shown through the one attached pty. */
-  function startWindow({ cwd, cols, rows, args, ticket, inShell }) {
+  function startWindow({ cwd, cols, rows, args, ticket, inShell, name }) {
     const env = inShell ? ['-e', `SANVI_RUN=${args.map(quote).join(' ')}`] : [];
     const run = inShell ? [] : [args.map(quote).join(' ')];
+    const label = name ? ['-n', name] : []; // an explicit -n also stops tmux renaming the window after the running command
     let id;
     try {
       let has = true;
       try { tm(['has-session', '-t', `=${tmux.session}`]); } catch { has = false; }
       id = has
-        ? tm(['new-window', '-t', `${tmux.session}:`, '-c', cwd, '-P', '-F', '#{window_id}', ...env, ...run])
-        : tm(['new-session', '-d', '-s', tmux.session, '-c', cwd, '-x', String(cols), '-y', String(rows), '-P', '-F', '#{window_id}', ...env, ...run]);
+        ? tm(['new-window', '-t', `${tmux.session}:`, '-c', cwd, ...label, '-P', '-F', '#{window_id}', ...env, ...run])
+        : tm(['new-session', '-d', '-s', tmux.session, '-c', cwd, ...label, '-x', String(cols), '-y', String(rows), '-P', '-F', '#{window_id}', ...env, ...run]);
+      if (name) { // renamed again after creation: a user's window-linked hook may have renamed the new window; renaming also turns automatic-rename off
+        tm(['rename-window', '-t', id, name]);
+        tm(['set-window-option', '-t', id, 'automatic-rename', 'off']);
+      }
       if (inShell) { tm(['send-keys', '-t', id, '-l', RUN_LINE.trimEnd()]); tm(['send-keys', '-t', id, 'Enter']); }
     } catch (e) { throw new ValidationError(`tmux failed: ${String(e.stderr || e.message).trim()}`); }
     if (ticket) windows.set(ticket, id);
