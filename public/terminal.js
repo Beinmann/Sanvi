@@ -1,6 +1,7 @@
 // Terminal: interactive `claude` sessions in the browser (xterm.js, vendored) as an alternative to the chat panel.
 // Output arrives over SSE (base64), input and size go back by POST. Several sessions live side by side (tabs); every
-// one keeps its stream open while another is shown. Closing a tab ends its process; hiding the panel does not.
+// one keeps its stream open while another is shown. Closing a tab ends its process; hiding the panel does not, and neither does
+// closing or reloading the browser: running sessions are re-attached on load.
 // Only active when the server runs with --agents. `start({ dir, prompt })` opens one, `openTicket(file)` the ticket's.
 import { Terminal } from './xterm.mjs';
 import { FitAddon } from './addon-fit.mjs';
@@ -39,7 +40,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
   const decode = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   // With --tmux the one tab is the tmux session; the windows (and their names) belong to tmux, so there is no rename or per-tab end.
   const paintTabs = () => tabs.replaceChildren(...[...sessions.values()].map((s) => el('span', { class: `termtab${s === current ? ' on' : ''}`, role: 'tab', 'aria-selected': String(s === current) },
-    el('button', { type: 'button', title: s.tmux ? `tmux session ${s.tmux}: switch windows with Ctrl+B, then n / p / a number` : `${s.cwd} (double-click to rename)`, onclick: () => { if (s !== current) show(s.id); }, ondblclick: (e) => { if (!s.tmux) rename(s, e.currentTarget); } }, s.label),
+    el('button', { type: 'button', title: s.tmux ? `tmux session ${s.tmux}: switch windows with Ctrl+B, then n / p / a number` : `${s.cwd} (double-click to rename)`, onclick: () => { if (s !== current) show(s.id); }, ondblclick: (e) => { if (!s.tmux) rename(s, e.currentTarget); } }, s.auto && !s.renamed ? s.auto() : s.label),
     ...(s.tmux ? [] : [el('button', { type: 'button', class: 'termx', title: 'End this session', 'aria-label': `End ${s.label}`, onclick: () => close(s.id) }, '×')]))),
     el('button', { type: 'button', class: 'termadd', title: [...sessions.values()].some((s) => s.tmux) ? 'New tmux window' : 'Start another terminal', 'aria-label': 'New terminal', onclick: () => start() }, '+'));
 
@@ -51,7 +52,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
       if (done) return;
       done = true;
       const name = input.value.trim();
-      if (save && name) s.label = name;
+      if (save && name) { s.label = name; s.renamed = true; }
       paintTabs();
       if (current === s) s.term.focus();
     };
@@ -90,14 +91,15 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
   // Focus must not stay on (or return to) the Terminal button: Space would open the panel again.
   function hide() { panel.hidden = true; button.blur(); document.activeElement?.blur?.(); onHide(); }
 
-  function attach(made, label) {
-    if (sessions.has(made.id)) return show(made.id);
+  function attach(made, label, { quiet = false } = {}) {
+    if (sessions.has(made.id)) return quiet ? undefined : show(made.id);
     const host = el('div', { class: 'termhost' });
     hosts.append(host);
     const term = new Terminal({ cursorBlink: true, fontSize: 14, scrollback: 5000, convertEol: false });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    panel.hidden = false;
+    const wasHidden = panel.hidden;
+    panel.hidden = false; // xterm and fit need a laid-out host
     // Ctrl+C with a selection copies it (Firefox keeps Ctrl+Shift+C for its dev tools); without one it stays the interrupt.
     term.attachCustomKeyEventHandler((e) => {
       if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === HIDE_KEY) { // Ctrl+H hides the panel (same as Hide); never reaches the shell
@@ -126,6 +128,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     });
     observer.observe(host);
     sessions.set(made.id, { id: made.id, tmux: made.tmux, label: made.tmux ? `tmux: ${made.tmux}` : label, cwd: made.cwd, ticket: made.ticket, host, term, fit, source, observer });
+    if (quiet) { host.hidden = true; panel.hidden = wasHidden; return; }
     show(made.id);
   }
 
@@ -156,8 +159,16 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     } catch { /* offline: try again later */ }
   }, 5000);
 
-  // The tab closing must not leave processes running (the server also ends them when nobody watches).
-  window.addEventListener('pagehide', () => { for (const id of sessions.keys()) fetch(`/api/agent/terminals/${id}/stop`, { method: 'POST', keepalive: true }); });
+  // Sessions outlive the page: re-attach the running ones (the panel stays hidden; the server replays their kept output).
+  (async () => {
+    try {
+      for (const made of await api('GET', 'agent/terminals')) {
+        if (sessions.has(made.id)) continue;
+        attach(made, made.ticket ? ticketTitle(made.ticket) : `Terminal ${++counter}`, { quiet: true });
+        if (made.ticket) sessions.get(made.id).auto = () => ticketTitle(made.ticket); // tickets may not be loaded yet
+      }
+    } catch { /* offline or terminal off: nothing to adopt */ }
+  })();
   button.addEventListener('click', () => { if (!panel.hidden) hide(); else if (sessions.size) show(current?.id ?? [...sessions.keys()][0]); else start(); });
 
   return { start, openTicket, hide, isOpen: () => !panel.hidden, count: () => sessions.size };

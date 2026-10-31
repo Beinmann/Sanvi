@@ -1,6 +1,7 @@
 // Interactive terminals: the real `claude` CLI on a pseudo-terminal, bridged to the browser (SSE for output, POST for
 // input). Node has no pty, so src/ptyhost.py (python3, standard library only) owns it. Exists only with --agents.
-// A terminal ends when it is stopped, when the server closes, or when no browser has been watching it for a while.
+// A terminal ends when it is stopped, when its process exits, or when the server closes. It keeps running while no browser watches it
+// (a reloaded or reopened page re-attaches); an idle timeout exists only when `idleMs` is set.
 import { spawn, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +10,7 @@ import { ValidationError } from './core.js';
 const HOST = fileURLToPath(new URL('./ptyhost.py', import.meta.url));
 const KEEP = 256 * 1024;   // output kept for a browser that attaches late or reconnects
 const MAX = 8;             // terminals at once
-const IDLE_MS = 20000;     // nobody watching for this long: the process is ended
+const IDLE_MS = 0;         // no timeout by default; with idleMs > 0, a terminal nobody watched for this long is ended
 const REAP_MS = 10000;     // an ended terminal is forgotten after this long (late watchers still see its output and exit)
 
 const size = (v, dflt, max) => (Number.isInteger(v) && v >= 1 && v <= max ? v : dflt);
@@ -35,9 +36,9 @@ export function createTerminals({ command = ['claude'], shell = null, tmux = nul
   };
   const emit = (t, event, data) => { for (const res of t.watchers) res.write(`${event ? `event: ${event}\n` : ''}data: ${data}\n\n`); };
 
-  function arm(t) { // end the process when nobody has been watching for a while
+  function arm(t) { // opt-in (idleMs > 0): end the process when nobody has been watching for a while
     clearTimeout(t.idle);
-    if (t.state === 'running' && !t.watchers.size) t.idle = setTimeout(() => stop(t.id), idleMs);
+    if (idleMs > 0 && t.state === 'running' && !t.watchers.size) t.idle = setTimeout(() => stop(t.id), idleMs);
   }
 
   /** Starts `command` (or the given `command`, plus `flags` and the optional initial `prompt`) in `cwd`. `ticket` (a file name) marks a ticket session.

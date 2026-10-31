@@ -109,7 +109,17 @@ test('a command that exits ends the session even if a leftover job keeps writing
   } finally { term.stopAll(); }
 });
 
-test('a terminal nobody watches is ended after the idle time', { skip: !hasPython }, async () => {
+test('a terminal nobody watches keeps running by default', { skip: !hasPython }, async () => {
+  const term = createTerminals({ command: ['sh', '-c', 'sleep 30'] });
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-')));
+  try {
+    const t = term.start({ cwd });
+    await new Promise((r) => setTimeout(r, 400));
+    assert.deepEqual(term.list().map((x) => x.id), [t.id]);
+  } finally { term.stopAll(); }
+});
+
+test('with idleMs set, a terminal nobody watches is ended after the idle time', { skip: !hasPython }, async () => {
   const term = createTerminals({ command: ['sh', '-c', 'sleep 30'], idleMs: 200 });
   const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-term-')));
   try {
