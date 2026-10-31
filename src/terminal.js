@@ -15,8 +15,9 @@ const REAP_MS = 10000;     // an ended terminal is forgotten after this long (la
 const size = (v, dflt, max) => (Number.isInteger(v) && v >= 1 && v <= max ? v : dflt);
 
 const quote = (a) => `'${String(a).replace(/'/g, `'\\''`)}'`;
-// Typed into the interactive shell: runs $SANVI_RUN as a foreground job, so Ctrl+Z (exit status 128+SIGTSTP) returns to the prompt for `fg`; any other end leaves the shell too.
-const RUN_LINE = ' eval "$SANVI_RUN"; s=$?; [ "$s" -eq 148 ] || exit "$s"\n';
+// Typed into the interactive shell: clears the screen (so the echoed line is not what stays visible, and shows "Starting..." until the command prints),
+// then runs $SANVI_RUN as a foreground job, so Ctrl+Z (exit status 128+SIGTSTP) returns to the prompt for `fg`; any other end leaves the shell too.
+const RUN_LINE = ` printf '\\033[H\\033[2J\\033[3JStarting...\\r\\n'; eval "$SANVI_RUN"; s=$?; [ "$s" -eq 148 ] || exit "$s"\n`;
 
 export const TMUX_SESSION = 'sanvi'; // the fixed name of the tmux session used with --tmux
 

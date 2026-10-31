@@ -210,6 +210,9 @@ test('ticket sessions run in an interactive shell: Ctrl+Z gives a prompt in the 
       throw new Error(`timed out waiting for ${re}`);
     };
     await wait(/started/);
+    const clear = text.lastIndexOf('\x1b[2J');
+    assert.ok(clear >= 0 && text.indexOf('Starting...', clear) > clear, 'the screen is cleared and shows Starting... after the echoed launch line');
+    assert.ok(text.indexOf('started') > text.indexOf('Starting...'), 'the command output comes after the indicator');
     send('\x1a'); // Ctrl+Z
     await wait(/Stopped|stopped/);
     send('echo shell-works:$(pwd)\n');
