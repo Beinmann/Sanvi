@@ -108,6 +108,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
         e.preventDefault();
         return false;
       }
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'v') return false; // Ctrl+V must become a browser paste event (xterm would send ^V, and Claude then looks in the server's clipboard, finding no image)
       if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); return true; } // Tab / Shift+Tab are for the shell (completion): xterm sends them on, the browser must not move focus
       if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'c' || !term.hasSelection()) return true;
       const text = term.getSelection();
