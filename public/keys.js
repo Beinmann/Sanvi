@@ -122,7 +122,7 @@ export const HELP = [
     ['gat', 'Terminal: show the interactive Claude session of the selected / open ticket, or start one (auto permission mode; needs --terminal and --agents)'],
     ['Ctrl+H', 'Terminal (while it has focus): hide the panel and return to the board, same as the Hide button'],
     ['gas', 'Worktree slot overview (same as gw)'],
-    ['go', 'Switch to another running Sanvi instance on this machine (same tab; also in the command menu)'],
+    ['go', 'Switch this tab to another Sanvi instance running on the same machine (same address; also in the command menu)'],
     ['gw', 'Worktree slot overview (only with --agents)'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
@@ -607,14 +607,18 @@ export function initKeys(ctx) {
     return [row('All projects', '', ''), ...names.map((n) => row(n, n, recent.includes(n) ? 'recent' : '')), row('Default project', none, '')];
   }
   // Worktree slots of the implement runs: overview, and the pool size (stored in the project's .sanvi dir).
-  // Other running local instances (fetched fresh on every open). Choosing one navigates this tab to it.
+  // Local Sanvi instances (fetched fresh on every open). Choosing one makes this tab show that instance's board, served through
+  // this page's own origin (see backend.js); the page itself stays put. The one showing now is not listed.
   async function openInstances() {
     let list;
     try { list = await ctx.instances(); } catch (e) { ctx.toast(`Instances: ${e.message}`); return; }
+    const now = ctx.backend()?.id ?? list.find((x) => x.self)?.id;
+    list = list.filter((x) => x.id !== now);
     const dup = (n) => list.filter((x) => x.name === n).length > 1;
+    const hint = (x) => [x.self ? 'this page\'s own' : '', x.port ? `:${x.port}` : '', dup(x.name) ? x.dir : ''].filter(Boolean).join(' ');
     const level = {
       placeholder: 'Switch to Sanvi instance…',
-      rows: () => (list.length ? list.map((x) => ({ label: x.name, hint: dup(x.name) ? `:${x.port} ${x.dir}` : `:${x.port}`, run: () => { location.href = x.url; } }))
+      rows: () => (list.length ? list.map((x) => ({ label: x.name, hint: hint(x), run: () => ctx.switchBackend(x.self ? null : x) }))
         : [{ label: 'No other Sanvi instances running', hint: '', always: true, run: () => {} }]),
     };
     openPalette('instances', level);
@@ -1046,5 +1050,5 @@ export function initKeys(ctx) {
 
   $('#help-btn')?.addEventListener('click', openHelp);
   $('#cmd-btn')?.addEventListener('click', () => openPalette());
-  return { warnSlotsBusy };
+  return { warnSlotsBusy, openInstances };
 }

@@ -177,7 +177,7 @@ test('persistent port: .sanvi/port is the default, --port overrides, invalid con
   }
 });
 
-test('GET /api/instances lists the other running instances, not itself', async () => {
+test('GET /api/instances lists this instance (self) and the other running ones', async () => {
   const { root, mk, tk } = setup();
   const a = mk('proj-a'); const b = mk('proj-b');
   try {
@@ -186,9 +186,56 @@ test('GET /api/instances lists the other running instances, not itself', async (
     const ps = JSON.parse(tk('ps', '--json'));
     const ea = ps.find((e) => e.dir === a); const eb = ps.find((e) => e.dir === b);
     const fromA = await (await fetch(`${ea.url}/api/instances`)).json();
-    assert.deepEqual(fromA.map((x) => [x.name, x.url]), [['proj-b', eb.url]]);
+    assert.deepEqual(fromA.map((x) => [x.name, !!x.self]), [['proj-a', true], ['proj-b', false]]);
+    assert.equal(fromA[1].port, eb.port);
+    assert.match(fromA[1].id, /^[0-9a-f]{12}$/);
     tk('--dir', b, 'stop');
-    assert.deepEqual(await (await fetch(`${ea.url}/api/instances`)).json(), []);
+    assert.deepEqual((await (await fetch(`${ea.url}/api/instances`)).json()).map((x) => x.name), ['proj-a']);
+  } finally {
+    tk('stop', '--all');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('/b/<id>/... proxies the API, writes and the event stream to another instance; unknown or stopped ids give 502', async () => {
+  const { root, mk, tk } = setup();
+  const a = mk('proj-a'); const b = mk('proj-b');
+  fs.writeFileSync(path.join(b, '002-only-in-b.md'), '---\nstatus: open\n---\n\n# Only in B\n');
+  try {
+    tk('--dir', a, 'start', '--port', '0');
+    tk('--dir', b, 'start', '--port', '0');
+    const ps = JSON.parse(tk('ps', '--json'));
+    const ea = ps.find((e) => e.dir === a);
+    const list = await (await fetch(`${ea.url}/api/instances`)).json();
+    const idA = list.find((x) => x.self).id; const idB = list.find((x) => !x.self).id;
+    const titles = async (prefix) => (await (await fetch(`${ea.url}${prefix}/api/tickets`)).json()).map((t) => t.file);
+    assert.deepEqual(await titles(''), ['001-a.md']);
+    assert.deepEqual(await titles(`/b/${idB}`), ['001-a.md', '002-only-in-b.md']); // B's board through A's address
+    assert.deepEqual(await titles(`/b/${idA}`), ['001-a.md']); // itself: handled locally
+    // a write goes to B (JSON body and same-origin Origin pass), not to A
+    const idea = await fetch(`${ea.url}/b/${idB}/api/ideas`, { method: 'POST', headers: { 'content-type': 'application/json', origin: ea.url }, body: JSON.stringify({ text: 'via proxy' }) });
+    assert.equal(idea.status, 201);
+    assert.equal(fs.readdirSync(a).filter((f) => f.endsWith('.md')).length, 1);
+    assert.equal(fs.readdirSync(b).filter((f) => f.endsWith('.md')).length, 3);
+    // cross-origin writes are refused at the front door
+    const evil = await fetch(`${ea.url}/b/${idB}/api/ideas`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://evil.example' }, body: JSON.stringify({ text: 'x' }) });
+    assert.equal(evil.status, 403);
+    // only /api and /assets are forwarded
+    assert.equal((await fetch(`${ea.url}/b/${idB}/index.html`)).status, 404);
+    // the event stream is relayed
+    const ctl = new AbortController();
+    const es = await fetch(`${ea.url}/b/${idB}/api/events`, { signal: ctl.signal });
+    assert.equal(es.headers.get('content-type'), 'text/event-stream');
+    const chunk = await es.body.getReader().read();
+    assert.match(new TextDecoder().decode(chunk.value), /retry: 1000/);
+    ctl.abort();
+    // unknown id
+    const none = await fetch(`${ea.url}/b/000000000000/api/tickets`);
+    assert.equal(none.status, 502);
+    assert.equal((await none.json()).error, 'instance not running');
+    // stopped instance
+    tk('--dir', b, 'stop');
+    assert.equal((await fetch(`${ea.url}/b/${idB}/api/tickets`)).status, 502);
   } finally {
     tk('stop', '--all');
     fs.rmSync(root, { recursive: true, force: true });
