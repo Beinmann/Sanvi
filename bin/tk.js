@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { findTicketsDir, offerTicketsDir } from '../src/ticketsdir.js';
 import { versionLine } from '../src/about.js';
 import { reviewStartedMessage } from '../src/review.js';
 import { expandFlags } from '../src/cliflags.js';
@@ -82,12 +83,20 @@ function parseArgs(argv) {
 function findDir(flag) {
   const given = flag || process.env.TK_DIR;
   if (given) return path.resolve(given);
-  for (let d = process.cwd(); ; d = path.dirname(d)) {
-    const cand = path.join(d, 'tickets');
-    if (fs.existsSync(cand) && fs.statSync(cand).isDirectory()) return cand;
-    if (path.dirname(d) === d) break;
-  }
+  const found = findTicketsDir(process.cwd());
+  if (found) return found;
   throw new ValidationError('no tickets dir found (use --dir or $TK_DIR)');
+}
+
+// `start` / `serve` may offer to create ./tickets on an interactive terminal; every other command keeps the error.
+async function findOrOfferDir(flag, cmd) {
+  try { return findDir(flag); } catch (e) {
+    if (!(e instanceof ValidationError) || (cmd !== 'start' && cmd !== 'serve')) throw e;
+    const made = await offerTicketsDir(process.cwd());
+    if (!made) throw new ValidationError(`${e.message}\nnothing created`);
+    console.log(`created ${made}`);
+    return made;
+  }
 }
 
 const brief = (t) => `${t.id}  ${(t.status || '-').padEnd(12)} ${(t.area || '').padEnd(14)} ${t.title}`;
@@ -112,7 +121,7 @@ async function main() {
   const [cmd, ...rest] = pos;
   if (!cmd || cmd === 'help' || flags.help) return console.log(HELP);
   const noDir = cmd === 'ps' || cmd === 'sessions' || (cmd === 'stop' && (flags.all || flags.port));
-  const dir = noDir ? null : findDir(flags.dir);
+  const dir = noDir ? null : await findOrOfferDir(flags.dir, cmd);
   const out = (data, text) => console.log(flags.json ? JSON.stringify(data, null, 2) : text);
 
   switch (cmd) {
