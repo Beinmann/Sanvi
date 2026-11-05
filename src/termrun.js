@@ -22,13 +22,17 @@ export function interactiveFlags({ permissionMode = 'auto', tools, allowedTools,
   return flags;
 }
 
-/** `terminals` is createTerminals(); `ticketStatus(file)` gives the ticket's current status. Returns a `run(opts)` for runs with `opts.interactive = { file, name }`. */
-export function createTerminalRun({ terminals, ticketStatus, pollMs = POLL_MS }) {
+/** `terminals` is createTerminals(); `ticketStatus(file)` gives the ticket's current status, `ticketVersion(file)` its content version.
+ *  Returns a `run(opts)` for runs with `opts.interactive = { file, name, watch? }`. `watch: 'version'` (refine runs, which may leave the
+ *  status as it is) counts any change of the ticket file as the work being done instead of a status change. */
+export function createTerminalRun({ terminals, ticketStatus, ticketVersion = ticketStatus, pollMs = POLL_MS }) {
   return function run({ prompt, cwd, interactive, ...opts }) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sanvi-run-'));
     const marker = path.join(dir, 'stop');
-    const before = ticketStatus(interactive.file);
-    const changed = () => { try { return ticketStatus(interactive.file) !== before; } catch { return false; } };
+    const read = interactive.watch === 'version' ? ticketVersion : ticketStatus;
+    const what = interactive.watch === 'version' ? 'the ticket was changed' : null;
+    const before = read(interactive.file);
+    const changed = () => { try { return read(interactive.file) !== before; } catch { return false; } };
     let timer = null;
     let cancelled = false;
     let finish;
@@ -47,10 +51,10 @@ export function createTerminalRun({ terminals, ticketStatus, pollMs = POLL_MS })
     }
     timer = setInterval(() => {
       if (fs.existsSync(marker)) {
-        if (changed()) { terminals.end(term); return end({ ok: true, text: 'The implementation ran in a terminal session; see the ticket and the branch for the result.' }); }
+        if (changed()) { terminals.end(term); return end({ ok: true, text: 'The agent ran in a terminal session; see the ticket (and the branch) for the result.' }); }
         try { fs.rmSync(marker); } catch { /* raced */ } // a turn ended (a question, a pause) but the work is not done
       }
-      if (!terminals.alive(term)) end(changed() ? { ok: true, text: 'The terminal session ended after the ticket changed status.' } : { error: `the terminal session ended before the ticket left status "${before}"` });
+      if (!terminals.alive(term)) end(changed() ? { ok: true, text: `The terminal session ended after ${what || 'the ticket changed status'}.` } : { error: what ? 'the terminal session ended before the ticket was changed' : `the terminal session ended before the ticket left status "${before}"` });
     }, pollMs);
     return {
       onEvent() { /* no event stream on a terminal */ },

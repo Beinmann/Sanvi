@@ -49,3 +49,17 @@ test('a session that ends is ok only if the status changed; cancel ends it', asy
   const d = await r.done;
   assert.equal(d.cancelled, true); assert.equal(s.state.ended, true);
 });
+
+test('a refine run (watch: version) finishes when the ticket changed even if the status did not', async () => {
+  const state = { v: 'a', alive: true, ended: false, started: null };
+  const terminals = { start: (o) => { state.started = o; return {}; }, alive: () => state.alive, end: () => { state.ended = true; state.alive = false; } };
+  const run = createTerminalRun({ terminals, ticketStatus: () => 'idea', ticketVersion: () => state.v, pollMs: 10 });
+  const r = run({ prompt: 'x', cwd: '/w', interactive: { file: 'f.md', name: 'Refine #1', watch: 'version' } });
+  const marker = state.started.flags[state.started.flags.indexOf('--settings') + 1].match(/touch '([^']+)'/)[1];
+  fs.writeFileSync(marker, '');
+  await new Promise((x) => setTimeout(x, 50));
+  assert.equal(state.ended, false);
+  state.v = 'b';
+  fs.writeFileSync(marker, '');
+  assert.equal((await r.done).ok, true);
+});
