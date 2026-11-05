@@ -39,11 +39,11 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   trash                                   list deleted tickets with days left
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate [--closed-warnings]            check format; exit 1 on errors (closed tickets skip missing-section warnings)
-  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine] | --agents-full] [--terminal [--tmux]] [--force]
-                                          run the web UI in the foreground (port: --port, else the number in .sanvi/port, else 4321; one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --terminal adds a shell terminal in the browser = FULL SYSTEM ACCESS (isolated systems only), with --tmux its terminals are windows of a tmux session named per instance (sanvi-<dir>-<hash>; see tk sessions) instead of UI tabs; --agents-full = --agents --auto-refine (hosts *.localhost are always allowed)
+  serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine] | --agents-full] [--terminal [--tmux]] [--full] [--force]
+                                          run the web UI in the foreground (port: --port, else the number in .sanvi/port, else 4321; one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --terminal adds a shell terminal in the browser = FULL SYSTEM ACCESS (isolated systems only), with --tmux its terminals are windows of a tmux session named per instance (sanvi-<dir>-<hash>; see tk sessions) instead of UI tabs; --agents-full = --agents --auto-refine; --full = --agents --terminal --tmux (combine with --auto-refine if wanted) (hosts *.localhost are always allowed)
                                           --host 0.0.0.0 serves the LAN (its IPs are allowed automatically; no auth, so trusted networks only;
                                           --agents or --terminal on the network also needs --allow-agents-on-network)
-  start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine] | --agents-full] [--terminal [--tmux]]
+  start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine] | --agents-full] [--terminal [--tmux]] [--full]
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
   ps                                      list running instances; stale entries are cleaned up
@@ -69,6 +69,7 @@ function parseArgs(argv) {
     else if (a === '--auto-refine') flags['auto-refine'] = true;
     else if (a === '--terminal') flags.terminal = true;
     else if (a === '--tmux') flags.tmux = true;
+    else if (a === '--full') flags.full = true;
     else if (a === '--agents-full') flags['agents-full'] = true;
     else if (a === '--allow-agents-on-network') flags['allow-agents-on-network'] = true;
     else if (a === '--criterion' || a === '--note') (flags[a.slice(2)] ||= []).push(argv[++i]); // repeatable

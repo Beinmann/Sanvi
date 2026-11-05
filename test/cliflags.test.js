@@ -38,3 +38,15 @@ test('tk: --tmux needs --terminal', () => {
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /--tmux needs --terminal/);
 });
+
+test('expandFlags: --full is --agents --terminal --tmux and combines with --auto-refine', () => {
+  assert.deepEqual(expandFlags({ full: true }), { full: true, agents: true, terminal: true, tmux: true });
+  assert.deepEqual(expandFlags({ full: true, 'auto-refine': true }), { full: true, 'auto-refine': true, agents: true, terminal: true, tmux: true });
+});
+
+test('tk: --full triggers the network check', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-flags-'));
+  const r = spawnSync(process.execPath, [TK, '--dir', dir, 'serve', '--full', '--host', '0.0.0.0'], { encoding: 'utf8' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /non-loopback/);
+});
