@@ -123,6 +123,7 @@ export const HELP = [
     ['Ctrl+H', 'Terminal (while it has focus): hide the panel and return to the board, same as the Hide button'],
     ['gas', 'Worktree slot overview (same as gw)'],
     ['go', 'Switch this tab to another Sanvi instance running on the same machine (same address; also in the command menu)'],
+    ['Ctrl+O', 'Same as go, also while typing'],
     ['gw', 'Worktree slot overview (only with --agents)'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
@@ -713,7 +714,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Notes', run: () => { location.hash = '#/notes'; } },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
           ...(ctx.projects().mode === 'dropdown' ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
-          { cmd: true, label: 'Switch Sanvi instance…', hint: 'go', run: openInstances },
+          { cmd: true, label: 'Switch Sanvi instance…', hint: 'go / Ctrl+O', run: openInstances },
           { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
           { cmd: true, label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
           { cmd: true, label: 'Add status…', hint: 'column', run: openAddStatus },
@@ -913,6 +914,12 @@ export function initKeys(ctx) {
       e.preventDefault();
       if (overlay) closeOverlay();
       focusSearch();
+      return;
+    }
+    if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'o') { // instance switcher; works while typing, too (and replaces the browser's open-file dialog)
+      e.preventDefault();
+      if (overlay) closeOverlay();
+      openInstances();
       return;
     }
     if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'i') { // works while typing, too
