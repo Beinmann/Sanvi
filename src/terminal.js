@@ -40,7 +40,7 @@ export function createTerminals({ command = ['claude'], shell = null, tmux = nul
   const tm = (args) => execFileSync('tmux', [...(tmux.socket ? ['-L', tmux.socket] : []), ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const hasWindow = (id) => { try { return tm(['list-windows', '-t', `${tmux.session}:`, '-F', '#{window_id}']).split('\n').includes(id); } catch { return false; } };
 
-  const view = (t) => ({ id: t.id, cwd: t.cwd, cols: t.cols, rows: t.rows, state: t.state, exitCode: t.exitCode, created: t.created, ticket: t.ticket, ...(t.tmux && { tmux: tmux.session }) });
+  const view = (t) => ({ id: t.id, cwd: t.cwd, cols: t.cols, rows: t.rows, state: t.state, exitCode: t.exitCode, created: t.created, ticket: t.ticket, name: t.name, ...(t.tmux && { tmux: tmux.session }) });
   const get = (id) => {
     const t = terms.get(id);
     if (!t) throw new ValidationError('no such terminal');
@@ -63,7 +63,7 @@ export function createTerminals({ command = ['claude'], shell = null, tmux = nul
     const text = String(prompt || '').trim();
     if (text) args.push(text.startsWith('-') ? `Task: ${text}` : text);
     if (tmux) return startWindow({ cwd, cols, rows, args, ticket, inShell, name });
-    return launch({ cwd, cols, rows, argv: inShell && shell ? shell : args, env: inShell && shell ? { SANVI_RUN: args.map(quote).join(' ') } : {}, ticket, typed: inShell && shell ? RUN_LINE : '' });
+    return launch({ cwd, cols, rows, argv: inShell && shell ? shell : args, env: inShell && shell ? { SANVI_RUN: args.map(quote).join(' ') } : {}, ticket, typed: inShell && shell ? RUN_LINE : '', name });
   }
 
   /** tmux mode: a new window in the named session (created with its first window), shown through the one attached pty. */
@@ -86,12 +86,12 @@ export function createTerminals({ command = ['claude'], shell = null, tmux = nul
     } catch (e) { throw new ValidationError(`tmux failed: ${String(e.stderr || e.message).trim()}`); }
     if (ticket) windows.set(ticket, id);
     const attached = [...terms.values()].find((t) => t.tmux && t.state === 'running');
-    if (attached) return view(attached);
-    return launch({ cwd, cols, rows, argv: ['tmux', ...(tmux.socket ? ['-L', tmux.socket] : []), 'attach-session', '-t', tmux.session], env: {}, ticket: null, typed: '', isTmux: true });
+    if (attached) return { ...view(attached), window: id };
+    return launch({ cwd, cols, rows, argv: ['tmux', ...(tmux.socket ? ['-L', tmux.socket] : []), 'attach-session', '-t', tmux.session], env: {}, ticket: null, typed: '', isTmux: true, window: id });
   }
 
-  function launch({ cwd, cols, rows, argv, env, ticket, typed, isTmux = false }) {
-    const t = { tmux: isTmux, id: crypto.randomUUID(), cwd, ticket, cols, rows, state: 'running', exitCode: null, created: new Date().toISOString(), chunks: [], bytes: 0, watchers: new Set(), idle: null, proc: null };
+  function launch({ cwd, cols, rows, argv, env, ticket, typed, isTmux = false, name = null, window = null }) {
+    const t = { tmux: isTmux, name, id: crypto.randomUUID(), cwd, ticket, cols, rows, state: 'running', exitCode: null, created: new Date().toISOString(), chunks: [], bytes: 0, watchers: new Set(), idle: null, proc: null };
     const proc = spawn(python, ['-I', HOST, cwd, String(cols), String(rows), ...argv], {
       stdio: ['pipe', 'pipe', 'pipe', 'pipe'], cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...env },
     });
@@ -119,7 +119,7 @@ export function createTerminals({ command = ['claude'], shell = null, tmux = nul
     proc.on('close', (code) => done(code ?? 1, `exited with code ${code ?? 1}`));
     terms.set(t.id, t);
     arm(t);
-    return view(t);
+    return window ? { ...view(t), window } : view(t);
   }
 
   /** Attaches an SSE response: replays the kept output, then streams. Ends with the terminal. */
@@ -171,5 +171,13 @@ export function createTerminals({ command = ['claude'], shell = null, tmux = nul
     return [...terms.values()].find((t) => t.state === 'running' && t.tmux);
   };
 
-  return { start, forTicket: (file) => { const t = forTicket(file); return t ? view(t) : null; }, watch, input, resize, stop, stopAll, list: () => [...terms.values()].filter((t) => t.state === 'running').map(view), get: (id) => view(get(id)) };
+  /** Is the session started by `start` (the handle it returned) still there? In tmux mode that is its window, not the shared attach process. */
+  const alive = (h) => (h.window ? hasWindow(h.window) : terms.get(h.id)?.state === 'running');
+  /** Ends such a session without touching the others (tmux: just its window). */
+  function end(h) {
+    if (h.window) { try { tm(['kill-window', '-t', h.window]); } catch { /* already gone */ } windows.forEach((v, k) => { if (v === h.window) windows.delete(k); }); }
+    else stop(h.id);
+  }
+
+  return { start, alive, end, forTicket: (file) => { const t = forTicket(file); return t ? view(t) : null; }, watch, input, resize, stop, stopAll, list: () => [...terms.values()].filter((t) => t.state === 'running').map(view), get: (id) => view(get(id)) };
 }

@@ -160,16 +160,19 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     } catch { /* offline: try again later */ }
   }, 5000);
 
-  // Sessions outlive the page: re-attach the running ones (the panel stays hidden; the server replays their kept output).
-  (async () => {
+  // Sessions outlive the page and may be started by the server (an implement run): attach the running ones we do not show yet
+  // (the panel stays hidden; the server replays their kept output).
+  async function adopt() {
     try {
       for (const made of await api('GET', 'agent/terminals')) {
         if (sessions.has(made.id)) continue;
-        attach(made, made.ticket ? ticketTitle(made.ticket) : `Terminal ${++counter}`, { quiet: true });
-        if (made.ticket) sessions.get(made.id).auto = () => ticketTitle(made.ticket); // tickets may not be loaded yet
+        attach(made, made.name || (made.ticket ? ticketTitle(made.ticket) : `Terminal ${++counter}`), { quiet: true });
+        if (made.ticket && !made.name) sessions.get(made.id).auto = () => ticketTitle(made.ticket); // tickets may not be loaded yet
       }
     } catch { /* offline or terminal off: nothing to adopt */ }
-  })();
+  }
+  adopt();
+  setInterval(adopt, 3000);
   button.addEventListener('click', () => { if (!panel.hidden) hide(); else if (sessions.size) show(current?.id ?? [...sessions.keys()][0]); else start(); });
 
   return { start, openTicket, hide, isOpen: () => !panel.hidden, count: () => sessions.size };

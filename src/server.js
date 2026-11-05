@@ -19,6 +19,7 @@ import { createChats, resolveDir } from './chat.js';
 import { createLimits } from './limits.js';
 import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge, DEFAULT_POOL_SIZE, MAX_POOL_SIZE, repoTop, slotOverview, resizePool } from './implement.js';
 import { startRun } from './agent.js';
+import { createTerminalRun } from './termrun.js';
 import { chatsPath, listInstances, instanceName, instanceId } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
 import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, countReviews, readReview, checkReview } from './review.js';
@@ -142,6 +143,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     changelog.log({ ticket: file, action: 'terminal', project: t.project || '' });
     return { ...made, reused: false };
   }
+  // With --terminal, implement runs are the interactive agent on a terminal tab (kept in the background) instead of a headless run.
+  const terminalRun = terminals ? createTerminalRun({ terminals, ticketStatus: (file) => readTicket(dir, file).status }) : null;
   const limits = agents ? createLimits({ probe: limitsProbe }) : null;
 
   // Agent chats run `claude` on this machine, so they exist only when the server was started with --agents.
@@ -162,7 +165,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     settle: (c) => releaseReviewSlot(c), // a review holds its slot only while it runs
     projectInfo: (name) => projectInfo(dir, name),
     run: (opts) => { // every run reports the plan limits; keep them for the header
-      const r = agentRun(opts);
+      const r = opts.interactive && terminalRun ? terminalRun(opts) : agentRun(opts);
       r.onEvent((ev) => limits.record(ev));
       return r;
     },
@@ -295,7 +298,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     const wt = createWorktree({ dir: resolveDir(info.dir), id: t.id, poolSize: poolSize(), isActive: (branch) => chats.list().some((c) => c.branch === branch && runActive(c)) });
     // the agent finishes with `testing`; until then the board shows the ticket as being worked on
     if (['open', 'reopened'].includes(t.status) && readConfig(dir).statuses.includes('in-progress')) saveTicket(dir, file, { fields: { status: 'in-progress' } }, t.version);
-    const chat = chats.create({ dir: wt.worktree, project: t.project, kind: 'implement', ticketId: t.id, meta: { file, wt }, title: `Implement #${t.id}: ${t.title}`.slice(0, 80), runOpts: implementRunOpts({ ticketsDir: dir, projectDir: resolveDir(info.dir) }) });
+    const chat = chats.create({ dir: wt.worktree, project: t.project, kind: 'implement', ticketId: t.id, meta: { file, wt }, title: `Implement #${t.id}: ${t.title}`.slice(0, 80), runOpts: { ...implementRunOpts({ ticketsDir: dir, projectDir: resolveDir(info.dir) }), ...(terminals && { interactive: { file, name: `Implement #${t.id}`.slice(0, 28) } }) } });
     chats.send(chat.id, `Implement ticket #${t.id} (${file}) in worktree ${wt.branch}; merged into ${wt.base} when done.`, { prompt: implementPrompt({ ticketsDir: dir, file, project: t.project, instructions: info.instructions }), queue: true });
     return chat;
   }
