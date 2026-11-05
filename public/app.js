@@ -1266,6 +1266,22 @@ const termLimits = el('button', { type: 'button', class: 'termlimits', hidden: t
 const terminalPage = initTerminal({ el, api, toast, button: $('#term-btn'), limitsNode: termLimits, onHide: () => { if (selected) setSelected(selected); },
   project: () => (project === NO_PROJECT ? '' : project),
   ticketTitle: (file) => { const t = S.tickets.find((x) => x.file === file); return t ? `#${t.id} ${t.title}`.slice(0, 28) : file; } });
+// Header version (252): the backend's version/commit from /api/about; flagged when the page itself is another build.
+(async () => {
+  const node = $('#ver');
+  try {
+    const a = await api('GET', 'about');
+    const be = `${a.version}${a.commit ? `+${a.commit}` : ''}`;
+    const ui = document.querySelector('meta[name="sanvi-ui"]')?.content || '';
+    node.textContent = `v${a.version}${a.commit ? ` ${a.commit}` : ''}`;
+    node.title = `Backend ${be}`;
+    if (ui && ui !== be) {
+      node.classList.add('skew');
+      node.textContent += ' ⚠';
+      node.title = `Web UI build ${ui} differs from backend ${be}: reload the page (or restart the server)`;
+    }
+  } catch { /* header stays without a version */ }
+})();
 const limitsUi = initLimits({ el, api, toast, node: $('#limits'), extra: [termLimits] });
 api('GET', 'agent').then((a) => {
   agentOn = a.enabled;

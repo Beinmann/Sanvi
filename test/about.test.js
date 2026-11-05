@@ -19,3 +19,9 @@ test('tk --version prints the version line', () => {
   const out = execFileSync(process.execPath, [new URL('../bin/tk.js', import.meta.url).pathname, '--version'], { encoding: 'utf8' });
   assert.match(out, /^sanvi \d+\.\d+\.\d+/);
 });
+
+test('uiBuildId is version plus commit when known', async () => {
+  const { uiBuildId } = await import('../src/about.js');
+  assert.equal(uiBuildId({ version: '1.2.3', commit: '' }), '1.2.3');
+  assert.equal(uiBuildId({ version: '1.2.3', commit: 'abc1234' }), '1.2.3+abc1234');
+});

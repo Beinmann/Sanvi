@@ -35,3 +35,6 @@ export function commitsBehind(startFull) {
 }
 
 export const versionLine = (b = buildInfo()) => `sanvi ${b.version}${b.commit ? ` (${b.commit}, ${b.date})` : ''}`;
+
+/** Identifier of the build that serves the web UI: `version` or `version+commit`; compared with /api/about in the browser. */
+export const uiBuildId = (b = buildInfo()) => `${b.version}${b.commit ? `+${b.commit}` : ''}`;

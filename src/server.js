@@ -13,7 +13,7 @@ import {
   writeStatuses,
 } from './core.js';
 import { formatNote } from '../public/notes.js';
-import { buildInfo, commitsBehind } from './about.js';
+import { buildInfo, commitsBehind, uiBuildId } from './about.js';
 import { createChangeLog, summarizeBody } from './changelog.js';
 import { createChats, resolveDir } from './chat.js';
 import { createLimits } from './limits.js';
@@ -629,6 +629,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       const entry = req.method === 'GET' && staticFile(url.pathname);
       if (entry) {
         res.writeHead(200, { 'content-type': entry[1], 'cache-control': 'no-store' });
+        // The page carries the build that served it, so the UI can flag a mismatch with the backend it talks to.
+        if (path.basename(entry[0]) === 'index.html') return res.end(fs.readFileSync(entry[0], 'utf8').replace('<meta name="sanvi-ui" content="">', `<meta name="sanvi-ui" content="${uiBuildId(build)}">`));
         return res.end(fs.readFileSync(entry[0]));
       }
       res.writeHead(404); res.end('not found');
