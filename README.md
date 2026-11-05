@@ -248,6 +248,7 @@ tk serve [--port N]   # foreground
 tk start [--port N]   # background; free port if taken; prints URL; no duplicate per dir
 tk stop [--all | --port N]   # stop this dir's instance (default), all, or the one on a port
 tk ps                 # list running instances (dir, port, PID, URL); cleans up stale ones
+tk sessions           # open terminal sessions (shells, ticket sessions, tmux windows) of all running instances
 ```
 
 Instances (also those from plain `serve`) are registered one JSON file each

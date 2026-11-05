@@ -46,6 +46,7 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
   ps                                      list running instances; stale entries are cleaned up
+  sessions                                list the open terminal sessions of all running instances (shells, ticket sessions, tmux windows)
 
 The tickets dir is --dir, $TK_DIR, or the nearest ./tickets (searching upwards).`;
 
@@ -110,7 +111,7 @@ async function main() {
   const { flags, pos } = parseArgs(process.argv.slice(2));
   const [cmd, ...rest] = pos;
   if (!cmd || cmd === 'help' || flags.help) return console.log(HELP);
-  const noDir = cmd === 'ps' || (cmd === 'stop' && (flags.all || flags.port));
+  const noDir = cmd === 'ps' || cmd === 'sessions' || (cmd === 'stop' && (flags.all || flags.port));
   const dir = noDir ? null : findDir(flags.dir);
   const out = (data, text) => console.log(flags.json ? JSON.stringify(data, null, 2) : text);
 
@@ -223,6 +224,12 @@ async function main() {
     case 'ps': {
       const all = listInstances();
       out(all, all.length ? all.map((e) => `${String(e.pid).padEnd(8)} ${e.url}  ${e.dir}`).join('\n') : 'no running instances');
+      break;
+    }
+    case 'sessions': {
+      const { collectSessions, formatSessions } = await import('../src/sessions.js');
+      const results = await collectSessions(listInstances());
+      out(results, formatSessions(results));
       break;
     }
     case 'start': {
