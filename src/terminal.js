@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ValidationError } from './core.js';
+import { storedName } from './name.js';
 
 const HOST = fileURLToPath(new URL('./ptyhost.py', import.meta.url));
 const KEEP = 256 * 1024;   // output kept for a browser that attaches late or reconnects
@@ -21,10 +22,13 @@ const quote = (a) => `'${String(a).replace(/'/g, `'\\''`)}'`;
 // then runs $SANVI_RUN as a foreground job, so Ctrl+Z (exit status 128+SIGTSTP) returns to the prompt for `fg`; any other end leaves the shell too.
 const RUN_LINE = ` printf '\\033[H\\033[2J\\033[3JStarting...\\r\\n'; eval "$SANVI_RUN"; s=$?; [ "$s" -eq 148 ] || exit "$s"\n`;
 
-/** The tmux session name of an instance (--tmux): `sanvi-<name of the dir above the tickets dir>-<6 hex of a hash of the full path>`.
- *  Stable across restarts, different per tickets dir even with equal base names; characters tmux rejects (`.`, `:`) become `-`. */
+/** The tmux session name of an instance (--tmux): `sanvi-<name>` when a name was set with `tk rename`; otherwise
+ *  `sanvi-<name of the dir above the tickets dir>-<6 hex of a hash of the full path>`, which is stable across restarts and
+ *  different per tickets dir even with equal base names. Characters tmux rejects (`.`, `:`) become `-`. */
 export function tmuxSessionName(dir) {
   const full = path.resolve(dir);
+  const own = storedName(full);
+  if (own) return `sanvi-${own}`;
   const base = path.basename(path.dirname(full)).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
   return `sanvi-${base ? `${base}-` : ''}${crypto.createHash('sha1').update(full).digest('hex').slice(0, 6)}`;
 }

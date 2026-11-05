@@ -10,6 +10,8 @@ import { versionLine } from '../src/about.js';
 import { reviewStartedMessage } from '../src/review.js';
 import { expandFlags } from '../src/cliflags.js';
 import { resolvePort } from '../src/port.js';
+import { storedName, saveName, instanceName } from '../src/name.js';
+import { tmuxSessionName } from '../src/terminal.js';
 import {
   register, unregister, acquireLock, updateLock, releaseLock, listInstances, findInstance, stopInstance, waitForInstance, logPath,
 } from '../src/instances.js';
@@ -40,13 +42,15 @@ usage: tk [--dir <tickets dir>] <command>      (tk --version prints version and 
   restore <id|key>                        put a trashed ticket back (new id if the old one is taken)
   validate [--closed-warnings]            check format; exit 1 on errors (closed tickets skip missing-section warnings)
   serve [--port 4321] [--host 127.0.0.1] [--allow-host a,b] [--agents [--auto-refine] | --agents-full] [--terminal [--tmux]] [--full] [--force]
-                                          run the web UI in the foreground (port: --port, else the number in .sanvi/port, else 4321; one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --terminal adds a shell terminal in the browser = FULL SYSTEM ACCESS (isolated systems only), with --tmux its terminals are windows of a tmux session named per instance (sanvi-<dir>-<hash>; see tk sessions) instead of UI tabs; --agents-full = --agents --auto-refine; --full = --agents --terminal --tmux (combine with --auto-refine if wanted) (hosts *.localhost are always allowed)
+                                          run the web UI in the foreground (port: --port, else the number in .sanvi/port, else 4321; one per dir; --force ignores a stale/false lock in .sanvi/server.lock); --agents runs an AI agent (isolated systems only); --terminal adds a shell terminal in the browser = FULL SYSTEM ACCESS (isolated systems only), with --tmux its terminals are windows of a tmux session named per instance (sanvi-<name> after tk rename, else sanvi-<dir>-<hash>; see tk sessions) instead of UI tabs; --agents-full = --agents --auto-refine; --full = --agents --terminal --tmux (combine with --auto-refine if wanted) (hosts *.localhost are always allowed)
                                           --host 0.0.0.0 serves the LAN (its IPs are allowed automatically; no auth, so trusted networks only;
                                           --agents or --terminal on the network also needs --allow-agents-on-network)
   start [--port 4321] [--host ..] [--allow-host ..] [--agents [--auto-refine] | --agents-full] [--terminal [--tmux]] [--full]
                                           run the web UI in the background; free port if taken, prints the URL
   stop [--all | --port N]                 stop the instance for the tickets dir (or all / the one on a port)
   ps                                      list running instances; stale entries are cleaned up
+  rename [<name>]                         set the instance name (letters, digits, _ and -, max 32; kept in .sanvi/name); shown in the UI header and
+                                          names the tmux session (sanvi-<name>); with no name, print the current one. Takes effect on the next start
   sessions                                list the open terminal sessions of all running instances (shells, ticket sessions, tmux windows)
 
 The tickets dir is --dir, $TK_DIR, or the nearest ./tickets (searching upwards).`;
@@ -110,6 +114,16 @@ function checkServeFlags(flags, isLoopback) {
   if (flags.terminal && !isLoopback(flags.host || '127.0.0.1') && !flags['allow-agents-on-network']) throw new ValidationError('--terminal with a non-loopback --host gives anyone on the network a shell on this machine; add --allow-agents-on-network to confirm');
   if (flags.agents && !isLoopback(flags.host || '127.0.0.1') && !flags['allow-agents-on-network']) throw new ValidationError('--agents with a non-loopback --host lets anyone on the network run the agent; add --allow-agents-on-network to confirm');
 }
+
+// With --tmux, the session name must not be one another running instance already uses (e.g. a copied dir keeps its saved name).
+function checkTmuxName(flags, dir) {
+  if (!flags.tmux) return;
+  const mine = tmuxSessionName(dir);
+  const other = listInstances().find((e) => e.tmux === mine && e.dir !== path.resolve(dir));
+  if (other) throw new ValidationError(`the tmux session "${mine}" is already used by the instance at ${other.dir}; run \`tk rename <name>\` here to pick another name`);
+}
+
+const nameHint = (dir) => (storedName(dir) ? '' : `\nUsing name "${instanceName(dir)}" (change with tk rename)`);
 
 // The port `serve`/`start` want, from --port, else .sanvi/port, else 4321; bad values are a clean error, not a crash.
 function wantedPort(flags, dir) {
@@ -236,6 +250,14 @@ async function main() {
       out(all, all.length ? all.map((e) => `${String(e.pid).padEnd(8)} ${e.url}  ${e.dir}`).join('\n') : 'no running instances');
       break;
     }
+    case 'rename': {
+      if (!rest.length) { out({ name: instanceName(dir), saved: !!storedName(dir) }, `${instanceName(dir)}${storedName(dir) ? '' : '  (derived from the directory; set one with tk rename <name>)'}`); break; }
+      let name;
+      try { name = saveName(dir, rest.join(' ')); } catch (e) { throw new ValidationError(e.message); }
+      const running = findInstance(dir);
+      out({ name }, `name: ${name}${running ? '\nthe running instance keeps its tmux session name until restarted (tk stop, then tk start)' : ''}`);
+      break;
+    }
     case 'sessions': {
       const { collectSessions, formatSessions } = await import('../src/sessions.js');
       const results = await collectSessions(listInstances());
@@ -246,6 +268,7 @@ async function main() {
       const running = findInstance(dir);
       if (running) { console.log(`already running (pid ${running.pid}): ${running.url}\n${dir}`); break; }
       wantedPort(flags, dir);
+      checkTmuxName(flags, dir);
       checkServeFlags(flags, (await import('../src/server.js')).isLoopback); // fail here, not only in the log of the detached child
       const log = logPath(dir);
       fs.mkdirSync(path.dirname(log), { recursive: true });
@@ -267,7 +290,7 @@ async function main() {
       }
       const wanted = wantedPort(flags, dir).port;
       const moved = e.port !== wanted ? `\nnote: port ${wanted} was busy, using ${e.port}` : '';
-      console.log(`started (pid ${e.pid}): ${e.url}${moved}\n${dir}\nlog: ${log}`);
+      console.log(`started (pid ${e.pid}): ${e.url}${moved}\n${dir}\nlog: ${log}${nameHint(dir)}`);
       break;
     }
     case 'stop': {
@@ -287,6 +310,7 @@ async function main() {
       if (existing) throw new ValidationError(`already running for this dir (pid ${existing.pid}): ${existing.url}`);
       const { createTicketServer, bindHosts, isLoopback } = await import('../src/server.js');
       checkServeFlags(flags, isLoopback);
+      checkTmuxName(flags, dir);
       const { port: want, source: portSource } = wantedPort(flags, dir);
       try { acquireLock(dir, { force: !!flags.force }); } catch (e) { throw new ValidationError(e.message); }
       process.on('exit', () => releaseLock(dir));
@@ -309,12 +333,12 @@ async function main() {
       }
       const url = `http://localhost:${addr.port}`;
       updateLock(dir, { port: addr.port });
-      register({ dir, pid: process.pid, port: addr.port, host, url, started: new Date().toISOString() });
+      register({ dir, pid: process.pid, port: addr.port, host, url, started: new Date().toISOString(), tmux: flags.tmux ? tmuxSessionName(dir) : null });
       const bye = () => { unregister(dir, process.pid); releaseLock(dir); process.exit(0); };
       process.on('SIGINT', bye);
       process.on('SIGTERM', bye);
       process.on('exit', () => unregister(dir, process.pid));
-      console.log(`serving ${dir}\n${url}`);
+      console.log(`serving ${dir}\n${url}${nameHint(dir)}`);
       if (networked) {
         const lan = bindHosts(host).map((h) => `http://${h}:${addr.port}`);
         console.log(`WARNING: listening on ${host}; anyone who can reach this port can read and edit the tickets${flags.agents ? ' and run the agent' : ''} (no auth)`);

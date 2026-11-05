@@ -24,6 +24,7 @@ import { refinePrompt, refineRunOpts } from './refine.js';
 import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, countReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
 import { createTerminals, tmuxSessionName } from './terminal.js';
+import { storedName } from './name.js';
 import { hostMatches, persistentHosts } from './hosts.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
@@ -321,7 +322,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
 
   function configPayload() {
     const cfg = readConfig(dir);
-    return { name: path.basename(path.dirname(dir)), statuses: cfg.statuses, configured: cfg.configured };
+    return { name: storedName(dir) || path.basename(path.dirname(dir)), statuses: cfg.statuses, configured: cfg.configured };
   }
 
   function logEdit(before, after) {

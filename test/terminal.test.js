@@ -303,3 +303,20 @@ test('two instances with --tmux use separate tmux sessions', { skip: !hasPython 
     for (const n of names) assert.equal(q('list-windows', '-t', `${n}:`).stdout.trim().split('\n').length, 1);
   } finally { t1.stopAll(); t2.stopAll(); q('kill-server'); }
 });
+
+test('a saved instance name gives the tmux session sanvi-<name>; sanitizing and collisions', async () => {
+  const { saveName, storedName, sanitizeName, instanceName } = await import('../src/name.js');
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-name-')));
+  const dir = path.join(root, 'tickets');
+  fs.mkdirSync(dir);
+  assert.equal(storedName(dir), undefined);
+  assert.match(tmuxSessionName(dir), /^sanvi-.+-[0-9a-f]{6}$/);
+  assert.equal(saveName(dir, ' my.proj: 1 '), 'my-proj-1');
+  assert.equal(storedName(dir), 'my-proj-1');
+  assert.equal(tmuxSessionName(dir), 'sanvi-my-proj-1');
+  assert.equal(instanceName(dir), 'my-proj-1');
+  assert.equal(sanitizeName('x'.repeat(40)).length, 32);
+  assert.throws(() => saveName(dir, '...'), /no usable characters/);
+  fs.writeFileSync(path.join(root, '.sanvi', 'name'), '# hand edit\nby hand\n');
+  assert.equal(storedName(dir), 'by-hand');
+});
