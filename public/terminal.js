@@ -9,13 +9,13 @@ import { FitAddon } from './addon-fit.mjs';
 const HIDE_KEY = 'h'; // Ctrl+<HIDE_KEY> hides the panel; the key handler and the Hide label both read it
 const HIDE_LABEL = `Ctrl+${HIDE_KEY.toUpperCase()}`;
 
-export function initTerminal({ el, api, toast, button, onHide = () => {}, project = () => '', ticketTitle = (file) => file }) {
+export function initTerminal({ el, api, toast, button, onHide = () => {}, project = () => '', limitsNode = null, ticketTitle = (file) => file }) {
   const panel = el('aside', { class: 'chatpanel termpanel', 'aria-label': 'Terminal with Claude Code', hidden: true });
   const tabs = el('div', { class: 'termtabs', role: 'tablist' });
   const status = el('span', { class: 'muted chatmeta' });
   const hosts = el('div', { class: 'termstack' });
   panel.append(
-    el('div', { class: 'chathead' }, el('strong', {}, 'Terminal'), status, el('span', { style: 'flex:1' }),
+    el('div', { class: 'chathead' }, el('strong', {}, 'Terminal'), status, el('span', { style: 'flex:1' }), ...(limitsNode ? [limitsNode] : []),
       el('button', { type: 'button', title: `Hide the panel; the sessions keep running (${HIDE_LABEL})`, onclick: () => hide() }, 'Hide ', el('kbd', {}, HIDE_LABEL)),
       el('button', { type: 'button', title: 'End the current session (with tmux: detach; the tmux session keeps running)', onclick: () => current && close(current.id) }, 'End session')),
     tabs, hosts,

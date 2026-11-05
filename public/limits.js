@@ -1,7 +1,8 @@
-// Header display of the Claude plan limits (5-hour and weekly windows). Only used with --agents.
+// Display of the Claude plan limits (5-hour and weekly windows) in the header and, via `extra` nodes, elsewhere (the terminal bar). Only used with --agents.
 const EVERY_MS = 2 * 60 * 1000;
 
-export function initLimits({ el, api, toast, node }) {
+export function initLimits({ el, api, toast, node, extra = [] }) {
+  const nodes = [node, ...extra];
   let timer = null;
   const resetIn = (iso) => {
     const ms = Date.parse(iso) - Date.now();
@@ -9,7 +10,8 @@ export function initLimits({ el, api, toast, node }) {
     const m = Math.round(ms / 60000);
     return m < 90 ? `resets in ${m} min` : m < 48 * 60 ? `resets in ${Math.round(m / 60)} h` : `resets in ${Math.round(m / 1440)} d`;
   };
-  function paint(data) {
+  const paint = (data) => nodes.forEach((n) => paintNode(n, data));
+  function paintNode(node, data) {
     const c = data?.claude;
     node.replaceChildren();
     node.hidden = false;
@@ -30,7 +32,7 @@ export function initLimits({ el, api, toast, node }) {
     try { paint(await api('GET', `agent/limits${force ? '?refresh=1' : ''}`)); }
     catch (e) { paint({ claude: { error: e.message } }); }
   }
-  node.addEventListener('click', () => refresh(true));
+  nodes.forEach((n) => n.addEventListener('click', () => refresh(true)));
   return {
     start() { refresh(); clearInterval(timer); timer = setInterval(() => { if (!document.hidden) refresh(); }, EVERY_MS); },
     refresh: async () => { await refresh(true); toast('Claude limits refreshed'); },
