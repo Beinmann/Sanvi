@@ -143,6 +143,19 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     changelog.log({ ticket: file, action: 'terminal', project: t.project || '' });
     return { ...made, reused: false };
   }
+  // An image pasted into a terminal is kept as a temp file whose path is typed into the terminal (Claude Code reads image paths).
+  // Files older than a day are removed on the next upload; the whole folder goes when the server closes.
+  const pasteDir = path.join(os.tmpdir(), `sanvi-paste-${process.pid}`);
+  function savePastedImage(buf, type) {
+    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[String(type || '').split(';')[0].trim().toLowerCase()];
+    if (!ext) throw new ValidationError('unsupported image type (png, jpeg, gif or webp)');
+    if (!buf.length) throw new ValidationError('empty image');
+    fs.mkdirSync(pasteDir, { recursive: true, mode: 0o700 });
+    for (const f of fs.readdirSync(pasteDir)) { try { if (Date.now() - fs.statSync(path.join(pasteDir, f)).mtimeMs > 86_400_000) fs.rmSync(path.join(pasteDir, f)); } catch { /* gone already */ } }
+    const file = path.join(pasteDir, `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
+    fs.writeFileSync(file, buf, { mode: 0o600 });
+    return file;
+  }
   // With --terminal, implement runs are the interactive agent on a terminal tab (kept in the background) instead of a headless run.
   const terminalRun = terminals ? createTerminalRun({ terminals, ticketStatus: (file) => readTicket(dir, file).status }) : null;
   const limits = agents ? createLimits({ probe: limitsProbe }) : null;
@@ -349,7 +362,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       let originHost = null;
       try { originHost = origin && new URL(origin).host; } catch { /* malformed */ }
       if (origin && originHost !== req.headers.host) return send(res, 403, { error: 'cross-origin request refused' });
-      const isUpload = parts.length === 3 && parts[0] === 'tickets' && parts[2] === 'assets';
+      const isUpload = parts.length === 3 && ((parts[0] === 'tickets' && parts[2] === 'assets') || (parts[0] === 'agent' && parts[1] === 'terminals' && parts[2] === 'image'));
       if (!isUpload && !/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'content-type must be application/json' });
     }
     if (parts[0] === 'config' && method === 'GET') return send(res, 200, configPayload());
@@ -393,6 +406,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       if (parts[1] === 'terminals') {
         if (!terminals) return send(res, 403, { error: 'the terminal is off (start the server with --terminal)' });
         if (parts.length === 2 && method === 'GET') return send(res, 200, terminals.list());
+        if (parts.length === 3 && parts[2] === 'image' && method === 'POST') return send(res, 201, { path: savePastedImage(await readBuffer(req, 10 * 1024 * 1024), req.headers['content-type']) });
         if (parts.length === 3 && parts[2] === 'ticket' && method === 'POST') { if (!chats) return send(res, 403, { error: 'ticket sessions need --agents' }); const r = openTicketTerminal(await readJson(req)); return send(res, r.reused ? 200 : 201, r); }
         if (parts.length === 2 && method === 'POST') return send(res, 201, startTerminal(await readJson(req)));
         if (parts.length === 4 && parts[3] === 'stream' && method === 'GET') return terminals.watch(parts[2], req, res);
@@ -667,7 +681,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       });
     },
     close() {
-      clearTimeout(timer); clearInterval(heartbeat); watcher.close(); runner.stopAll(); terminals?.stopAll();
+      clearTimeout(timer); clearInterval(heartbeat); watcher.close(); runner.stopAll(); terminals?.stopAll(); fs.rmSync(pasteDir, { recursive: true, force: true });
       for (const c of clients) c.end();
       return new Promise((resolve) => { server.close(resolve); server.closeAllConnections?.(); });
     },

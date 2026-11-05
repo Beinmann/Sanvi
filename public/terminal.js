@@ -122,6 +122,21 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     source.addEventListener('exit', () => drop(made.id)); // the process ended: the session is no longer shown
     let queue = Promise.resolve(); // keystrokes must arrive in order
     term.onData((data) => { queue = queue.then(() => api('POST', `agent/terminals/${made.id}/input`, { data })).catch(() => {}); });
+    // An image on the clipboard is uploaded; its temp-file path is typed in (a terminal cannot take image data, Claude reads the path).
+    // Text pastes are left to xterm. On failure nothing is typed.
+    host.addEventListener('paste', (e) => {
+      const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+      if (!file) return;
+      e.preventDefault(); e.stopPropagation();
+      (async () => {
+        try {
+          const res = await fetch(`${prefix()}/api/agent/terminals/image`, { method: 'POST', headers: { 'content-type': file.type }, body: file });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.path) throw new Error(data.error || res.statusText || 'upload failed');
+          term.paste(`${data.path} `);
+        } catch (err) { toast(`Image paste failed: ${err.message}`); }
+      })();
+    }, true);
     const observer = new ResizeObserver(() => {
       if (panel.hidden || host.hidden) return;
       fit.fit();

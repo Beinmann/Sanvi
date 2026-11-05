@@ -320,3 +320,22 @@ test('a saved instance name gives the tmux session sanvi-<name>; sanitizing and 
   fs.writeFileSync(path.join(root, '.sanvi', 'name'), '# hand edit\nby hand\n');
   assert.equal(storedName(dir), 'by-hand');
 });
+
+test('pasted images are stored as temp files only with --terminal and only as images', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-img-'));
+  const off = createTicketServer({ dir });
+  const on = createTicketServer({ dir, terminal: true });
+  try {
+    const offBase = `http://127.0.0.1:${(await off.listen(0)).port}`;
+    const base = `http://127.0.0.1:${(await on.listen(0)).port}`;
+    const up = (b, type, body) => fetch(`${b}/api/agent/terminals/image`, { method: 'POST', headers: { 'content-type': type }, body });
+    assert.equal((await up(offBase, 'image/png', 'x')).status, 403);
+    assert.equal((await up(base, 'text/plain', 'x')).status, 400);
+    assert.equal((await up(base, 'image/png', '')).status, 400);
+    const r = await up(base, 'image/png', Buffer.from([1, 2, 3]));
+    assert.equal(r.status, 201);
+    const { path: p } = await r.json();
+    assert.match(p, /\.png$/);
+    assert.deepEqual([...fs.readFileSync(p)], [1, 2, 3]);
+  } finally { await off.close(); await on.close(); }
+});
