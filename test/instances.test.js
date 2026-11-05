@@ -176,3 +176,21 @@ test('persistent port: .sanvi/port is the default, --port overrides, invalid con
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('GET /api/instances lists the other running instances, not itself', async () => {
+  const { root, mk, tk } = setup();
+  const a = mk('proj-a'); const b = mk('proj-b');
+  try {
+    tk('--dir', a, 'start', '--port', '0');
+    tk('--dir', b, 'start', '--port', '0');
+    const ps = JSON.parse(tk('ps', '--json'));
+    const ea = ps.find((e) => e.dir === a); const eb = ps.find((e) => e.dir === b);
+    const fromA = await (await fetch(`${ea.url}/api/instances`)).json();
+    assert.deepEqual(fromA.map((x) => [x.name, x.url]), [['proj-b', eb.url]]);
+    tk('--dir', b, 'stop');
+    assert.deepEqual(await (await fetch(`${ea.url}/api/instances`)).json(), []);
+  } finally {
+    tk('stop', '--all');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

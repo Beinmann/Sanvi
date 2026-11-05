@@ -122,6 +122,7 @@ export const HELP = [
     ['gat', 'Terminal: show the interactive Claude session of the selected / open ticket, or start one (auto permission mode; needs --terminal and --agents)'],
     ['Ctrl+H', 'Terminal (while it has focus): hide the panel and return to the board, same as the Hide button'],
     ['gas', 'Worktree slot overview (same as gw)'],
+    ['go', 'Switch to another running Sanvi instance on this machine (same tab; also in the command menu)'],
     ['gw', 'Worktree slot overview (only with --agents)'],
     ['P', 'Switch the current project (the project new tickets are filed under)'],
     ['Ctrl+I', 'Quick idea: just text, no title; also while typing (your edit is kept)'],
@@ -606,6 +607,19 @@ export function initKeys(ctx) {
     return [row('All projects', '', ''), ...names.map((n) => row(n, n, recent.includes(n) ? 'recent' : '')), row('Default project', none, '')];
   }
   // Worktree slots of the implement runs: overview, and the pool size (stored in the project's .sanvi dir).
+  // Other running local instances (fetched fresh on every open). Choosing one navigates this tab to it.
+  async function openInstances() {
+    let list;
+    try { list = await ctx.instances(); } catch (e) { ctx.toast(`Instances: ${e.message}`); return; }
+    const dup = (n) => list.filter((x) => x.name === n).length > 1;
+    const level = {
+      placeholder: 'Switch to Sanvi instance…',
+      rows: () => (list.length ? list.map((x) => ({ label: x.name, hint: dup(x.name) ? `:${x.port} ${x.dir}` : `:${x.port}`, run: () => { location.href = x.url; } }))
+        : [{ label: 'No other Sanvi instances running', hint: '', always: true, run: () => {} }]),
+    };
+    openPalette('instances', level);
+  }
+
   async function openSlots() {
     let data;
     try { data = await ctx.slots(); } catch (e) { ctx.toast(`Slots: ${e.message}`); return; }
@@ -695,6 +709,7 @@ export function initKeys(ctx) {
           { cmd: true, label: 'Notes', run: () => { location.hash = '#/notes'; } },
           { cmd: true, label: 'Search tickets', hint: '/ or Ctrl+/ or Ctrl+E', run: focusSearch },
           ...(ctx.projects().mode === 'dropdown' ? [{ cmd: true, label: 'Switch project…', hint: 'P', push: projectLevel }] : []),
+          { cmd: true, label: 'Switch Sanvi instance…', hint: 'go', run: openInstances },
           { cmd: true, label: 'Board', hint: 'b', run: () => { location.hash = '#/'; } },
           { cmd: true, label: 'Trash (restore deleted tickets)', hint: 'trash', run: () => { location.hash = '#/trash'; } },
           { cmd: true, label: 'Add status…', hint: 'column', run: openAddStatus },
@@ -719,12 +734,12 @@ export function initKeys(ctx) {
     };
   }
 
-  function openPalette(mode = 'all') {
+  function openPalette(mode = 'all', custom = null) {
     const file = contextFile();
     const t = file && S.tickets.find((x) => x.file === file);
     if (mode === 'status' && !t) { ctx.toast('No ticket selected'); return; }
     expanded = false;
-    const stack = [mode === 'status' ? valueLevel(t, 'status') : mode === 'slots' ? slotCountLevel() : mode === 'project' ? projectLevel() : rootLevel()];
+    const stack = [custom ? custom : mode === 'status' ? valueLevel(t, 'status') : mode === 'slots' ? slotCountLevel() : mode === 'project' ? projectLevel() : rootLevel()];
     let shown = [], sel = 0;
     const input = el('input', {
       type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'cmd-list', 'aria-autocomplete': 'list',
@@ -873,6 +888,7 @@ export function initKeys(ctx) {
         return true;
       }
       case 'a': if (!agents) return false; pendingGA = true; return true; // prefix of the agent keys (gaa gac gai gar gav gas gat)
+      case 'o': openInstances(); return true;
       case 'w': if (!agents) return false; openSlots(); return true;
       case 's': focusSearch(); return true;
       case 'n': location.hash = '#/notes'; return true;

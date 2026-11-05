@@ -19,7 +19,7 @@ import { createChats, resolveDir } from './chat.js';
 import { createLimits } from './limits.js';
 import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge, DEFAULT_POOL_SIZE, MAX_POOL_SIZE, repoTop, slotOverview, resizePool } from './implement.js';
 import { startRun } from './agent.js';
-import { chatsPath } from './instances.js';
+import { chatsPath, listInstances, instanceName } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
 import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, countReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
@@ -369,6 +369,12 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
         fs.writeFileSync(file, JSON.stringify({ hidden }, null, 2) + '\n');
         return send(res, 200, { hidden });
       }
+    }
+    // Other running local instances from the per-user registry (read-only), for the palette's instance switcher.
+    if (parts[0] === 'instances' && parts.length === 1 && method === 'GET') {
+      const me = path.resolve(dir);
+      return send(res, 200, listInstances().filter((e) => e.dir !== me && e.pid !== process.pid)
+        .map((e) => ({ name: instanceName(e.dir), url: e.url, port: e.port, dir: e.dir })));
     }
     if (parts[0] === 'about' && parts.length === 1 && method === 'GET') {
       return send(res, 200, {

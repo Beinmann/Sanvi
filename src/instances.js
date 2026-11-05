@@ -107,6 +107,9 @@ export function listInstances() {
   return out.sort((a, b) => a.dir.localeCompare(b.dir));
 }
 
+/** Display name of an instance: its project directory (the parent of a dir called `tickets`), else the dir's own name. */
+export const instanceName = (dir) => (path.basename(dir) === 'tickets' ? path.basename(path.dirname(dir)) : path.basename(dir));
+
 export const findInstance = (dir) => listInstances().find((e) => e.dir === path.resolve(dir));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -251,6 +251,8 @@ tk ps                 # list running instances (dir, port, PID, URL); cleans up 
 tk sessions           # open terminal sessions (shells, ticket sessions, tmux windows) of all running instances
 ```
 
+In the web UI, the command menu entry **Switch Sanvi instance…** (hotkey `go`) lists the *other* instances from this registry by project name (port, and the dir when names clash) and opens the chosen one in the same tab. The list is read fresh each time (`GET /api/instances`, read-only). It only knows instances of the same user on the same machine; for containers or other hosts there is no switcher.
+
 Instances (also those from plain `serve`) are registered one JSON file each
 under `$TK_STATE_DIR`, else `$XDG_STATE_HOME/sanvi`, else
 `~/.local/state/sanvi` (`instances/`; this is the only per-user state, as it

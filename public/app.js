@@ -1178,6 +1178,7 @@ const keysApi = initKeys({
   refine: refineTicket,
   review: (file) => chatPage.review(file).catch((e) => toast(`Review failed: ${e.message}`)),
   implement: (file) => chatPage.implement(file).catch((e) => (/worktrees are busy/.test(e.message) ? keysApi.warnSlotsBusy(e.message) : toast(`Implement failed: ${e.message}`))),
+  instances: () => api('GET', 'instances'),
   slots: async () => (slotInfo = await api('GET', 'agent/slots')),
   slotCount: () => slotInfo?.poolSize, slotMax: () => slotInfo?.max,
   setSlots: async (n) => { slotInfo = await api('PUT', 'agent/slots', { poolSize: n }); },
