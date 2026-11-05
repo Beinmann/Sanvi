@@ -1,9 +1,10 @@
 // Chat with the agent: a full-screen panel with a list of chats. Only active when the server runs with --agents.
 import { renderMarkdown } from './md.js';
+import { scoped } from './backend.js';
 
 const store = {
-  get: (k) => { try { return localStorage.getItem(`sanvi.chat.${k}`); } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(`sanvi.chat.${k}`, v); } catch { /* private window: just not remembered */ } },
+  get: (k) => { try { return localStorage.getItem(scoped(`sanvi.chat.${k}`)); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(scoped(`sanvi.chat.${k}`), v); } catch { /* private window: just not remembered */ } },
 };
 
 export function initChat({ el, show, api, toast, button, failedButton, project = () => '' }) {

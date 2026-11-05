@@ -15,6 +15,8 @@ export function stateDir() {
 
 const instDir = () => path.join(stateDir(), 'instances');
 const keyOf = (dir) => crypto.createHash('sha1').update(path.resolve(dir)).digest('hex').slice(0, 12);
+/** Stable short id of an instance (its tickets dir): addresses it in the UI's `/b/<id>/...` proxy paths. */
+export const instanceId = (dir) => keyOf(dir);
 const entryPath = (dir) => path.join(instDir(), `${keyOf(dir)}.json`);
 // Chats and the server log live in the project's `.sanvi` dir. Files from the per-user state dir
 // (`chats/<hash>.json`, `logs/<hash>.log`) are moved over on first use, never overwriting.

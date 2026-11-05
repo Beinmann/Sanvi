@@ -19,7 +19,7 @@ import { createChats, resolveDir } from './chat.js';
 import { createLimits } from './limits.js';
 import { implementPrompt, implementRunOpts, createWorktree, releaseWorktree, mergeWorktree, mergeConflictPrompt, mergeRunOpts, completeMerge, DEFAULT_POOL_SIZE, MAX_POOL_SIZE, repoTop, slotOverview, resizePool } from './implement.js';
 import { startRun } from './agent.js';
-import { chatsPath, listInstances, instanceName } from './instances.js';
+import { chatsPath, listInstances, instanceName, instanceId } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
 import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, countReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
@@ -370,11 +370,13 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
         return send(res, 200, { hidden });
       }
     }
-    // Other running local instances from the per-user registry (read-only), for the palette's instance switcher.
+    // Running local instances from the per-user registry (read-only), for the palette's instance switcher. `self` marks the
+    // instance that answers (listed even when unregistered); the UI addresses the others through `/b/<id>/...` (see proxy).
     if (parts[0] === 'instances' && parts.length === 1 && method === 'GET') {
       const me = path.resolve(dir);
-      return send(res, 200, listInstances().filter((e) => e.dir !== me && e.pid !== process.pid)
-        .map((e) => ({ name: instanceName(e.dir), url: e.url, port: e.port, dir: e.dir })));
+      const others = listInstances().filter((e) => e.dir !== me && e.pid !== process.pid)
+        .map((e) => ({ id: instanceId(e.dir), name: instanceName(e.dir), port: e.port, dir: e.dir }));
+      return send(res, 200, [{ id: instanceId(me), name: instanceName(me), port: undefined, dir: me, self: true }, ...others]);
     }
     if (parts[0] === 'about' && parts.length === 1 && method === 'GET') {
       return send(res, 200, {
@@ -564,6 +566,34 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
     return send(res, 404, { error: 'not found' });
   }
 
+  // The UI can show another local instance's board while staying on this origin: `/b/<id>/api/...` and `/b/<id>/assets/...`
+  // are forwarded (streams included) to the registry entry with that id, so only this instance's address must be reachable.
+  // The Host check and the cross-origin check of this front door apply; the target sees a local request. Only registered
+  // instances are targets, and only their API and attachments.
+  function proxy(req, res, id, rest) {
+    if (id === instanceId(dir)) { req.url = rest; return false; } // ourselves: handle locally
+    if (!/^\/(api|assets)\//.test(rest)) return send(res, 404, { error: 'not found' }), true;
+    if (req.method !== 'GET') {
+      let originHost = null;
+      try { originHost = req.headers.origin && new URL(req.headers.origin).host; } catch { /* malformed */ }
+      if (req.headers.origin && originHost !== req.headers.host) return send(res, 403, { error: 'cross-origin request refused' }), true;
+    }
+    const target = listInstances().find((e) => instanceId(e.dir) === id);
+    if (!target) return send(res, 502, { error: 'instance not running' }), true;
+    const base = new URL(target.url);
+    const headers = { ...req.headers, host: base.host };
+    delete headers.origin; delete headers.referer;
+    const up = http.request({ hostname: base.hostname, port: base.port, method: req.method, path: rest, headers }, (r) => {
+      res.writeHead(r.statusCode, r.headers);
+      r.pipe(res);
+      r.on('error', () => res.destroy());
+    });
+    up.on('error', () => { if (!res.headersSent) send(res, 502, { error: 'instance not running' }); else res.destroy(); });
+    res.on('close', () => up.destroy());
+    req.pipe(up);
+    return true;
+  }
+
   const server = http.createServer(async (req, res) => {
     try {
       const host = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
@@ -574,6 +604,8 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
         `  - add the line ${host} to .sanvi/allowed-hosts to permit it for good`,
         'A line like *.example.net allows a whole domain.',
       ].join('\n') + '\n'); }
+      const pm = /^\/b\/([0-9a-f]{12})(\/.*)$/.exec(req.url.split('?')[0]);
+      if (pm && proxy(req, res, pm[1], req.url.slice(`/b/${pm[1]}`.length))) return;
       const url = new URL(req.url, 'http://localhost');
       res.on('finish', () => { // failed requests go to the change log so a repeat can be diagnosed (409 is logged with detail elsewhere)
         if (res.statusCode >= 400 && res.statusCode !== 404 && res.statusCode !== 409) {

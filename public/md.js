@@ -1,7 +1,11 @@
+import { prefix } from './backend.js';
 // Small, safe Markdown renderer: everything is HTML-escaped first, and only
 // the constructs below produce markup. Good enough for tickets.
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const safeUrl = (u) => !/^[a-z][a-z0-9+.-]*:/i.test(u) || /^(https?|mailto):/i.test(u);
+
+// Attachments of another instance are served through its proxy path (see backend.js).
+const assetSrc = (u) => (prefix() && /^\/?assets\//.test(u) ? `${prefix()}/${u.replace(/^\//, '')}` : u);
 
 function inline(s) {
   const codes = [];
@@ -9,7 +13,7 @@ function inline(s) {
   s = esc(s);
   // images: relative paths only (ticket attachments); no remote or data: images
   s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) =>
-    /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(u) ? m : `<img src="${u}" alt="${alt}" loading="lazy">`);
+    /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(u) ? m : `<img src="${assetSrc(u)}" alt="${alt}" loading="lazy">`);
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     safeUrl(u) ? `<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>` : m);
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');

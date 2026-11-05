@@ -1,6 +1,7 @@
 import { renderMarkdown, splitSummary } from './md.js';
 import { insertNote } from './notes.js';
 import { compact } from './util.js';
+import { backend, prefix, scoped, switchBackend } from './backend.js';
 import { serialQueue, coalesce, isTransient, describeFailure } from './queue.js';
 import { planStatusDelete, parseQuery, formatQuery, matchTicket, scoreTicket, matchedOnlyInBody, sortTickets, SORT_KEYS, moveItem, checkStatusName, idQuery } from './filter.js';
 import { initKeys, neighbourFile } from './keys.js';
@@ -40,13 +41,14 @@ function toast(msg) {
 async function api(method, path, body) {
   let res;
   try {
-    res = await fetch(`/api/${path}`, {
+    res = await fetch(`${path === 'instances' ? '' : prefix()}/api/${path}`, {
       method,
       headers: body ? { 'content-type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) { throw Object.assign(new Error(describeFailure(0)), { cause: e }); } // no status: network error
   const data = await res.json().catch(() => ({}));
+  if (res.status === 502 && data.error === 'instance not running' && backend()) { toast(`${backend().name} is not running any more; back to this instance`); setTimeout(() => switchBackend(null), 1500); }
   if (!res.ok) throw Object.assign(new Error(describeFailure(res.status, res.statusText, data)), { status: res.status, data });
   return data;
 }
@@ -280,7 +282,7 @@ const Q = { text: '', parsed: parseQuery(''), view: 'board', sort: 'id', dir: 'a
 // mirrored as `project:<name>` in the URL's q parameter; URLs without it fall back to the stored value.
 // NO_PROJECT pins the empty term `project:` (tickets without a project). The choices are the distinct
 // `project:` values on tickets; a project exists as long as some ticket has it.
-const PROJECT_KEY = 'sanvi.project';
+const PROJECT_KEY = scoped('sanvi.project');
 const NO_PROJECT = '__none__';
 let project = '';
 const storedProject = () => { try { return localStorage.getItem(PROJECT_KEY) || ''; } catch { return ''; } };
@@ -301,7 +303,7 @@ const soleProject = () => { const n = projectNames(); return n.length === 1 && (
 // The one place that decides what the header shows (and whether P works): 'none' | 'label' | 'dropdown'.
 const switcherMode = () => (soleProject() ? 'label' : projectNames().length > 0 || project ? 'dropdown' : 'none');
 // Recently used projects (069): remembered in the browser, newest first, at most 9 (Alt+1..9).
-const RECENT_KEY = 'sanvi.recentProjects';
+const RECENT_KEY = scoped('sanvi.recentProjects');
 let recent = [];
 try { recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').filter((x) => typeof x === 'string'); } catch { /* ignore */ }
 const noteRecent = (n) => { recent = [n, ...recent.filter((x) => x !== n)].slice(0, 9); try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch { /* ignore */ } };
@@ -751,7 +753,7 @@ function select(values, current, onchange, id) {
 // Upload an image for the open ticket and insert `![screenshot](assets/<id>-<n>.<ext>)` at the cursor.
 // On any error the text is left as it was.
 async function uploadImage(file, blob) {
-  const res = await fetch(`/api/tickets/${encodeURIComponent(file)}/assets`, { method: 'POST', headers: { 'content-type': blob.type }, body: blob });
+  const res = await fetch(`${prefix()}/api/tickets/${encodeURIComponent(file)}/assets`, { method: 'POST', headers: { 'content-type': blob.type }, body: blob });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data.path;
@@ -1179,6 +1181,7 @@ const keysApi = initKeys({
   review: (file) => chatPage.review(file).catch((e) => toast(`Review failed: ${e.message}`)),
   implement: (file) => chatPage.implement(file).catch((e) => (/worktrees are busy/.test(e.message) ? keysApi.warnSlotsBusy(e.message) : toast(`Implement failed: ${e.message}`))),
   instances: () => api('GET', 'instances'),
+  backend, switchBackend,
   slots: async () => (slotInfo = await api('GET', 'agent/slots')),
   slotCount: () => slotInfo?.poolSize, slotMax: () => slotInfo?.max,
   setSlots: async (n) => { slotInfo = await api('PUT', 'agent/slots', { poolSize: n }); },
@@ -1306,9 +1309,17 @@ async function doRefresh() {
   else if (h === '#/' || h === '' || h.startsWith('#/?')) renderBoard();
 }
 
+// Another instance than the one that served the page (see backend.js): say so in the header.
+if (backend()) {
+  const b = $('#backend-btn');
+  b.textContent = `⇄ ${backend().name}`;
+  b.hidden = false;
+  b.onclick = () => keysApi.openInstances();
+}
+
 // live updates
 let refreshTimer;
-const es = new EventSource('/api/events');
+const es = new EventSource(`${prefix()}/api/events`);
 es.onopen = () => $('#live').classList.add('on');
 es.onerror = () => $('#live').classList.remove('on');
 es.onmessage = (e) => {

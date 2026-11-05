@@ -5,6 +5,7 @@
 // Only active when the server runs with --agents. `start({ dir, prompt })` opens one, `openTicket(file)` the ticket's.
 import { Terminal } from './xterm.mjs';
 import { FitAddon } from './addon-fit.mjs';
+import { prefix } from './backend.js';
 
 const HIDE_KEY = 'h'; // Ctrl+<HIDE_KEY> hides the panel; the key handler and the Hide label both read it
 const HIDE_LABEL = `Ctrl+${HIDE_KEY.toUpperCase()}`;
@@ -116,7 +117,7 @@ export function initTerminal({ el, api, toast, button, onHide = () => {}, projec
     });
     term.open(host);
     fit.fit();
-    const source = new EventSource(`/api/agent/terminals/${made.id}/stream`);
+    const source = new EventSource(`${prefix()}/api/agent/terminals/${made.id}/stream`);
     source.onmessage = (m) => term.write(decode(m.data));
     source.addEventListener('exit', () => drop(made.id)); // the process ended: the session is no longer shown
     let queue = Promise.resolve(); // keystrokes must arrive in order
