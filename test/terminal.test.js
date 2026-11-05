@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createTicketServer } from '../src/server.js';
-import { createTerminals } from '../src/terminal.js';
+import { createTerminals, tmuxSessionName } from '../src/terminal.js';
 
 const hasPython = spawnSync('python3', ['-V']).status === 0;
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -277,4 +277,29 @@ test('tmux mode: terminals are windows of one named session, in the given direct
     assert.ok(q('list-windows', '-t', 'sanvi-test:', '-F', '#{window_name}').stdout.includes('#001 One\n'));
     assert.equal(q('list-sessions', '-F', '#{session_name}').stdout.trim(), 'sanvi-test');
   } finally { term.stopAll(); q('kill-server'); }
+});
+
+test('tmux session names are per tickets dir: stable, distinct for equal base names, and free of characters tmux rejects', () => {
+  const a = tmuxSessionName('/x/my.proj:1/tickets');
+  assert.equal(a, tmuxSessionName('/x/my.proj:1/tickets/'));
+  assert.match(a, /^sanvi-my-proj-1-[0-9a-f]{6}$/);
+  assert.notEqual(tmuxSessionName('/x/app/tickets'), tmuxSessionName('/y/app/tickets'));
+  assert.match(tmuxSessionName('/'), /^sanvi-[0-9a-f]{6}$/);
+});
+
+test('two instances with --tmux use separate tmux sessions', { skip: !hasPython || !hasTmux }, async () => {
+  const socket = `tk-test2-${process.pid}`;
+  const q = (...a) => spawnSync('tmux', ['-L', socket, ...a], { encoding: 'utf8' });
+  const mk = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tk-inst-')));
+  const [d1, d2] = [mk(), mk()];
+  const names = [tmuxSessionName(path.join(d1, 'tickets')), tmuxSessionName(path.join(d2, 'tickets'))];
+  const t1 = createTerminals({ tmux: { session: names[0], socket }, shell: ['sh'] });
+  const t2 = createTerminals({ tmux: { session: names[1], socket }, shell: ['sh'] });
+  try {
+    t1.start({ cwd: d1, command: ['sleep', '30'] });
+    t2.start({ cwd: d2, command: ['sleep', '30'] });
+    assert.notEqual(names[0], names[1]);
+    assert.deepEqual(q('list-sessions', '-F', '#{session_name}').stdout.trim().split('\n').sort(), [...names].sort());
+    for (const n of names) assert.equal(q('list-windows', '-t', `${n}:`).stdout.trim().split('\n').length, 1);
+  } finally { t1.stopAll(); t2.stopAll(); q('kill-server'); }
 });

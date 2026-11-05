@@ -23,7 +23,7 @@ import { chatsPath } from './instances.js';
 import { refinePrompt, refineRunOpts } from './refine.js';
 import { reviewPrompt, reviewRunOpts, reviewsDir, newReportPath, listReviews, countReviews, readReview, checkReview } from './review.js';
 import { createRunner } from './runner.js';
-import { createTerminals, TMUX_SESSION } from './terminal.js';
+import { createTerminals, tmuxSessionName } from './terminal.js';
 import { hostMatches, persistentHosts } from './hosts.js';
 import { DEFAULT_LABEL, projectView, projectInfo, saveProject, listDirs } from './projects.js';
 
@@ -116,7 +116,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
 
   // Terminals on a pty (see src/terminal.js), only with --terminal: a plain shell, and with --agents also ticket sessions
   // running the interactive `claude` (`terminalCommand`). A shell is full system access, hence its own flag.
-  const terminals = terminal ? createTerminals({ command: terminalCommand, shell: shellCommand || [process.env.SHELL || '/bin/sh'], tmux: tmux ? { session: TMUX_SESSION, socket: tmuxSocket } : null }) : null;
+  const terminals = terminal ? createTerminals({ command: terminalCommand, shell: shellCommand || [process.env.SHELL || '/bin/sh'], tmux: tmux ? { session: tmuxSessionName(dir), socket: tmuxSocket } : null }) : null;
   // Where a terminal starts: the given directory, else the project's (as chats do), else the default directory.
   function startCwd(project) {
     const info = projectInfo(dir, project || '') || {};
@@ -377,7 +377,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
       });
     }
     if (parts[0] === 'agent') {
-      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, terminal: !!terminals, tmux: terminals && tmux ? TMUX_SESSION : null, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir }) });
+      if (parts.length === 1 && method === 'GET') return send(res, 200, { enabled: !!chats, terminal: !!terminals, tmux: terminals && tmux ? tmuxSessionName(dir) : null, autoRefine: !!(chats && autoRefine), ...(chats && { defaultDir: chats.defaultDir }) });
       if (parts[1] === 'terminals') {
         if (!terminals) return send(res, 403, { error: 'the terminal is off (start the server with --terminal)' });
         if (parts.length === 2 && method === 'GET') return send(res, 200, terminals.list());

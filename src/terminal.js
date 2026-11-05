@@ -4,6 +4,7 @@
 // (a reloaded or reopened page re-attaches); an idle timeout exists only when `idleMs` is set.
 import { spawn, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ValidationError } from './core.js';
 
@@ -20,7 +21,13 @@ const quote = (a) => `'${String(a).replace(/'/g, `'\\''`)}'`;
 // then runs $SANVI_RUN as a foreground job, so Ctrl+Z (exit status 128+SIGTSTP) returns to the prompt for `fg`; any other end leaves the shell too.
 const RUN_LINE = ` printf '\\033[H\\033[2J\\033[3JStarting...\\r\\n'; eval "$SANVI_RUN"; s=$?; [ "$s" -eq 148 ] || exit "$s"\n`;
 
-export const TMUX_SESSION = 'sanvi'; // the fixed name of the tmux session used with --tmux
+/** The tmux session name of an instance (--tmux): `sanvi-<name of the dir above the tickets dir>-<6 hex of a hash of the full path>`.
+ *  Stable across restarts, different per tickets dir even with equal base names; characters tmux rejects (`.`, `:`) become `-`. */
+export function tmuxSessionName(dir) {
+  const full = path.resolve(dir);
+  const base = path.basename(path.dirname(full)).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
+  return `sanvi-${base ? `${base}-` : ''}${crypto.createHash('sha1').update(full).digest('hex').slice(0, 6)}`;
+}
 
 export function createTerminals({ command = ['claude'], shell = null, tmux = null, idleMs = IDLE_MS, reapMs = REAP_MS, python = 'python3' } = {}) {
   const terms = new Map();
