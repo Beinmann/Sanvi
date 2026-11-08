@@ -190,7 +190,7 @@ export function createTicketServer({ dir, allowedHosts = [], log: logOpts, agent
   function startRefine(file) {
     const t = readTicket(dir, file);
     if (chats.list().some((c) => c.ticket === file && (c.state === 'running' || c.state === 'queued'))) throw new ValidationError(`#${t.id} is already being refined`);
-    const chat = chats.create({ project: t.project, kind: 'refine', ticketId: t.id, meta: { file, before: t.version }, title: `Refine #${t.id}: ${t.title}`.slice(0, 80), runOpts: { ...refineRunOpts({ ticketsDir: dir, file }), ...(terminals && { interactive: { file, name: `Refine #${t.id}`.slice(0, 28), watch: 'version' } }) } });
+    const chat = chats.create({ project: t.project, kind: 'refine', ticketId: t.id, meta: { file, before: t.version }, title: `Refine #${t.id}: ${t.title}`.slice(0, 80), runOpts: { ...refineRunOpts({ ticketsDir: dir, file, interactive: !!terminals }), ...(terminals && { interactive: { file, name: `Refine #${t.id}`.slice(0, 28), watch: 'version' } }) } });
     chats.send(chat.id, `Refine ticket #${t.id} (${file}): rewrite it into problem, acceptance criteria and approach.`, { prompt: refinePrompt({ ticketsDir: dir, file, project: t.project, instructions: projectInfo(dir, t.project).instructions }), queue: true });
     return chat;
   }

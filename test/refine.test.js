@@ -41,3 +41,16 @@ test('refine run has the Bash tool available (without it the tk new rule is usel
   const cmd = refinePrompt({ ticketsDir: '/t', file: '001-a.md', today: '2026-01-01' }).match(/^ +(node \S+ new) /m)[1];
   assert.equal(rule, `Bash(${cmd}:*)`, 'the permitted command is the one the prompt gives');
 });
+
+test('refineRunOpts: a terminal run uses auto mode, keeps the narrow rules; a headless run stays on default', async () => {
+  const { interactiveFlags } = await import('../src/termrun.js');
+  const h = refineRunOpts({ ticketsDir: '/t', file: '001-a.md' });
+  const t = refineRunOpts({ ticketsDir: '/t', file: '001-a.md', interactive: true });
+  assert.equal(h.permissionMode, 'default');
+  assert.equal(t.permissionMode, 'auto');
+  assert.deepEqual({ ...t, permissionMode: 'default' }, h);
+  const f = interactiveFlags(t, '/tmp/m');
+  assert.equal(f[f.indexOf('--permission-mode') + 1], 'auto');
+  assert.ok(!f.includes('bypassPermissions'));
+  assert.ok(f[f.indexOf('--allowedTools') + 1].includes('Edit(//t/001-a.md)'));
+});

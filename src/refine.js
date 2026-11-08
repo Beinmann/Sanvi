@@ -25,9 +25,10 @@ Edit only ${ticket} and create new tickets only with the command above. Do not t
 
 // `tools` is what the run can use at all, `allowedTools` what is permitted without asking. Edit is allowed for that single file only, and new tickets can be created (never overwritten) through `tk new`; a headless run cannot ask, so everything else is denied.
 // In a permission rule `/x` is relative to the project root and `//x` is the absolute path /x.
-export function refineRunOpts({ ticketsDir, file }) {
+// `interactive` (a run on a terminal tab): nobody is there to answer a prompt, so use auto mode like implement runs; the allow rules and the tool set stay as they are.
+export function refineRunOpts({ ticketsDir, file, interactive = false }) {
   return {
-    permissionMode: 'default',
+    permissionMode: interactive ? 'auto' : 'default',
     tools: ['Read', 'Grep', 'Glob', 'Edit', 'Bash'], // Bash must be available for the allow rule below to matter (the default tool set has none)
     allowedTools: ['Read', 'Grep', 'Glob', `Edit(/${path.join(ticketsDir, file)})`, `Bash(node ${TK} new:*)`],
     addDirs: [ticketsDir, reviewsDir(ticketsDir)], // reports of any ticket are readable when the user names one; there is no Edit rule for them
